@@ -1,7 +1,12 @@
 <script>
   import Board from './lib/components/Board.svelte';
   import Dice from './lib/components/Dice.svelte';
-  import { board, playerPos, movementPool, diceValue, gamePhase, visited, movesMade, initGame, resetGame } from './lib/game/gameState.js';
+  import {
+    board, playerPos, movementPool, diceValue, gamePhase, visited, movesMade,
+    selectedDirection, previewPath, animatingPath, animationStep,
+    initGame, resetGame, selectDirection, executeMove,
+  } from './lib/game/gameState.js';
+  import { getAvailableDirections } from './lib/game/movement.js';
 
   let selectedRadius = $state(2);
 
@@ -12,9 +17,27 @@
   let pool = $derived($movementPool);
   let dice = $derived($diceValue);
   let visitedSet = $derived($visited);
+  let selDir = $derived($selectedDirection);
+  let preview = $derived($previewPath);
+  let animPath = $derived($animatingPath);
+  let animStep = $derived($animationStep);
+
+  // Compute available directions reactively
+  let availableDirs = $derived.by(() => {
+    if (phase !== 'selectingDirection' || !boardData || !pos) return null;
+    return getAvailableDirections(boardData.rays, pos, boardData.obstacles);
+  });
 
   function startGame() {
     initGame(selectedRadius);
+  }
+
+  function handleDirectionSelect(direction) {
+    selectDirection(direction);
+  }
+
+  function handleConfirmMove() {
+    executeMove();
   }
 </script>
 
@@ -40,6 +63,14 @@
       obstacles={boardData.obstacles}
       playerPos={pos}
       visited={visitedSet}
+      gamePhase={phase}
+      availableDirections={availableDirs}
+      previewPath={preview}
+      selectedDirection={selDir}
+      animatingPath={animPath}
+      animationStep={animStep}
+      onDirectionSelect={handleDirectionSelect}
+      onConfirmMove={handleConfirmMove}
     />
 
     <Dice />

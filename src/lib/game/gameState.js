@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { generateGrid } from './hexGrid.js';
+import { computePath, isTrapped } from './movement.js';
 
 // --- Svelte stores ---
 
@@ -23,6 +24,18 @@ export const visited = writable(new Set());
 
 /** Total moves made (for stats) */
 export const movesMade = writable(0);
+
+/** Currently selected direction index (0-5 or null) */
+export const selectedDirection = writable(null);
+
+/** Preview path: array of vertex IDs for the currently previewed direction */
+export const previewPath = writable([]);
+
+/** Animation state: array of vertex IDs being animated (step-by-step) */
+export const animatingPath = writable([]);
+
+/** Index of current animation step (-1 = not animating) */
+export const animationStep = writable(-1);
 
 // --- Helper functions ---
 
@@ -193,6 +206,131 @@ export function rollDice() {
 }
 
 /**
+ * Preview a direction: compute the path and store it for display.
+ * Only works during selectingDirection phase.
+ *
+ * @param {number} direction - Direction index (0-5)
+ * @returns {{ path: string[], reachedTarget: boolean }|null}
+ */
+export function selectDirection(direction) {
+  const phase = get(gamePhase);
+  if (phase !== 'selectingDirection') return null;
+
+  const boardData = get(board);
+  const pos = get(playerPos);
+  const dice = get(diceValue);
+  const pool = get(movementPool);
+
+  if (!boardData || !pos || dice == null) return null;
+
+  const steps = Math.min(dice, pool);
+  const rays = boardData.rays.get(pos);
+  if (!rays) return null;
+
+  const result = computePath(rays, direction, steps, boardData.obstacles, boardData.targetVertex);
+
+  selectedDirection.set(direction);
+  previewPath.set(result.path);
+
+  return result;
+}
+
+/**
+ * Execute the currently previewed move.
+ * Animates the player step-by-step, then updates state.
+ * Only works during selectingDirection phase with a preview set.
+ *
+ * @param {function} [onAnimationComplete] - Callback after animation finishes
+ * @returns {boolean} Whether the move was initiated
+ */
+export function executeMove(onAnimationComplete) {
+  const phase = get(gamePhase);
+  if (phase !== 'selectingDirection') return false;
+
+  const path = get(previewPath);
+  if (path.length === 0) return false;
+
+  const boardData = get(board);
+  const dice = get(diceValue);
+  const pool = get(movementPool);
+
+  gamePhase.set('moving');
+  animatingPath.set(path);
+  animationStep.set(0);
+
+  const stepDelay = 150;
+  let step = 0;
+
+  function advanceStep() {
+    if (step >= path.length) {
+      // Animation complete
+      const finalPos = path[path.length - 1];
+      const stepsUsed = path.length;
+
+      // Update player position
+      playerPos.set(finalPos);
+
+      // Mark all path vertices as visited
+      const vis = get(visited);
+      const newVis = new Set(vis);
+      for (const vid of path) {
+        newVis.add(vid);
+      }
+      visited.set(newVis);
+
+      // Deduct movement pool
+      const newPool = pool - stepsUsed;
+      movementPool.set(newPool);
+
+      // Increment moves made
+      movesMade.update((n) => n + 1);
+
+      // Clear preview state
+      selectedDirection.set(null);
+      previewPath.set([]);
+      animatingPath.set([]);
+      animationStep.set(-1);
+
+      // Check win condition (target reached during path)
+      if (finalPos === boardData.targetVertex) {
+        gamePhase.set('won');
+        if (onAnimationComplete) onAnimationComplete();
+        return;
+      }
+
+      // Check lose condition: out of movement points
+      if (newPool <= 0) {
+        gamePhase.set('lost');
+        if (onAnimationComplete) onAnimationComplete();
+        return;
+      }
+
+      // Check trapped condition
+      if (isTrapped(boardData.rays, finalPos, boardData.obstacles)) {
+        gamePhase.set('lost');
+        if (onAnimationComplete) onAnimationComplete();
+        return;
+      }
+
+      // Back to rolling
+      diceValue.set(null);
+      gamePhase.set('rolling');
+      if (onAnimationComplete) onAnimationComplete();
+      return;
+    }
+
+    // Advance animation step
+    animationStep.set(step);
+    step++;
+    setTimeout(advanceStep, stepDelay);
+  }
+
+  // Start the animation
+  advanceStep();
+  return true;
+}
+
+/**
  * Reset game to setup phase.
  */
 export function resetGame() {
@@ -203,4 +341,8 @@ export function resetGame() {
   gamePhase.set('setup');
   visited.set(new Set());
   movesMade.set(0);
+  selectedDirection.set(null);
+  previewPath.set([]);
+  animatingPath.set([]);
+  animationStep.set(-1);
 }
