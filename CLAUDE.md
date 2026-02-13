@@ -14,7 +14,7 @@ npx vitest run src/lib/game/hexGrid.test.js   # Run a single test file
 ## Directory Layout
 
 - `src/lib/components/` — Svelte UI components (Board, Dice, HUD, SetupScreen, GameOver)
-- `src/lib/game/` — Game logic modules (hexGrid, gameState, movement) and tests
+- `src/lib/game/` — Game logic modules (hexGrid, gameState, movement, boardObjects) and tests
 - `src/lib/utils/` — Shared helpers
 
 ## Architecture
@@ -37,9 +37,10 @@ Gameplay phases show `Board` + `Dice` + `HUD` together.
 
 Centralized Svelte writable stores: `board`, `playerPos`, `movementPool`, `diceValue`, `gamePhase`, `visited`, `movesMade`, `selectedDirection`, `previewPath`, `animatingPath`, `animationStep`.
 
-Key exports: `initGame(cols, rows, seed?)`, `rollDice()`, `selectDirection(dir)`, `executeMove(callback?)`, `resetGame()`, `hasValidPath()`.
+Key exports: `initGame(cols, rows, seed?, difficulty?)`, `rollDice()`, `selectDirection(dir)`, `executeMove(callback?)`, `resetGame()`, `hasValidPath()`.
 
-- `initGame` accepts cols/rows for board dimensions and an optional seed for deterministic tests (xorshift32 RNG)
+- `initGame` accepts cols/rows for board dimensions, an optional seed for deterministic tests (xorshift32 RNG), and optional difficulty (1-10, default 5)
+- `boardData` includes `boardObjects` (all BoardObject instances), `powerUps` (PowerUp[]), and `obstacles` (Set<string> for backward compatibility)
 - Movement pool formula: `(cols + rows) * 5`
 - `executeMove` animates step-by-step with setTimeout (150ms/step), then checks win/lose/trapped
 - Movement pool deduction happens AFTER the move completes, using actual steps taken (not dice value)
@@ -63,12 +64,16 @@ Board layout is rectangular using offset columns (odd-q) for flat-top hexes. Siz
 
 Path computation uses **rays** (not adjacency). Remaining steps after hitting an obstacle are lost.
 
+### Board Objects (`src/lib/game/boardObjects.js`)
+
+`BoardObject` base class with `Obstacle` and `PowerUp` subclasses. Factory: `createBoardObject(type, vertexId, value)`. Placement: `generateBoardObjects(vertices, start, target, difficulty, rng)` returns `{ obstacles, powerUps, obstacleSet }`. Difficulty 1-10 scales obstacle density (5%-20%) and power-up density (15%-3%). Object values correlate with difficulty level.
+
 ### Component Data Flow
 
 - **Board.svelte** — receives all game data as **props** from App.svelte: `cols`, `rows`, `startVertex`, `targetVertex`, `obstacles`, `playerPos`, `visited`, `gamePhase`, `availableDirections`, `previewPath`, `selectedDirection`, `animatingPath`, `animationStep`, `onDirectionSelect`, `onConfirmMove`
 - **HUD.svelte, GameOver.svelte** — subscribe directly to stores (no props needed)
 - **Dice.svelte** — uses `$derived()` for store auto-subscription
-- **SetupScreen.svelte** — local `$state()` for size selection, callback prop for start (passes cols, rows)
+- **SetupScreen.svelte** — local `$state()` for size and difficulty selection, callback prop for start (passes cols, rows, difficulty)
 
 ## Svelte 5 Patterns
 
@@ -83,7 +88,7 @@ In `.js` files and tests, use `get()` from `svelte/store` to read store values.
 
 ## Testing
 
-112 tests across 5 files in `src/lib/game/` (`hexGrid.test.js`, `gameState.test.js`, `movement.test.js`, `winLose.test.js`, `dice.test.js`). Tests use seeded RNG (`initGame(cols, rows, seed)`) for reproducibility. For async tests with `executeMove`, wrap in a Promise (vitest deprecated `done()` callbacks).
+148 tests across 6 files in `src/lib/game/` (`hexGrid.test.js`, `gameState.test.js`, `movement.test.js`, `winLose.test.js`, `dice.test.js`, `boardObjects.test.js`). Tests use seeded RNG (`initGame(cols, rows, seed)`) for reproducibility. For async tests with `executeMove`, wrap in a Promise (vitest deprecated `done()` callbacks).
 
 ## Mobile & SVG
 

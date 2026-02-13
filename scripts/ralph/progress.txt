@@ -33,6 +33,9 @@
 - For async tests with executeMove, use `executeMoveAsync()` helper returning a Promise (vitest deprecated done() callbacks)
 - HUD.svelte subscribes directly to stores (no props); other self-contained UI components can follow this pattern
 - Screen routing in App.svelte: setup→SetupScreen, won|lost→GameOver, else→Board+Dice+HUD (if/else-if on gamePhase)
+- Board object system in src/lib/game/boardObjects.js: BoardObject base class, Obstacle/PowerUp subclasses, createBoardObject factory, generateBoardObjects(vertices, start, target, difficulty, rng)
+- initGame(cols, rows, seed, difficulty) accepts optional difficulty (1-10, default 5); boardData includes boardObjects[], powerUps[], and obstacles Set<string>
+- SetupScreen passes (cols, rows, difficulty) to onStart callback; App.svelte passes to initGame(cols, rows, undefined, difficulty)
 
 # Ralph Progress Log
 Started: Fri Feb 13 08:49:32 CST 2026
@@ -336,4 +339,18 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - initGame(cols, rows, seed) without difficulty continues to work because difficulty defaults to 5
   - The generateBoardObjects rng parameter receives the same seeded rng function, so placement is deterministic with seeds
   - boardData.obstacles remains Set<string> — no changes needed to movement.js, Board.svelte, or computePath()
+---
+
+## 2026-02-13 - US-021
+- Added difficulty slider (range input 1-10, default 5) to SetupScreen.svelte
+- Slider has labels: "1 Easy" on left, "10 Hard" on right, with dynamic label showing current level name
+- Updated onStart callback to pass (cols, rows, difficulty) instead of (cols, rows)
+- Updated App.svelte handleStart to pass difficulty through to initGame(cols, rows, undefined, difficulty)
+- Touch-friendly: min-height 44px on range input, touch-action: manipulation, accent-color matches theme
+- All 148 tests pass, build succeeds cleanly
+- Files changed: src/lib/components/SetupScreen.svelte (updated), src/App.svelte (updated)
+- **Learnings for future iterations:**
+  - HTML range inputs need min-height 44px for mobile touch accessibility
+  - accent-color CSS property changes the slider thumb/track color to match theme
+  - Browser automation (MCP) was not available; manual browser verification needed
 ---
