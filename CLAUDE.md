@@ -1,0 +1,80 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Commands
+
+```bash
+npm run dev          # Vite dev server (http://localhost:5173)
+npm run build        # Production build to dist/
+npm test             # Run all vitest unit tests
+npx vitest run src/lib/game/hexGrid.test.js   # Run a single test file
+```
+
+## Architecture
+
+Single-player hex vertex board game built with **Svelte 5** (runes syntax) + **Vite 7**, plain JavaScript (no TypeScript). Board rendered as SVG.
+
+### Game Flow & Screen Routing
+
+`App.svelte` routes screens based on the `gamePhase` store:
+
+```
+setup → SetupScreen (pick board size)
+rolling → selectingDirection → moving → rolling (gameplay loop)
+won | lost → GameOver (stats + play again)
+```
+
+Gameplay phases show `Board` + `Dice` + `HUD` together.
+
+### Game State (`src/lib/game/gameState.js`)
+
+Centralized Svelte writable stores: `board`, `playerPos`, `movementPool`, `diceValue`, `gamePhase`, `visited`, `movesMade`, `selectedDirection`, `previewPath`, `animatingPath`, `animationStep`.
+
+Key exports: `initGame(radius, seed?)`, `rollDice()`, `selectDirection(dir)`, `executeMove(callback?)`, `resetGame()`, `hasValidPath()`.
+
+- `initGame` accepts an optional seed for deterministic tests (xorshift32 RNG)
+- `executeMove` animates step-by-step with setTimeout (150ms/step), then checks win/lose/trapped
+- Movement pool deduction happens AFTER the move completes, using actual steps taken (not dice value)
+
+### Hex Grid (`src/lib/game/hexGrid.js`)
+
+Spaces are at hex **vertices** (corners), not centers, forming a triangular lattice. Each vertex has **3 direct neighbors** (not 6). The 6 movement directions come from 3 lattice axes x 2 directions. Directional rays extend in straight lines, skipping gaps in the bipartite structure.
+
+`generateGrid(radius, size)` returns `{ vertices, adjacency, rays, hexCenters, size, radius }`. Vertex IDs are coordinate strings like `"40,69.282"`.
+
+### Movement (`src/lib/game/movement.js`)
+
+`getAvailableDirections()` — non-blocked rays from current vertex.
+`computePath()` — walks a ray for N steps, stops at obstacles/edges, detects target.
+`isTrapped()` — true if all directions blocked (lose condition).
+
+Path computation uses **rays** (not adjacency). Remaining steps after hitting an obstacle are lost.
+
+### Component Data Flow
+
+- **Board.svelte** — receives all game data as **props** from App.svelte
+- **HUD.svelte, GameOver.svelte** — subscribe directly to stores (no props needed)
+- **Dice.svelte** — uses `$derived()` for store auto-subscription
+- **SetupScreen.svelte** — local `$state()` for radius, callback prop for start
+
+## Svelte 5 Patterns
+
+```javascript
+let { prop1, prop2 } = $props();      // Component props
+let local = $state(initialValue);      // Mutable local state
+let computed = $derived($storeName);   // Auto-subscribe to store in .svelte
+let complex = $derived.by(() => { }); // Computed with logic
+```
+
+In `.js` files and tests, use `get()` from `svelte/store` to read store values.
+
+## Testing
+
+80 tests across 5 files in `src/lib/game/`. Tests use seeded RNG (`initGame(radius, seed)`) for reproducibility. For async tests with `executeMove`, wrap in a Promise (vitest deprecated `done()` callbacks).
+
+## Mobile & SVG
+
+- SVG uses `viewBox` + `preserveAspectRatio="xMidYMid meet"` for responsive scaling
+- Touch targets: min 44px, `touch-action: manipulation`, `-webkit-tap-highlight-color: transparent`
+- Interactive SVG elements need `role="button"`, `tabindex="0"`, `onkeydown` for a11y

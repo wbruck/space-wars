@@ -1,0 +1,110 @@
+{
+  "project": "Game Time - Board Center Dots & Square Layout",
+  "branchName": "ralph/board-center-dots-square-layout",
+  "description": "Add hex center dots as playable vertices and change the board from a hexagonal boundary to a square layout, creating smoother movement and a more familiar game board shape.",
+  "userStories": [
+    {
+      "id": "US-011",
+      "title": "Add hex center vertices to grid math",
+      "description": "As a developer, I need hex center points added to the vertex graph so that movement passes through hex centers as intermediate steps.",
+      "background": "The current hex grid has playable spaces only at hex corners (vertices), forming a bipartite triangular lattice where rays skip over empty hex interiors. Center dots fill those gaps so every ray step lands on a vertex (corner → center → corner → center...). This creates uniform travel distance per step and smoother movement. Center dots connect to all 6 corners of their hex via hub-spoke adjacency. The ray data structure ({ direction, vertices[] }) stays the same — only the ray-building logic changes from geometric straight-line walking to direction-aware graph traversal. This is the foundational change that all other stories depend on.",
+      "implementation": "Modify src/lib/game/hexGrid.js. Add each hex center as a new vertex in the vertices Map using vertexKey(cx, cy) — center pixel coords won't collide with corner coords. Center vertex IDs should be distinguishable (e.g., prefix with 'c:' or add a type property). Adjacency: each center vertex gets 6 neighbors (its hex's 6 corners); each corner gains up to 3 additional neighbors (centers of hexes it belongs to). Corner-to-corner edge adjacency preserved. Ray rebuilding: replace geometric ray walker with direction-aware graph traversal — from a corner, identify which adjacent center is in direction d, then from that center find the corner continuing in direction d, repeat to build alternating sequence. Crossing one hex = 2 ray steps. FR-1 through FR-4 apply. Non-goals: no change to number of directions (still 6), no different rules for centers vs corners.",
+      "acceptanceCriteria": [
+        "hexGrid.js generates center vertices for each hex, added to the vertices Map",
+        "Center vertex IDs are distinguishable from corner vertex IDs (e.g., prefixed or tagged)",
+        "Each center vertex has 6 neighbors in the adjacency map (its hex's 6 corner vertices)",
+        "Each corner vertex gains additional neighbors: the center vertices of the hexes it belongs to (up to 3 additional neighbors)",
+        "Corner vertices retain their existing edge-based adjacency to other corners",
+        "Directional rays now include center vertices as intermediate steps (corner -> center -> corner -> center...)",
+        "Unit tests verify: center vertex count equals hex count, center adjacency is exactly 6 per center, corner vertices have increased neighbor count, rays include center vertices",
+        "All tests pass",
+        "Commit with message: US-011: add hex center vertices to grid math"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Change board shape to square layout",
+      "description": "As a developer, I need the hex grid generator to produce a roughly square/rectangular board instead of a hexagonal boundary.",
+      "background": "The current board uses axial distance filtering (abs(q) + abs(r) + abs(s) <= radius) producing a hexagonal boundary. The new layout should be rectangular using offset hex rows, sized wider than tall to suit portrait phone screens. Size mappings: Small = 5x4 (20 hexes), Medium = 7x6 (42 hexes), Large = 9x8 (72 hexes).",
+      "implementation": "Modify src/lib/game/hexGrid.js. Replace generateHexCenters() with column/row iteration using offset for even/odd rows. Flat-top hex orientation preserved. Offset rows: even rows at base position, odd rows shifted right by size * 3/2. Row spacing: size * sqrt(3). generateGrid() API changes: accept cols and rows instead of (or in addition to) radius. hexCount() updated to return cols * rows. Update src/lib/components/SetupScreen.svelte: size options show new hex counts (20, 42, 72), pass cols/rows to initGame() instead of radius. FR-5: board boundary is rectangular. FR-6: Small = 5x4, Medium = 7x6, Large = 9x8.",
+      "acceptanceCriteria": [
+        "hexGrid.js generates hexes arranged in a rectangular grid (offset rows) instead of using axial distance filtering",
+        "Size mappings updated: Small = 5x4 (20 hexes), Medium = 7x6 (42 hexes), Large = 9x8 (72 hexes)",
+        "hexCount() function updated to return correct count for rectangular grids",
+        "SetupScreen.svelte updated with new hex counts for each size",
+        "Board boundary is roughly square when rendered (not a hexagonal shape)",
+        "Unit tests verify: vertex counts, adjacency, and rays are correct for rectangular grids at all 3 sizes",
+        "All tests pass",
+        "Commit with message: US-012: change board shape to square layout"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Update board rendering for center dots and square layout",
+      "description": "As a player, I want to see center dots on each hexagon and a square-shaped board so the game space is clear and intuitive.",
+      "background": "Center dots should be visually distinguishable from corner vertices. They render as hollow ring circles (stroke only, no fill) in default state, but fill with the same colors as corners when in an active state (visited, preview, animated, obstacle, start, target). Same radius as corners (VERTEX_R = 8) for consistent tap targets. Hub-spoke edges between centers and corners should be thinner/lighter than corner-to-corner edges to reduce visual clutter.",
+      "implementation": "Modify src/lib/components/Board.svelte. Identify center vs corner vertices by checking vertex ID prefix or type property from grid data. Update vertexColor() to return 'transparent' or 'none' for fill when vertex is a center dot in default state; all active states use same fill colors as corners. Add hub-spoke edge rendering: draw edges between each center and its 6 corners with thinner stroke (e.g., stroke-width 0.5 vs 1 for corner-to-corner). Existing corner-to-corner edges preserved. SVG viewBox computation already iterates all vertices — will automatically include centers. Color palette unchanged: green=start, gold=target, dark=obstacle, light blue=visited, blue=preview/animated. FR-7: hollow ring circles in default state, filled when active. FR-8: hub-spoke edges rendered. Depends on US-011 and US-012.",
+      "acceptanceCriteria": [
+        "Board.svelte renders center vertices as hollow ring circles (stroke only, no fill) in default state; filled when active (visited, preview, animated, obstacle, start, target)",
+        "Edges are drawn between center vertices and their 6 corner vertices (hub-spoke lines)",
+        "Existing corner-to-corner edges still rendered",
+        "Center vertices support all existing color states (start, target, obstacle, visited, preview, animated)",
+        "Board renders with square boundary at all 3 sizes",
+        "SVG viewBox adjusts correctly for the new rectangular layout",
+        "Verify in browser that the board renders correctly at all 3 sizes",
+        "Commit with message: US-013: update board rendering for center dots and square layout"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Update game state for center dot support",
+      "description": "As a developer, I need game state initialization to work with the expanded vertex graph (center dots + square layout) so gameplay functions correctly.",
+      "background": "initGame() uses generateGrid() output, so it automatically receives center vertices. Total vertex count roughly doubles with centers. BFS hasValidPath() uses the adjacency graph which now includes center-to-corner edges. Movement pool needs rebalancing because crossing one hex now costs 2 steps instead of ~1. The current formula is radius * 10 but should be tied to board dimensions (cols/rows) rather than radius.",
+      "implementation": "Modify src/lib/game/gameState.js. initGame() may need to accept cols/rows instead of radius (coordinated with US-012). Start/target placement: farthest-apart strategy still works with both center and corner vertices considered. Obstacle placement: both center and corner vertices eligible; current rate ~12% but may need tuning since vertex count doubles. hasValidPath() BFS needs no logic changes — adjacency graph includes center edges automatically. Movement pool formula: replace radius * 10 with dimension-based formula (e.g., (cols + rows) * N or totalVertices * factor); exact tuning during implementation. FR-9: obstacles on center dots. FR-10: BFS with expanded graph. FR-11: appropriate movement pool. Non-goals: no persistence, no AI, no new obstacle types. Depends on US-011 and US-012.",
+      "acceptanceCriteria": [
+        "initGame() correctly initializes with the new grid (center + corner vertices)",
+        "Start and target placement considers both center and corner vertices",
+        "Obstacle placement works on both center and corner vertices",
+        "BFS path validation (hasValidPath) works with the expanded adjacency graph",
+        "Movement pool formula still works appropriately for the new board sizes",
+        "Unit tests verify initialization, obstacle placement, and path validation with center dots",
+        "All tests pass",
+        "Commit with message: US-014: update game state for center dot support"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Update movement logic for center dots",
+      "description": "As a player, I want movement rays to pass through center dots so that moving across the board feels smoother with more granular steps.",
+      "background": "movement.js functions (getAvailableDirections, computePath, isTrapped) consume the ray data structure ({ direction, vertices[] }) which is unchanged — they should work as-is with no code changes. The key change was in ray generation (US-011). This story is primarily a verification and testing story to confirm end-to-end movement works with center dots. A dice roll of 3 moves 3 nodes (e.g., corner → center → corner). Direction arrows now point toward center dots (first vertex in ray) instead of corners.",
+      "implementation": "Verify src/lib/game/movement.js — likely no code changes needed since getAvailableDirections(), computePath(), and isTrapped() all consume rays without assumptions about vertex type. Verification focus: movement through center dots, obstacles on centers blocking paths, passing through target center triggers win, trapped detection with center obstacles. Board.svelte path preview lines should connect through center dots. Movement animation (150ms per step) should visibly pause at center dots. Direction arrows point toward first ray vertex (now a center). Write new unit tests in movement.test.js for center dot scenarios: movement through centers, obstacle on center, target at center, trapped by center obstacles. Integration test: full path corner → center → corner → center → corner. FR-12: all existing mechanics work with center dots. Depends on US-011 through US-014.",
+      "acceptanceCriteria": [
+        "getAvailableDirections() works correctly with rays that include center vertices",
+        "computePath() traverses center dots as intermediate steps (corner -> center -> corner)",
+        "Obstacles on center dots block ray traversal (same behavior as corner obstacles)",
+        "isTrapped() correctly detects trapped state with center dots in the adjacency",
+        "Path preview in Board.svelte shows center dots as intermediate steps",
+        "Movement animation steps through center dots (visible step-by-step movement through hexes)",
+        "Unit tests verify movement through center dots, obstacle blocking on centers, trapped detection",
+        "All tests pass",
+        "Verify in browser that direction selection, path preview, and movement animation work correctly",
+        "Commit with message: US-015: update movement logic for center dots"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
