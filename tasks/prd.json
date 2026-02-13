@@ -201,7 +201,7 @@
         "Commit with message: US-010: mobile touch optimization"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     }
   ]

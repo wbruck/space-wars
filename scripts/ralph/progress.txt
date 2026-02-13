@@ -1,6 +1,7 @@
 ## Codebase Patterns
 - Vite + Svelte project (Svelte 5, Vite 7) with JS (not TS)
 - Directory layout: src/lib/components/ (Svelte UI), src/lib/game/ (game logic), src/lib/utils/ (helpers)
+- Mobile touch: use `touch-action: manipulation` and `-webkit-tap-highlight-color: transparent` on interactive elements; min-height 44px for buttons
 - Use `npm run dev` for dev server, `npm run build` for production build
 - PRD is at tasks/prd.json, progress log is at scripts/ralph/progress.txt
 - Use `npm test` to run vitest unit tests
@@ -173,4 +174,23 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - SetupScreen uses local state for radius selection (not a store), passes value via callback - simpler than a store for ephemeral UI state
   - GameOver subscribes to stores directly (like HUD) for stats display, only needs onPlayAgain callback prop
   - Browser automation (MCP) was not available; manual browser verification needed
+---
+
+## 2026-02-13 - US-010
+- Added `user-scalable=no` to viewport meta tag in index.html
+- Updated app.css: overflow-x hidden on html/body, min-height 44px on all buttons, touch-action/tap-highlight on buttons, #app width 100%
+- Updated Board.svelte: increased VERTEX_R (6→8), PLAYER_R (9→11), ARROW_HIT_R (14→18), arrowLen (0.8→1.0), arrowhead size (6→8), obstacle X markers (4→5), viewBox padding (1.2→1.5), added touch-action on SVG and interactive elements, min-height 44px on confirm button
+- Updated Dice.svelte: increased container to 90x90px, die face to 72x72px, added touch-action and tap-highlight removal
+- Updated SetupScreen.svelte: increased button padding and font sizes, min-height 44px on size buttons, 48px on start button, added touch-action and active states
+- Updated GameOver.svelte: increased play-again button size to min-height 48px, added touch-action and active state
+- Updated App.svelte: reduced mobile h1 to 1.5rem, flex column layout on main, responsive media query at 600px
+- All 76 tests pass, build succeeds cleanly
+- Files changed: index.html, src/app.css, src/App.svelte, src/lib/components/Board.svelte, src/lib/components/Dice.svelte, src/lib/components/SetupScreen.svelte, src/lib/components/GameOver.svelte
+- **Learnings for future iterations:**
+  - `touch-action: manipulation` prevents 300ms tap delay on mobile without disabling all touch gestures
+  - `-webkit-tap-highlight-color: transparent` removes the blue/gray tap flash on iOS/Android
+  - SVG elements scale with viewBox, so increasing SVG unit radii proportionally increases effective tap area
+  - Apple HIG / Material Design minimum touch target: 44x44px; use min-height on buttons to enforce
+  - `overflow-x: hidden` on html + body prevents any horizontal scrolling from small overflows
+  - Browser automation (MCP) was not available; manual browser verification needed for device emulation testing
 ---
