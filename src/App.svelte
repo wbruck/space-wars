@@ -80,17 +80,32 @@
 <style>
   main {
     text-align: center;
-    padding: 1rem;
+    padding: 0.5rem;
     font-family: system-ui, -apple-system, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    box-sizing: border-box;
   }
 
   h1 {
-    font-size: 2rem;
+    font-size: 1.5rem;
     color: #333;
-    margin-bottom: 0.25rem;
+    margin: 0.25rem 0;
   }
 
   @media (prefers-color-scheme: dark) {
     h1 { color: #eee; }
+  }
+
+  @media (min-width: 600px) {
+    main {
+      padding: 1rem;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.25rem;
+    }
   }
 </style>

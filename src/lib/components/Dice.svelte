@@ -93,17 +93,18 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 80px;
-    height: 80px;
-    margin: 0.5rem auto;
+    width: 90px;
+    height: 90px;
+    margin: 0.75rem auto;
     padding: 0;
-    border-radius: 12px;
+    border-radius: 14px;
     border: 3px solid #555;
     background: #fafafa;
     cursor: pointer;
     transition: transform 0.15s, border-color 0.25s;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
   }
 
   .dice-container:hover:not(.disabled) {
@@ -131,8 +132,8 @@
   }
 
   .die-face {
-    width: 64px;
-    height: 64px;
+    width: 72px;
+    height: 72px;
     display: flex;
     align-items: center;
     justify-content: center;

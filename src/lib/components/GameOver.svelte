@@ -108,18 +108,25 @@
   }
 
   .play-again-btn {
-    padding: 0.6rem 2rem;
-    font-size: 1.1rem;
+    padding: 0.75rem 2.5rem;
+    font-size: 1.2rem;
     background: #1976d2;
     color: #fff;
     border: none;
     border-radius: 8px;
     cursor: pointer;
     margin-top: 0.25rem;
+    min-height: 48px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .play-again-btn:hover {
     background: #1565c0;
+  }
+
+  .play-again-btn:active {
+    background: #0d47a1;
   }
 
   @media (prefers-color-scheme: dark) {

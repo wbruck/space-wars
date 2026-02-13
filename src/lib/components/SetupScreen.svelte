@@ -54,8 +54,11 @@
   }
 
   .size-btn {
-    padding: 0.4rem 1rem;
-    font-size: 0.9rem;
+    padding: 0.6rem 1.2rem;
+    font-size: 1rem;
+    min-height: 44px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .size-btn.active {
@@ -64,17 +67,24 @@
   }
 
   .start-btn {
-    padding: 0.6rem 2rem;
-    font-size: 1.1rem;
+    padding: 0.75rem 2.5rem;
+    font-size: 1.2rem;
     background: #4caf50;
     color: #fff;
     border: none;
     border-radius: 8px;
     cursor: pointer;
+    min-height: 48px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .start-btn:hover {
     background: #388e3c;
+  }
+
+  .start-btn:active {
+    background: #2e7d32;
   }
 
   @media (prefers-color-scheme: dark) {

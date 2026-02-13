@@ -49,7 +49,7 @@
       if (v.x > maxX) maxX = v.x;
       if (v.y > maxY) maxY = v.y;
     }
-    const pad = HEX_SIZE * 1.2;
+    const pad = HEX_SIZE * 1.5;
     return `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
   });
 
@@ -113,7 +113,7 @@
     const pv = grid.vertices.get(playerPos);
     if (!pv) return [];
 
-    const arrowLen = HEX_SIZE * 0.8;
+    const arrowLen = HEX_SIZE * 1.0;
     return availableDirections.map((dir) => {
       const angle = (Math.PI / 3) * dir.direction;
       const tx = pv.x + arrowLen * Math.cos(angle);
@@ -150,10 +150,10 @@
     }
   }
 
-  // Vertex radius for rendering
-  const VERTEX_R = 6;
-  const PLAYER_R = 9;
-  const ARROW_HIT_R = 14;
+  // Vertex radius for rendering (sized for touch targets)
+  const VERTEX_R = 8;
+  const PLAYER_R = 11;
+  const ARROW_HIT_R = 18;
 </script>
 
 <svg
@@ -203,13 +203,13 @@
     <!-- X marker for obstacles -->
     {#if obstacles.has(v.id)}
       <line
-        x1={v.x - 4} y1={v.y - 4}
-        x2={v.x + 4} y2={v.y + 4}
+        x1={v.x - 5} y1={v.y - 5}
+        x2={v.x + 5} y2={v.y + 5}
         class="obstacle-x"
       />
       <line
-        x1={v.x + 4} y1={v.y - 4}
-        x2={v.x - 4} y2={v.y + 4}
+        x1={v.x + 5} y1={v.y - 5}
+        x2={v.x - 5} y2={v.y + 5}
         class="obstacle-x"
       />
     {/if}
@@ -226,7 +226,7 @@
     />
     <!-- Arrowhead -->
     {@const angle = Math.atan2(arrow.y2 - arrow.y1, arrow.x2 - arrow.x1)}
-    {@const headLen = 6}
+    {@const headLen = 8}
     <polygon
       points="{arrow.x2},{arrow.y2} {arrow.x2 - headLen * Math.cos(angle - 0.4)},{arrow.y2 - headLen * Math.sin(angle - 0.4)} {arrow.x2 - headLen * Math.cos(angle + 0.4)},{arrow.y2 - headLen * Math.sin(angle + 0.4)}"
       class="arrow-head"
@@ -271,6 +271,7 @@
     height: auto;
     display: block;
     margin: 0 auto;
+    touch-action: manipulation;
   }
 
   .hex-outline {
@@ -344,6 +345,7 @@
   .arrow-hit-area {
     fill: transparent;
     cursor: pointer;
+    touch-action: manipulation;
   }
 
   .player-token {
@@ -355,17 +357,25 @@
   .confirm-btn {
     display: block;
     margin: 0.5rem auto;
-    padding: 0.5rem 1.5rem;
-    font-size: 1rem;
+    padding: 0.75rem 2rem;
+    font-size: 1.1rem;
     background: #f44336;
     color: #fff;
     border: none;
     border-radius: 8px;
     cursor: pointer;
+    min-height: 44px;
+    min-width: 120px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
 
   .confirm-btn:hover {
     background: #d32f2f;
+  }
+
+  .confirm-btn:active {
+    background: #b71c1c;
   }
 
   @media (prefers-color-scheme: dark) {
