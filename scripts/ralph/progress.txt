@@ -293,3 +293,18 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - Board.svelte preview path rendering (lines 212-225) draws lines between consecutive path vertices regardless of type, so center dots are naturally included in preview visualization.
   - Browser automation (MCP) was not available; manual browser verification needed for visual testing of direction arrows, path preview, and movement animation.
 ---
+
+## 2026-02-13 - US-016, US-017, US-018
+- Created src/lib/game/boardObjects.js with BoardObject base class, Obstacle subclass, PowerUp subclass, and createBoardObject factory function
+- BoardObject: constructor(vertexId, type, value), id uses `type:vertexId` pattern, onPlayerInteraction() returns undefined, getAffectedVertices() returns [this.vertexId]
+- Obstacle: extends BoardObject with type='obstacle', onPlayerInteraction() returns { blocked: true }
+- PowerUp: extends BoardObject with type='powerup', onPlayerInteraction() returns { collected: true, value: this.value }
+- createBoardObject factory: returns Obstacle for 'obstacle', PowerUp for 'powerup', throws for unknown types
+- 15 unit tests in boardObjects.test.js covering all three classes and factory function
+- All 127 tests pass (112 existing + 15 new), build succeeds
+- Files changed: src/lib/game/boardObjects.js (new), src/lib/game/boardObjects.test.js (new)
+- **Learnings for future iterations:**
+  - US-016, US-017, US-018 were implemented together since the factory function in US-016 requires Obstacle and PowerUp to exist
+  - The boardObjects.js module is the foundation for the board object system; all placement and game integration builds on these classes
+  - JSDoc with `@param` and `@returns` provides sufficient type documentation in plain JS codebase
+---

@@ -20,7 +20,7 @@
         "Commit with message starting with US-016"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -39,8 +39,8 @@
         "Commit with message starting with US-017"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented as part of US-016 - Obstacle class with tests included in boardObjects.js"
     },
     {
       "id": "US-018",
@@ -58,8 +58,8 @@
         "Commit with message starting with US-018"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented as part of US-016 - PowerUp class with tests included in boardObjects.js"
     },
     {
       "id": "US-019",
