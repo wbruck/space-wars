@@ -87,6 +87,58 @@ export class PowerUp extends BoardObject {
 }
 
 /**
+ * Generate board objects (obstacles and power-ups) based on difficulty.
+ *
+ * @param {Map<string, object>} vertices - Vertex map from generateGrid
+ * @param {string} startVertex - Start vertex ID (excluded from placement)
+ * @param {string} targetVertex - Target vertex ID (excluded from placement)
+ * @param {number} [difficulty=5] - Difficulty level 1-10
+ * @param {() => number} rng - Random number generator returning 0-1
+ * @returns {{ obstacles: Obstacle[], powerUps: PowerUp[], obstacleSet: Set<string> }}
+ */
+export function generateBoardObjects(vertices, startVertex, targetVertex, difficulty = 5, rng) {
+  const eligible = [...vertices.keys()].filter(
+    id => id !== startVertex && id !== targetVertex
+  );
+
+  // Shuffle eligible vertices using Fisher-Yates
+  for (let i = eligible.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [eligible[i], eligible[j]] = [eligible[j], eligible[i]];
+  }
+
+  // Calculate counts based on difficulty
+  const obstaclePct = 0.05 + (difficulty - 1) * (0.15 / 9);
+  const powerUpPct = 0.15 - (difficulty - 1) * (0.12 / 9);
+  const obstacleCount = Math.floor(eligible.length * obstaclePct);
+  const powerUpCount = Math.floor(eligible.length * powerUpPct);
+
+  // Value ranges
+  const obsMin = Math.max(1, difficulty - 2);
+  const obsMax = Math.min(10, difficulty + 2);
+  const puMin = Math.max(1, 11 - difficulty - 2);
+  const puMax = Math.min(10, 11 - difficulty + 2);
+
+  const obstacles = [];
+  const obstacleSet = new Set();
+  for (let i = 0; i < obstacleCount; i++) {
+    const vertexId = eligible[i];
+    const value = obsMin + Math.floor(rng() * (obsMax - obsMin + 1));
+    obstacles.push(new Obstacle(vertexId, value));
+    obstacleSet.add(vertexId);
+  }
+
+  const powerUps = [];
+  for (let i = 0; i < powerUpCount; i++) {
+    const vertexId = eligible[obstacleCount + i];
+    const value = puMin + Math.floor(rng() * (puMax - puMin + 1));
+    powerUps.push(new PowerUp(vertexId, value));
+  }
+
+  return { obstacles, powerUps, obstacleSet };
+}
+
+/**
  * Factory function to create board objects by type.
  * @param {string} type - 'obstacle' or 'powerup'
  * @param {string} vertexId - The vertex ID
