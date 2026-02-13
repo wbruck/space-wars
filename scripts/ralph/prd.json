@@ -107,7 +107,7 @@
         "Commit with message starting with US-020"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

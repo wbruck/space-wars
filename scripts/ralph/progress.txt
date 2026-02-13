@@ -323,3 +323,17 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - At difficulty 5, obstacle percentage is ~11.7% which closely matches the original 12% hardcoded in gameState.js
   - The obstacleSet in the return value provides direct backward compatibility with movement.js and Board.svelte which expect Set<string>
 ---
+
+## 2026-02-13 - US-020
+- Modified initGame(cols, rows, seed, difficulty) to accept optional difficulty parameter (default 5)
+- Replaced inline obstacle placement (12% hardcoded) with generateBoardObjects() call
+- boardData now includes: boardObjects (all BoardObject instances), powerUps (PowerUp instances), obstacles (Set<string> for backward compat)
+- Retry logic preserved: up to 20 attempts with hasValidPath() check, empty fallback on failure
+- 6 new tests in gameState.test.js verify boardObjects/powerUps populated, difficulty scaling, backward compatibility
+- All 148 tests pass (142 + 6 new), all existing tests unchanged
+- Files changed: src/lib/game/gameState.js (updated), src/lib/game/gameState.test.js (updated)
+- **Learnings for future iterations:**
+  - initGame(cols, rows, seed) without difficulty continues to work because difficulty defaults to 5
+  - The generateBoardObjects rng parameter receives the same seeded rng function, so placement is deterministic with seeds
+  - boardData.obstacles remains Set<string> — no changes needed to movement.js, Board.svelte, or computePath()
+---
