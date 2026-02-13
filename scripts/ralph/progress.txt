@@ -22,6 +22,7 @@
 - executeMove() animates step-by-step with setTimeout (150ms per step), then checks win/lose/trapped conditions
 - Win/lose checks: executeMove checks win (target reached), lose (pool=0), lose (trapped) after each move; rollDice checks trapped before rolling
 - For async tests with executeMove, use `executeMoveAsync()` helper returning a Promise (vitest deprecated done() callbacks)
+- HUD.svelte subscribes directly to stores (no props); other self-contained UI components can follow this pattern
 
 # Ralph Progress Log
 Started: Fri Feb 13 08:49:32 CST 2026
@@ -136,4 +137,21 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - vitest deprecated done() callbacks; use async/await with Promise wrapper for setTimeout-based async code
   - executeMove already handles most win/lose detection; the gap was pre-roll trapped check
   - When testing pool exhaustion with multi-step moves, compute actual path length first to set pool precisely (obstacles may shorten the ray)
+---
+
+## 2026-02-13 - US-008
+- Created src/lib/components/HUD.svelte with reactive subscriptions to movementPool, diceValue, and gamePhase stores
+- HUD displays: remaining movement pool (labeled "Moves"), last dice roll (labeled "Rolled", shows "—" when null), game phase in plain language
+- Win/lose phases get special styling (green for won, red for lost) with bold non-italic text
+- Responsive layout: flexbox with wrap, compact gaps on narrow screens (max-width: 400px)
+- Dark mode support via prefers-color-scheme media query
+- Updated App.svelte to import HUD component, replacing inline hud-placeholder div
+- Cleaned up unused imports (movementPool, diceValue, resetGame, movesMade) and derived variables (pool, dice) from App.svelte
+- Removed unused .hud-placeholder and .phase-label styles from App.svelte
+- All 76 tests pass, build succeeds cleanly
+- Files changed: src/lib/components/HUD.svelte (new), src/App.svelte (updated)
+- **Learnings for future iterations:**
+  - HUD.svelte is self-contained: it subscribes directly to stores, no props needed from parent
+  - When extracting inline UI to a component, clean up the parent's unused imports/derived vars to keep code tidy
+  - Browser automation (MCP) was not available for visual testing; manual browser verification needed
 ---

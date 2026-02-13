@@ -162,7 +162,7 @@
         "Commit with message: US-008: build game HUD"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
