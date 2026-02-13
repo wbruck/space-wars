@@ -85,7 +85,7 @@
         "Commit with message starting with US-019"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

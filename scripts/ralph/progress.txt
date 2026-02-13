@@ -308,3 +308,18 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - The boardObjects.js module is the foundation for the board object system; all placement and game integration builds on these classes
   - JSDoc with `@param` and `@returns` provides sufficient type documentation in plain JS codebase
 ---
+
+## 2026-02-13 - US-019
+- Added generateBoardObjects(vertices, startVertex, targetVertex, difficulty, rng) to boardObjects.js
+- Obstacle density scales 5%-20% with difficulty 1-10; power-up density scales inversely 15%-3%
+- Fisher-Yates shuffle with provided rng for deterministic placement; obstacles placed first, power-ups from remaining
+- Value ranges correlate with difficulty: obstacles [max(1,d-2), min(10,d+2)], power-ups [max(1,11-d-2), min(10,11-d+2)]
+- Returns { obstacles: Obstacle[], powerUps: PowerUp[], obstacleSet: Set<string> } for backward compatibility
+- 15 new unit tests covering counts at difficulty 1/5/10, value ranges, start/target exclusion, no overlap, determinism, default difficulty
+- All 142 tests pass (127 + 15 new)
+- Files changed: src/lib/game/boardObjects.js (updated), src/lib/game/boardObjects.test.js (updated)
+- **Learnings for future iterations:**
+  - Fisher-Yates shuffle ensures unbiased random vertex selection; obstacles first, then power-ups from the remaining shuffled list guarantees no overlap
+  - At difficulty 5, obstacle percentage is ~11.7% which closely matches the original 12% hardcoded in gameState.js
+  - The obstacleSet in the return value provides direct backward compatibility with movement.js and Board.svelte which expect Set<string>
+---
