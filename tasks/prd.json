@@ -16,7 +16,7 @@
         "Commit with message: US-001: scaffold Vite + Svelte project"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

@@ -1,3 +1,22 @@
+## Codebase Patterns
+- Vite + Svelte project (Svelte 5, Vite 7) with JS (not TS)
+- Directory layout: src/lib/components/ (Svelte UI), src/lib/game/ (game logic), src/lib/utils/ (helpers)
+- Use `npm run dev` for dev server, `npm run build` for production build
+- PRD is at tasks/prd.json, progress log is at scripts/ralph/progress.txt
+
 # Ralph Progress Log
 Started: Fri Feb 13 08:49:32 CST 2026
+---
+
+## 2026-02-13 - US-001
+- Scaffolded Vite + Svelte project using `npm create vite@latest` with svelte template
+- Created directory structure: src/lib/components/, src/lib/game/, src/lib/utils/
+- Updated App.svelte with placeholder "Game Time" page
+- Updated index.html title and package.json name
+- Files changed: index.html, package.json, src/App.svelte, src/main.js, src/app.css, src/lib/components/.gitkeep, src/lib/game/.gitkeep, src/lib/utils/.gitkeep, vite.config.js, svelte.config.js, jsconfig.json, .gitignore
+- **Learnings for future iterations:**
+  - `npm create vite@latest` won't scaffold into a non-empty directory; use a temp directory and copy files
+  - Svelte 5 is the version installed (with runes syntax); Vite 7
+  - No TypeScript in this project - using plain JS with jsconfig.json
+  - Build output goes to dist/ (already in .gitignore)
 ---
