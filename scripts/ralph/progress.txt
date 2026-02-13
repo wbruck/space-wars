@@ -6,6 +6,9 @@
 - Use `npm test` to run vitest unit tests
 - Hex vertex grid: vertices are at hex corners, each has 3 direct neighbors (not 6). The 6 directions come from 3 axes × 2 directions. Rays skip gaps in the bipartite lattice.
 - Vertex IDs are coordinate-based strings like "40,69.282" (roundCoord(x),roundCoord(y))
+- Svelte 5 runes: use `$props()` for component props, `$state()` for mutable state, `$derived` / `$derived.by` for computed values
+- SVG board rendering: use viewBox with preserveAspectRatio="xMidYMid meet" for responsive scaling
+- Board.svelte accepts props: radius, startVertex, targetVertex, obstacles (Set), playerPos, visited (Set)
 
 # Ralph Progress Log
 Started: Fri Feb 13 08:49:32 CST 2026
@@ -37,4 +40,21 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - Ray computation must skip gaps: stepping by direction vector may land on empty space; continue stepping and collect vertices that exist.
   - Coordinate deduplication via roundCoord (round to 3 decimal places) works well for eliminating floating-point duplicates.
   - The `distFromOrigin` bound in ray walking prevents infinite loops for edge vertices.
+---
+
+## 2026-02-13 - US-003
+- Created src/lib/components/Board.svelte - SVG-based hex board renderer
+- Board renders hex outlines as light guide polygons, edges between adjacent vertices, and vertex circles
+- Color coding: green for start, gold for target, dark with X marker for obstacles, light blue for visited, gray for regular
+- Player token rendered as larger blue circle on top layer
+- SVG viewBox computed dynamically from vertex bounds for responsive scaling
+- Updated src/App.svelte to import Board and render with demo data (start, target, random obstacles, size toggle buttons)
+- Board supports all 3 sizes via radius prop (2/3/4)
+- Files changed: src/lib/components/Board.svelte (new), src/App.svelte (updated)
+- **Learnings for future iterations:**
+  - Svelte 5 uses `$props()` for component props and `$derived` / `$derived.by` for computed values
+  - SVG viewBox with preserveAspectRatio="xMidYMid meet" gives clean responsive scaling without fixed pixel sizes
+  - Edge deduplication: only draw edge when vid < nid to avoid double-drawing
+  - Hex outlines are drawn from hexCenters data (not vertices), computing 6 corner points per hex
+  - Browser automation (MCP) was not available for visual testing; manual browser verification needed
 ---

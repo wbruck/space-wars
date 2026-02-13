@@ -59,7 +59,7 @@
         "Commit with message: US-003: render hex board with SVG"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
