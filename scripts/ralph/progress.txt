@@ -239,3 +239,20 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - Changing from radius-based to cols/rows-based grid touches nearly every file in the codebase: hexGrid.js, gameState.js, all test files, SetupScreen, Board, GameOver, App. Plan for wide-ranging updates.
   - Movement pool formula `(cols + rows) * 5` gives: Small=45, Medium=65, Large=85, which is appropriate for the new board sizes where crossing one hex = 2 steps.
 ---
+
+## 2026-02-13 - US-013
+- Updated Board.svelte to render center vertices as hollow ring circles (stroke only, transparent fill) in default state
+- Center vertices fill with same colors as corners when in active states (start, target, obstacle, visited, preview, animated)
+- Separated edge rendering into corner-corner edges (stroke-width: 1) and hub-spoke edges (stroke-width: 0.5, lighter color)
+- Added `isCenterVertex` import from hexGrid.js for distinguishing vertex types
+- Added `isActiveVertex()` helper to determine if a vertex is in any active state
+- CSS classes: `.center-vertex` for hollow ring styling, `.center-active` for active center dots, `.hub-spoke-line` for thinner center-to-corner edges
+- Dark mode support added for hub-spoke lines and center vertices
+- All 88 tests pass, build succeeds cleanly
+- Files changed: src/lib/components/Board.svelte
+- **Learnings for future iterations:**
+  - Center vertex detection uses `v.type === 'center'` (from grid data) in templates and `isCenterVertex(id)` (string prefix check) for edge categorization
+  - Hub-spoke edge deduplication: iterate only center vertices in adjacency and use vid < nid check, since all center neighbors are corners
+  - The `fill: transparent` SVG approach creates a clean hollow ring; combined with `stroke: #999; stroke-width: 1` it's visually distinct from filled corner vertices
+  - Browser automation (MCP) was not available; manual browser verification needed
+---

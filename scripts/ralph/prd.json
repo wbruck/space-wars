@@ -61,7 +61,7 @@
         "Commit with message: US-013: update board rendering for center dots and square layout"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
