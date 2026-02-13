@@ -126,7 +126,7 @@
         "Commit with message: US-006: implement directional movement"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

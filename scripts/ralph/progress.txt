@@ -15,6 +15,11 @@
 - rollDice() exported from gameState.js: rolls 1-6, caps to remaining pool, transitions phase to selectingDirection
 - Svelte stores can be subscribed in .svelte files with `$storeName` syntax (auto-subscribe), use `get()` in JS
 - App.svelte manages screen transitions: setup phase shows SetupScreen, gameplay phases show Board + Dice + HUD
+- Movement logic is in src/lib/game/movement.js: exports getAvailableDirections(), computePath(), isTrapped()
+- Game state also exports: selectDirection(dir), executeMove(callback), selectedDirection, previewPath, animatingPath, animationStep stores
+- Board.svelte accepts additional props for movement: gamePhase, availableDirections, previewPath, selectedDirection, animatingPath, animationStep, onDirectionSelect, onConfirmMove
+- Direction arrows use SVG circles with role="button" + onkeydown for a11y compliance
+- executeMove() animates step-by-step with setTimeout (150ms per step), then checks win/lose/trapped conditions
 
 # Ralph Progress Log
 Started: Fri Feb 13 08:49:32 CST 2026
@@ -96,5 +101,24 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - Die animation uses setInterval with frame counter; clearInterval on completion then commit real roll
   - CSS `class:name={condition}` syntax in Svelte 5 for conditional classes
   - The `canRoll` derived check (`phase === 'rolling' && !rolling`) prevents double-rolling during animation
+  - Browser automation (MCP) was not available for visual testing; manual browser verification needed
+---
+
+## 2026-02-13 - US-006
+- Created src/lib/game/movement.js with getAvailableDirections(), computePath(), and isTrapped() functions
+- Added selectDirection(), executeMove(), and new stores (selectedDirection, previewPath, animatingPath, animationStep) to gameState.js
+- Updated Board.svelte to render direction arrows (orange), path preview (blue dashed lines), and step-by-step animation
+- Direction arrows use SVG circles with role="button" and keyboard handlers for a11y compliance
+- Updated App.svelte to compute available directions reactively and wire up direction selection + move confirmation
+- 15 unit tests in movement.test.js covering: available directions, path computation, obstacle stopping, edge stopping, target detection, trapped detection, game state integration
+- All 67 tests pass across 4 test files
+- Build succeeds cleanly with no warnings
+- Files changed: src/lib/game/movement.js (new), src/lib/game/movement.test.js (new), src/lib/game/gameState.js (updated), src/lib/components/Board.svelte (updated), src/App.svelte (updated)
+- **Learnings for future iterations:**
+  - SVG interactive elements need role="button", tabindex, onkeydown for a11y compliance (Svelte warns on build)
+  - computePath returns early on target hit (reachedTarget: true) so win detection works for pass-through
+  - executeMove uses setTimeout chain for step-by-step animation (150ms delay), then runs win/lose/trapped checks
+  - After move animation completes: deduct pool, check win (target reached), check lose (pool exhausted or trapped), then reset to rolling
+  - Preview path is stored in a Svelte store so Board.svelte can reactively render it without prop drilling raw ray data
   - Browser automation (MCP) was not available for visual testing; manual browser verification needed
 ---
