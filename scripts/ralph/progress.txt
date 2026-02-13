@@ -12,6 +12,9 @@
 - Game state is in src/lib/game/gameState.js: exports Svelte writable stores (board, playerPos, movementPool, diceValue, gamePhase, visited, movesMade) + initGame(radius, seed?) and resetGame()
 - Use `get()` from 'svelte/store' to read store values in tests/non-Svelte code
 - hasValidPath(adjacency, start, target, obstacles) exported from gameState.js for BFS reachability checks
+- rollDice() exported from gameState.js: rolls 1-6, caps to remaining pool, transitions phase to selectingDirection
+- Svelte stores can be subscribed in .svelte files with `$storeName` syntax (auto-subscribe), use `get()` in JS
+- App.svelte manages screen transitions: setup phase shows SetupScreen, gameplay phases show Board + Dice + HUD
 
 # Ralph Progress Log
 Started: Fri Feb 13 08:49:32 CST 2026
@@ -76,4 +79,22 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - Start/target placement strategy: sort vertices by distance from origin, pick farthest as start, then pick vertex farthest from start as target
   - BFS path validation is essential before committing obstacle placement; wrap in retry loop
   - The seeded RNG (xorshift32) enables deterministic tests while keeping random behavior in production
+---
+
+## 2026-02-13 - US-005
+- Added `rollDice()` function to src/lib/game/gameState.js
+- Created src/lib/components/Dice.svelte with visual die face (dot patterns for 1-6) and roll animation
+- Roll animation: cycles through random faces rapidly (10 frames at 60ms) before landing on result
+- Die only clickable during 'rolling' phase; disabled/grayed out otherwise
+- Dice value capped to remaining movement pool (e.g., roll 5 with pool 3 = effective 3)
+- Movement pool NOT deducted on roll (deduction happens after move in US-006)
+- Updated src/App.svelte to wire up game state stores: setup phase shows size picker + start button, gameplay shows Board + Dice + HUD placeholder
+- 9 unit tests in dice.test.js covering: phase gating, value range, store updates, phase transition, pool capping, no pool deduction
+- Files changed: src/lib/game/gameState.js (updated), src/lib/components/Dice.svelte (new), src/lib/game/dice.test.js (new), src/App.svelte (rewritten)
+- **Learnings for future iterations:**
+  - Svelte 5 `$derived($storeName)` provides reactive subscription to Svelte stores in .svelte files
+  - Die animation uses setInterval with frame counter; clearInterval on completion then commit real roll
+  - CSS `class:name={condition}` syntax in Svelte 5 for conditional classes
+  - The `canRoll` derived check (`phase === 'rolling' && !rolling`) prevents double-rolling during animation
+  - Browser automation (MCP) was not available for visual testing; manual browser verification needed
 ---

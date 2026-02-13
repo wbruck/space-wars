@@ -100,7 +100,7 @@
         "Commit with message: US-005: implement dice roll mechanic"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
