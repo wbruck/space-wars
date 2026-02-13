@@ -20,6 +20,8 @@
 - Board.svelte accepts additional props for movement: gamePhase, availableDirections, previewPath, selectedDirection, animatingPath, animationStep, onDirectionSelect, onConfirmMove
 - Direction arrows use SVG circles with role="button" + onkeydown for a11y compliance
 - executeMove() animates step-by-step with setTimeout (150ms per step), then checks win/lose/trapped conditions
+- Win/lose checks: executeMove checks win (target reached), lose (pool=0), lose (trapped) after each move; rollDice checks trapped before rolling
+- For async tests with executeMove, use `executeMoveAsync()` helper returning a Promise (vitest deprecated done() callbacks)
 
 # Ralph Progress Log
 Started: Fri Feb 13 08:49:32 CST 2026
@@ -121,4 +123,17 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - After move animation completes: deduct pool, check win (target reached), check lose (pool exhausted or trapped), then reset to rolling
   - Preview path is stored in a Svelte store so Board.svelte can reactively render it without prop drilling raw ray data
   - Browser automation (MCP) was not available for visual testing; manual browser verification needed
+---
+
+## 2026-02-13 - US-007
+- Added trapped check to rollDice() in gameState.js: before rolling, checks isTrapped() and sets gamePhase to 'lost' if player is trapped
+- Most win/lose logic was already implemented in US-006's executeMove(): win (target reached), lose (pool=0), lose (trapped after move)
+- US-007 adds the missing pre-roll trapped detection for start-of-turn trap scenarios
+- Created winLose.test.js with 9 tests covering: win by landing on target, computePath pass-through win detection, lose by pool exhaustion (1-step and multi-step), isTrapped true/false, trapped after move, rollDice trapped detection, normal game continuation
+- All 76 tests pass across 5 test files, build succeeds cleanly
+- Files changed: src/lib/game/gameState.js (updated), src/lib/game/winLose.test.js (new)
+- **Learnings for future iterations:**
+  - vitest deprecated done() callbacks; use async/await with Promise wrapper for setTimeout-based async code
+  - executeMove already handles most win/lose detection; the gap was pre-roll trapped check
+  - When testing pool exhaustion with multi-step moves, compute actual path length first to set pool precisely (obstacles may shorten the ray)
 ---

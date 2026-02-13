@@ -145,7 +145,7 @@
         "Commit with message: US-007: implement win and lose conditions"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
