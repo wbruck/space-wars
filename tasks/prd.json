@@ -1,0 +1,208 @@
+{
+  "project": "Game Time - Hex Vertex Strategy Board Game",
+  "branchName": "ralph/hex-vertex-board-game",
+  "description": "A single-player hex vertex strategy board game built with Vite + Svelte where the player rolls dice, chooses a direction, and navigates obstacles to reach a target vertex before running out of movement points.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Initialize Vite + Svelte project",
+      "description": "As a developer, I need the project scaffolded with Vite + Svelte so we have a working dev environment.",
+      "background": "This is the foundational setup story. The project is a web-based board game with no backend. All game logic runs client-side. No additional dependencies are needed for MVP (no PWA plugin, no persistence). The project root is /Users/user/code/game_time/.",
+      "implementation": "Initialize with `npm create vite@latest` using the Svelte template. Create directory structure: src/lib/components/ for Svelte UI components (Board, Dice, HUD, GameOver, SetupScreen), src/lib/game/ for game logic modules (hexGrid, gameState, movement, obstacles), src/lib/utils/ for utility helpers (canvas, storage). No additional npm dependencies needed for MVP.",
+      "acceptanceCriteria": [
+        "Vite + Svelte project created in /Users/user/code/game_time/",
+        "npm run dev starts dev server and renders a placeholder page",
+        "Project structure matches planned layout (src/lib/components, src/lib/game, src/lib/utils)",
+        "Commit with message: US-001: scaffold Vite + Svelte project"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Implement hex vertex grid math",
+      "description": "As a developer, I need hex grid math utilities that generate vertex positions, adjacency maps, and support configurable board sizes so the game board can be computed.",
+      "background": "The game board is a hex vertex grid where spaces are at the corners (vertices) of hexagons, forming a triangular lattice. Players move along this lattice in 6 directions. The grid must support configurable radii: radius 2 = 19 hexes, radius 3 = 37 hexes, radius 4 = 61 hexes. This module is a dependency for all subsequent board rendering, state management, and movement stories.",
+      "implementation": "Create src/lib/game/hexGrid.js. Use axial coordinates (q, r) for hex centers; derive vertex positions using 60° rotation math. Deduplicate shared vertices using coordinate rounding/hashing (vertices at hex corners are shared by up to 3 hexes). The 3 lattice axes define 6 movement directions (3 axes x 2 directions each). For each vertex, precompute 6 directional rays: ordered lists of vertices in each straight-line direction along the triangular lattice. Key data structures: Vertex { id, x, y, q, r } with unique ID and pixel coordinates; adjacency map Map<vertexId, vertexId[]> with 6 neighbors per interior vertex; directional rays Map<vertexId, { direction, vertices }[]> with 6 rays per vertex. Write unit tests verifying vertex count, adjacency correctness, and ray computation for a radius-2 grid.",
+      "acceptanceCriteria": [
+        "hexGrid.js module exports functions to generate a hex grid of configurable radius",
+        "Vertices are computed at hex corners, deduplicated (shared corners stored once)",
+        "Each vertex has a unique ID and pixel coordinates (for rendering)",
+        "Adjacency map: for each vertex, lists all 6 neighboring vertices in the triangular lattice (fewer at board edges)",
+        "For each vertex, the 6 directional rays are precomputed (ordered list of vertices in each straight-line direction)",
+        "Grid supports radius 2 (small/19 hexes), 3 (medium/37 hexes), 4+ (large/61+ hexes)",
+        "Unit tests verify vertex count, adjacency correctness, and ray computation for a radius-2 grid",
+        "All tests pass",
+        "Commit with message: US-002: implement hex vertex grid math"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Render the hex board with SVG",
+      "description": "As a player, I want to see the hex board displayed on screen so I can understand the game space.",
+      "background": "The board renders the hex vertex grid computed by hexGrid.js (US-002). SVG was chosen over Canvas for clean scaling and built-in click/tap handling per element. The visual style is clean and minimal with flat colors and simple geometric shapes. This component will be extended in later stories to support direction indicators (US-006), path preview, and movement animation.",
+      "implementation": "Create src/lib/components/Board.svelte. Render the board as SVG using the viewBox attribute for automatic responsive scaling (no fixed pixel dimensions). Use Svelte on:click handlers on SVG <circle> elements for vertex interaction. Draw hex outlines as light guide lines (visual reference only). Render vertices as circles/dots at each hex corner. Draw edges as lines between adjacent vertices. Color palette: white/light gray background, dark circles for regular vertices, green for start vertex, gold/red for target vertex, dark fill or X marker for obstacle vertices, blue for player token, lighter shade for visited vertices. Depends on src/lib/game/hexGrid.js (US-002).",
+      "acceptanceCriteria": [
+        "Board.svelte renders the hex grid as an SVG element",
+        "Hex outlines drawn as light guide lines (visual reference only)",
+        "Vertices rendered as circles/dots at each hex corner",
+        "Edges drawn as lines between adjacent vertices",
+        "Start vertex highlighted in green",
+        "Target vertex highlighted in gold/red",
+        "Obstacle vertices rendered distinctly (dark fill or X marker)",
+        "Board scales responsively to fit the viewport (mobile and desktop)",
+        "Verify in browser that the board renders correctly at all 3 sizes",
+        "Commit with message: US-003: render hex board with SVG"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Implement game state management",
+      "description": "As a developer, I need centralized game state so all components react to game changes consistently.",
+      "background": "All UI components subscribe to shared Svelte stores for reactive updates. The game has 6 phases: setup, rolling, selectingDirection, moving, won, lost. The movement pool scales with board size (radius * 10). Obstacle placement must guarantee a solvable board. This module is a dependency for the dice (US-005), movement (US-006), win/lose (US-007), HUD (US-008), and screen management (US-009) stories.",
+      "implementation": "Create src/lib/game/gameState.js. Use Svelte writable stores: board (vertex list, adjacency map, rays, obstacle set, start/target vertex IDs), playerPos (current vertex ID), movementPool (remaining movement points as integer), diceValue (current roll 1-6 or null), gamePhase (setup | rolling | selectingDirection | moving | won | lost). Implement initGame(radius) function that generates the grid via hexGrid.js, places start and target vertices at reasonable distance apart (not adjacent), generates random obstacles, and verifies a valid path exists using BFS from start to target on the lattice graph (excluding obstacle vertices). If no valid path exists, regenerate obstacles. Initialize movement pool to radius * 10. Write unit tests verifying initialization and obstacle placement validity. Depends on src/lib/game/hexGrid.js (US-002). Non-goals: no persistence/save, no AI opponent, no multiple obstacle types.",
+      "acceptanceCriteria": [
+        "gameState.js exports Svelte writable stores for: board data, player position, movement pool, dice value, game phase (setup | rolling | selectingDirection | moving | won | lost)",
+        "initGame(radius) function generates board: computes grid, places start vertex, target vertex, and random obstacles",
+        "Start and target vertices are placed at reasonable distance apart (not adjacent)",
+        "Random obstacles are placed ensuring at least one valid path from start to target exists",
+        "Movement pool initialized to radius * 10",
+        "Unit tests verify initialization, obstacle placement validity",
+        "All tests pass",
+        "Commit with message: US-004: implement game state management"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Implement dice roll mechanic",
+      "description": "As a player, I want to roll a die so I know how many spaces I can move this turn.",
+      "background": "The dice is a core game mechanic. The player taps the die during the rolling phase to generate a random 1-6 value. Movement pool deduction is based on actual steps moved (not the raw roll), and movement is capped to remaining pool. The die must be large and easy to tap on mobile. This feeds into the directional movement story (US-006).",
+      "implementation": "Create src/lib/components/Dice.svelte. Display a visual die face with dot patterns for values 1-6. Implement roll animation using CSS transform rotation or simple frame swap (cycle through random faces briefly before landing on result). Generate random result 1-6 and store in game state diceValue. Die is only clickable during the rolling game phase; disabled/grayed out during all other phases. Movement pool deduction happens after the move is completed (actual steps moved), not on roll. If die roll exceeds remaining pool, movement is capped to remaining pool (e.g., roll 5 with pool 3 = move 3 steps). After roll, transition gamePhase to selectingDirection. Die should be large and centered below the board for easy tapping. Depends on src/lib/game/gameState.js (US-004). FR-4: Roll a die (1-6) with visual animation on tap/click.",
+      "acceptanceCriteria": [
+        "Dice.svelte component displays a visual die face (1-6 dots)",
+        "Tapping/clicking the die triggers a roll with a brief animation (CSS rotation or frame swap)",
+        "Random result 1-6 is generated and stored in game state",
+        "Die roll subtracts the actual steps moved (capped to pool) from the movement pool",
+        "Die is only clickable during the rolling game phase",
+        "Die is disabled/grayed out during other phases",
+        "If die roll exceeds remaining pool, movement is capped to remaining pool (roll 5, pool 3 = move 3)",
+        "Verify in browser that die animates and updates state",
+        "Commit with message: US-005: implement dice roll mechanic"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Implement directional movement",
+      "description": "As a player, after rolling the die I want to choose one of 6 directions to move in a straight line so I can navigate toward the target.",
+      "background": "This is the core strategic mechanic. After rolling, the player selects one of 6 directions along the triangular lattice axes. Movement is in a straight line for min(diceValue, remainingPool) steps. A path preview system lets the player see where they'll end up before committing. Obstacles and board edges stop movement early. Visited vertices are marked visually (no gameplay effect). This story depends on hex grid math (US-002) and game state (US-004).",
+      "implementation": "Create src/lib/game/movement.js for movement validation, ray traversal, and path computation. After rolling, game enters selectingDirection phase. Use precomputed directional rays from hexGrid.js to determine available directions. Movement steps = min(diceValue, remainingMovementPool). Show 6 directional indicators (arrows or highlighted path lines) radiating from player position; hide directions where the first vertex is an obstacle or board edge. Path preview: tapping a direction highlights vertices along the ray up to step count; preview stops early at obstacles/edges showing the last valid vertex. Player can tap different directions to change preview. Confirm button or second tap commits the move. Ray-cast validation: walk vertex-by-vertex, stop at obstacles or missing vertices. Remaining steps after hitting obstacle are lost. Animate token step-by-step with brief delays. Mark traversed vertices as visited (visual only). Update player position in game state after animation. Update Board.svelte for direction indicators, path preview rendering, and animation. Write unit tests for straight-line movement, obstacle stopping, edge stopping. FR-5 through FR-8 apply. Depends on hexGrid.js (US-002) and gameState.js (US-004).",
+      "acceptanceCriteria": [
+        "After rolling, the game enters selectingDirection phase",
+        "The 6 possible directions from the current vertex are shown as directional indicators (arrows or highlighted paths)",
+        "Directions that are fully blocked (immediate obstacle or board edge) are not shown",
+        "Tapping a direction shows a path preview (highlighted vertices along the straight line)",
+        "Player taps again (or a confirm button) to commit the move; tapping a different direction changes the preview",
+        "Movement distance is capped to remaining movement pool (e.g., roll 5 with 3 pool = move 3 steps)",
+        "If the path hits an obstacle or board edge before using all steps, the player stops at the last valid vertex",
+        "Player token animates step-by-step along the path (brief delay between steps)",
+        "After moving, vertices along the path are visually marked as visited",
+        "Player position updates in game state",
+        "Unit tests verify movement logic: straight-line movement, obstacle stopping, edge stopping",
+        "All tests pass",
+        "Verify in browser that direction selection and movement work correctly",
+        "Commit with message: US-006: implement directional movement"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Implement win and lose conditions",
+      "description": "As a player, I want the game to detect when I've won or lost so the game has a clear conclusion.",
+      "background": "Win/lose detection runs after every completed move. There are three end conditions: winning by reaching/passing the target vertex, losing by exhausting the movement pool, and losing by being trapped with no valid moves. The trapped check should also run at the start of each turn before rolling. This depends on game state (US-004) and movement logic (US-006).",
+      "implementation": "Add win/lose detection to src/lib/game/gameState.js. Win condition: check each vertex along the movement path (not just final position); if target is passed through, player stops at target and wins immediately, setting gamePhase to won. Lose condition (out of points): if movement pool reaches 0 and player has not reached the target, set gamePhase to lost; checked after movement pool deduction. Lose condition (trapped): if all 6 directions from current vertex are blocked (obstacle or board edge), set gamePhase to lost; equivalent to no valid ray having at least 1 traversable vertex; checked at start of each turn before rolling. Add trapped detection helper to src/lib/game/movement.js. FR-10: detect win when player reaches target. FR-11: detect lose when pool reaches 0. FR-12: detect lose when trapped. Write unit tests verifying all three conditions. Depends on US-004 and US-006.",
+      "acceptanceCriteria": [
+        "Win: If player lands on (or passes through) the target vertex during movement, game phase changes to won",
+        "Lose (out of points): If movement pool reaches 0 and player has not reached the target, game phase changes to lost",
+        "Lose (trapped): If all 6 directions from current vertex are blocked (obstacles or board edge with no room to move), game phase changes to lost",
+        "Win/lose detection runs after every move",
+        "Unit tests verify all three conditions",
+        "All tests pass",
+        "Commit with message: US-007: implement win and lose conditions"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Build game HUD",
+      "description": "As a player, I want to see my remaining movement points and current game status so I can make informed decisions.",
+      "background": "The HUD provides critical game information at a glance. It subscribes reactively to Svelte stores and updates automatically. The layout must be compact and mobile-friendly, positioned below or beside the board without overlapping. On mobile, the layout stacks vertically with board on top and HUD below.",
+      "implementation": "Create src/lib/components/HUD.svelte. Subscribe reactively to Svelte stores: movementPool, diceValue, gamePhase. Display elements: remaining movement pool (e.g., 'Moves: 23'), last dice roll value (e.g., 'Rolled: 4'), game phase in plain language (e.g., 'Roll the dice', 'Choose a direction', 'Moving...'). Layout as a compact overlay or panel below/beside the board. Must not overlap with the board on mobile screens. Vertically stacked on mobile (board on top, HUD below). Depends on src/lib/game/gameState.js (US-004).",
+      "acceptanceCriteria": [
+        "HUD.svelte displays: remaining movement pool, last dice roll value, current game phase (in plain language)",
+        "HUD updates reactively as game state changes",
+        "Layout is compact and does not overlap with the board on mobile screens",
+        "Verify in browser on both desktop and mobile viewport sizes",
+        "Commit with message: US-008: build game HUD"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Build setup and game-over screens",
+      "description": "As a player, I want to configure the board size before playing and see my result when the game ends.",
+      "background": "The setup screen is the entry point and the game-over screen closes the loop. App.svelte manages screen transitions based on gamePhase: setup shows SetupScreen, won/lost shows GameOver, all other phases show the game board with HUD and dice. The Play Again button resets to setup for a new game.",
+      "implementation": "Create src/lib/components/SetupScreen.svelte with board size selection: Small (radius 2, 19 hexes), Medium (radius 3, 37 hexes), Large (radius 4, 61 hexes). Display hex count next to each option. 'Start Game' button calls initGame(radius) from game state and transitions gamePhase to rolling. Create src/lib/components/GameOver.svelte with conditional win/lose message. Display stats: total moves made, movement points remaining (if won), board size played. 'Play Again' button resets gamePhase to setup. Update src/App.svelte for conditional screen rendering: setup phase shows SetupScreen, won/lost shows GameOver, all other phases show game board + HUD + Dice. Depends on src/lib/game/gameState.js (US-004). Non-goals: no tutorial, no leaderboards, no campaign mode.",
+      "acceptanceCriteria": [
+        "SetupScreen.svelte shows board size options: Small, Medium, Large (with hex counts displayed)",
+        "Tapping a size option and Start Game initializes the game and transitions to gameplay",
+        "GameOver.svelte shows win or lose message",
+        "Displays stats: moves made, movement points remaining (if won), board size",
+        "Play Again button returns to setup screen",
+        "Verify in browser that full flow works: setup -> play -> game over -> setup",
+        "Commit with message: US-009: build setup and game-over screens"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Mobile touch optimization",
+      "description": "As a mobile player, I want the game to be easy to play with touch so I can play comfortably on my phone.",
+      "background": "This is a cross-cutting story that touches multiple components to ensure the game is comfortable to play on mobile devices. All interactive elements must meet minimum tap target sizes. The layout must be responsive with no horizontal scrolling. This is the final polish story before the MVP is complete.",
+      "implementation": "Add viewport meta tag to index.html: <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, user-scalable=no\">. Minimum tap target size: 44x44px per Apple HIG / Material Design guidelines. In Board.svelte, ensure SVG vertex circles have sufficient radius or invisible hit areas for tap targets. Direction arrows/indicators sized for finger taps. In Dice.svelte, ensure large tap target centered and easy to reach with thumb. In src/app.css, implement responsive layout: vertically stacked on narrow screens (board on top, dice + HUD below). SVG viewBox ensures board scales to fit available width. No horizontal scrolling on any mobile viewport (320px minimum width). Test with Chrome DevTools device emulation: iPhone SE (375px), iPhone 14 (390px), Pixel 7 (412px). Verify no content overflow, no tiny targets, no overlapping elements. FR-14: Support responsive layout for mobile and desktop browsers. Files affected: index.html, src/app.css, Board.svelte, Dice.svelte, and potentially all component files.",
+      "acceptanceCriteria": [
+        "Viewport meta tag set for proper mobile scaling (no pinch-zoom needed)",
+        "Vertex tap targets are at least 44x44px effective size (or vertex dots are large enough)",
+        "Direction selection arrows/indicators are large enough to tap accurately",
+        "Dice tap target is large and easy to hit",
+        "No horizontal scrolling on mobile viewports",
+        "Game layout stacks vertically on narrow screens (board on top, dice + HUD below)",
+        "Verify in browser using Chrome DevTools device emulation (iPhone, Android)",
+        "Commit with message: US-010: mobile touch optimization"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
