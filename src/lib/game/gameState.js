@@ -172,6 +172,27 @@ export function initGame(radius, seed) {
 }
 
 /**
+ * Roll the dice (1-6), cap to remaining movement pool, store result,
+ * and transition to selectingDirection phase.
+ * Only works during the 'rolling' phase.
+ *
+ * @returns {number|null} The effective dice value (capped to pool), or null if not in rolling phase.
+ */
+export function rollDice() {
+  const phase = get(gamePhase);
+  if (phase !== 'rolling') return null;
+
+  const raw = Math.floor(Math.random() * 6) + 1;
+  const pool = get(movementPool);
+  const effective = Math.min(raw, pool);
+
+  diceValue.set(effective);
+  gamePhase.set('selectingDirection');
+
+  return effective;
+}
+
+/**
  * Reset game to setup phase.
  */
 export function resetGame() {
