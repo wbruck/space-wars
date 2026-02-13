@@ -103,7 +103,7 @@
         "Commit with message: US-015: update movement logic for center dots"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": ""
     }
   ]

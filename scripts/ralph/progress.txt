@@ -8,6 +8,7 @@
 - Hex vertex grid: vertices are at hex corners AND hex centers. Corner vertices have up to 6 neighbors (3 corners + up to 3 centers). Center vertices have exactly 6 neighbors (their hex's 6 corners). The 6 directions come from 3 axes × 2 directions.
 - Vertex IDs: corner vertices use coordinate strings like "40,69.282", center vertices use "c:" prefix like "c:0,0". Use `isCenterVertex(id)` to distinguish them.
 - Rays are built via direction-aware graph traversal (not geometric stepping). Rays include both corner and center vertices. Each vertex has a `type` property ("corner" or "center").
+- Rays do NOT strictly alternate corner-center-corner. Some directions have consecutive corners (corner-center-corner-corner-center pattern). Center vertices never appear consecutively since center neighbors are always corners.
 - coordToId map in hexGrid.js maps coordinate strings to vertex IDs (handles both corner and center lookups)
 - Svelte 5 runes: use `$props()` for component props, `$state()` for mutable state, `$derived` / `$derived.by` for computed values
 - SVG board rendering: use viewBox with preserveAspectRatio="xMidYMid meet" for responsive scaling
@@ -271,4 +272,24 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - Start/target placement always yields corner vertices because the distance-from-origin sorting favors grid extremities which are always corners. This is correct behavior, not a bug.
   - Obstacle distribution naturally mirrors vertex type distribution (~74% corner, ~26% center for 5x4 board) since random selection is uniform across all candidates
   - When a story is primarily verification/testing, the main deliverable is comprehensive test coverage rather than code changes
+---
+
+## 2026-02-13 - US-015
+- Verified that movement.js (getAvailableDirections, computePath, isTrapped) requires NO code changes for center dot support — all functions operate on ray data structure generically without vertex type assumptions
+- Verified Board.svelte path preview rendering naturally includes center dots (previewPath comes from computePath which returns vertices from rays that already include centers)
+- Verified executeMove animation steps through center dots (150ms per step, including center vertices)
+- Added 14 new unit tests to movement.test.js covering center dot movement scenarios:
+  - Ray structure: rays from corners include centers, rays contain both types interleaved (no consecutive centers), rays from center vertices start with corners
+  - getAvailableDirections: works from center vertices, blocks direction when first-step center is obstacle
+  - computePath: traverses through center dots, obstacle on center blocks ray, target at center triggers win
+  - isTrapped: trapped when all first-step centers are obstacles, trapped on center vertex when corners blocked, not trapped when at least one open
+  - Integration: end-to-end movement through centers with game state, animation stepping through centers, preview path includes center dots
+- All 112 tests pass (98 existing + 14 new), build succeeds cleanly
+- Files changed: src/lib/game/movement.test.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - Rays do NOT strictly alternate corner-center-corner on every step. The actual pattern depends on the bipartite lattice structure: Type A corners have center neighbors in directions 1,3,5 and corner neighbors in 0,2,4; Type B has the reverse. This creates patterns like corner→center→corner→corner→center in some directions.
+  - Center vertices never appear consecutively in rays because center neighbors are always corners (hub-spoke adjacency).
+  - movement.js is completely vertex-type-agnostic: it only reads ray.vertices[] arrays and checks obstacle membership. No special handling needed for center vs corner vertices.
+  - Board.svelte preview path rendering (lines 212-225) draws lines between consecutive path vertices regardless of type, so center dots are naturally included in preview visualization.
+  - Browser automation (MCP) was not available; manual browser verification needed for visual testing of direction arrows, path preview, and movement animation.
 ---
