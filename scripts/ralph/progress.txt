@@ -256,3 +256,19 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - The `fill: transparent` SVG approach creates a clean hollow ring; combined with `stroke: #999; stroke-width: 1` it's visually distinct from filled corner vertices
   - Browser automation (MCP) was not available; manual browser verification needed
 ---
+
+## 2026-02-13 - US-014
+- Verified that initGame() already correctly initializes with center + corner vertices (no code changes needed to gameState.js)
+- Start/target placement naturally selects corner vertices (at grid extremities) which is correct behavior
+- Obstacle placement already works on both center and corner vertices (~22% center obstacles, proportional to vertex distribution)
+- BFS hasValidPath already traverses center-to-corner adjacency edges correctly
+- Movement pool formula (cols + rows) * 5 already appropriate for 2-step-per-hex traversal
+- Added 10 new unit tests to gameState.test.js verifying center dot support: vertex types, obstacle placement on centers, BFS through center-corner edges, obstacle blocking on centers, movement pool values, vertex count composition
+- All 98 tests pass (88 existing + 10 new), build succeeds
+- Files changed: src/lib/game/gameState.test.js
+- **Learnings for future iterations:**
+  - initGame() required no code changes for center dot support because it operates on the vertex graph generically (iterates all vertex keys, places obstacles from all candidates, BFS uses adjacency map)
+  - Start/target placement always yields corner vertices because the distance-from-origin sorting favors grid extremities which are always corners. This is correct behavior, not a bug.
+  - Obstacle distribution naturally mirrors vertex type distribution (~74% corner, ~26% center for 5x4 board) since random selection is uniform across all candidates
+  - When a story is primarily verification/testing, the main deliverable is comprehensive test coverage rather than code changes
+---

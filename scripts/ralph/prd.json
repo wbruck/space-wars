@@ -81,7 +81,7 @@
         "Commit with message: US-014: update game state for center dot support"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
