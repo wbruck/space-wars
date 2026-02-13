@@ -2,14 +2,14 @@
   import Board from './lib/components/Board.svelte';
   import Dice from './lib/components/Dice.svelte';
   import HUD from './lib/components/HUD.svelte';
+  import SetupScreen from './lib/components/SetupScreen.svelte';
+  import GameOver from './lib/components/GameOver.svelte';
   import {
     board, playerPos, gamePhase, visited,
     selectedDirection, previewPath, animatingPath, animationStep,
-    initGame, selectDirection, executeMove,
+    initGame, resetGame, selectDirection, executeMove,
   } from './lib/game/gameState.js';
   import { getAvailableDirections } from './lib/game/movement.js';
-
-  let selectedRadius = $state(2);
 
   // Subscribe to stores
   let boardData = $derived($board);
@@ -27,8 +27,8 @@
     return getAvailableDirections(boardData.rays, pos, boardData.obstacles);
   });
 
-  function startGame() {
-    initGame(selectedRadius);
+  function handleStart(radius) {
+    initGame(radius);
   }
 
   function handleDirectionSelect(direction) {
@@ -38,21 +38,20 @@
   function handleConfirmMove() {
     executeMove();
   }
+
+  function handlePlayAgain() {
+    resetGame();
+  }
 </script>
 
 <main>
   <h1>Game Time</h1>
 
   {#if phase === 'setup'}
-    <p>Hex Vertex Strategy Board Game</p>
+    <SetupScreen onStart={handleStart} />
 
-    <div class="size-buttons">
-      <button class:active={selectedRadius === 2} onclick={() => selectedRadius = 2}>Small (19 hexes)</button>
-      <button class:active={selectedRadius === 3} onclick={() => selectedRadius = 3}>Medium (37 hexes)</button>
-      <button class:active={selectedRadius === 4} onclick={() => selectedRadius = 4}>Large (61 hexes)</button>
-    </div>
-
-    <button class="start-btn" onclick={startGame}>Start Game</button>
+  {:else if phase === 'won' || phase === 'lost'}
+    <GameOver onPlayAgain={handlePlayAgain} />
 
   {:else if boardData}
     <Board
@@ -91,47 +90,7 @@
     margin-bottom: 0.25rem;
   }
 
-  p {
-    color: #666;
-    font-size: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .size-buttons {
-    display: flex;
-    gap: 0.5rem;
-    justify-content: center;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .size-buttons button {
-    padding: 0.4rem 1rem;
-    font-size: 0.9rem;
-  }
-
-  .size-buttons button.active {
-    border-color: #4caf50;
-    color: #4caf50;
-  }
-
-  .start-btn {
-    padding: 0.6rem 2rem;
-    font-size: 1.1rem;
-    background: #4caf50;
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    margin-top: 0.5rem;
-  }
-
-  .start-btn:hover {
-    background: #388e3c;
-  }
-
   @media (prefers-color-scheme: dark) {
     h1 { color: #eee; }
-    p { color: #aaa; }
   }
 </style>
