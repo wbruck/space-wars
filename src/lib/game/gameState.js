@@ -1,6 +1,7 @@
 import { writable, get } from 'svelte/store';
 import { generateGrid } from './hexGrid.js';
 import { computePath, isTrapped } from './movement.js';
+import { generateBoardObjects } from './boardObjects.js';
 
 // --- Svelte stores ---
 
@@ -98,18 +99,15 @@ function makeRng(seed) {
  * @param {number} cols - Number of hex columns
  * @param {number} rows - Number of hex rows
  * @param {number} [seed] - Optional RNG seed for reproducible obstacle placement
+ * @param {number} [difficulty=5] - Difficulty level 1-10
  * @returns {object} The board data (also written to stores)
  */
-export function initGame(cols, rows, seed) {
+export function initGame(cols, rows, seed, difficulty = 5) {
   const grid = generateGrid(cols, rows, 40);
   const ids = [...grid.vertices.keys()];
   const rng = seed != null ? makeRng(seed) : Math.random.bind(Math);
 
   // Pick start and target at reasonable distance apart.
-  // Strategy: pick two vertices near opposite edges of the board.
-  // Sort by distance from origin, pick start from the far edge on one side
-  // and target from the far edge on the other.
-  const center = { x: 0, y: 0 };
   const sortedByDist = ids
     .map(id => {
       const v = grid.vertices.get(id);
@@ -118,11 +116,8 @@ export function initGame(cols, rows, seed) {
     })
     .sort((a, b) => b.d - a.d);
 
-  // Pick start as the vertex farthest in one direction
   const startVertex = sortedByDist[0].id;
-  const startV = grid.vertices.get(startVertex);
 
-  // Pick target as the vertex farthest from start
   let bestTargetDist = -1;
   let targetVertex = null;
   for (const { id } of sortedByDist) {
@@ -134,30 +129,25 @@ export function initGame(cols, rows, seed) {
     }
   }
 
-  // Place random obstacles (about 10-15% of non-start/target vertices)
-  const obstacleCount = Math.floor(ids.length * 0.12);
-  const candidates = ids.filter(id => id !== startVertex && id !== targetVertex);
-
+  // Place board objects using difficulty-scaled algorithm
   let obstacles = new Set();
+  let boardObjects = [];
+  let powerUps = [];
   const maxAttempts = 20;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    obstacles = new Set();
-    const pool = [...candidates];
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, difficulty, rng);
+    obstacles = result.obstacleSet;
+    boardObjects = [...result.obstacles, ...result.powerUps];
+    powerUps = result.powerUps;
 
-    for (let i = 0; i < obstacleCount && pool.length > 0; i++) {
-      const idx = Math.floor(rng() * pool.length);
-      obstacles.add(pool[idx]);
-      pool.splice(idx, 1);
-    }
-
-    // Verify path exists
     if (hasValidPath(grid.adjacency, startVertex, targetVertex, obstacles)) {
       break;
     }
-    // If last attempt still fails, use empty obstacles
     if (attempt === maxAttempts - 1) {
       obstacles = new Set();
+      boardObjects = [];
+      powerUps = [];
     }
   }
 
@@ -170,6 +160,8 @@ export function initGame(cols, rows, seed) {
     cols: grid.cols,
     rows: grid.rows,
     obstacles,
+    boardObjects,
+    powerUps,
     startVertex,
     targetVertex,
   };

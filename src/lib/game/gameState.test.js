@@ -91,6 +91,56 @@ describe('initGame', () => {
   });
 });
 
+describe('board object integration', () => {
+  beforeEach(() => {
+    resetGame();
+  });
+
+  it('boardData includes boardObjects and powerUps arrays', () => {
+    const boardData = initGame(5, 4, 42);
+    expect(Array.isArray(boardData.boardObjects)).toBe(true);
+    expect(Array.isArray(boardData.powerUps)).toBe(true);
+  });
+
+  it('boardObjects contains obstacle and powerup instances', () => {
+    const boardData = initGame(5, 4, 42);
+    const types = boardData.boardObjects.map(o => o.type);
+    expect(types).toContain('obstacle');
+    expect(types).toContain('powerup');
+  });
+
+  it('obstacles Set matches obstacle vertex IDs in boardObjects', () => {
+    const boardData = initGame(5, 4, 42);
+    const obstacleIds = boardData.boardObjects
+      .filter(o => o.type === 'obstacle')
+      .map(o => o.vertexId);
+    expect(new Set(obstacleIds)).toEqual(boardData.obstacles);
+  });
+
+  it('different difficulty values produce different obstacle counts', () => {
+    const easy = initGame(7, 6, 42, 1);
+    resetGame();
+    const hard = initGame(7, 6, 42, 10);
+    expect(hard.obstacles.size).toBeGreaterThan(easy.obstacles.size);
+  });
+
+  it('different difficulty values produce different power-up counts', () => {
+    const easy = initGame(7, 6, 42, 1);
+    const easyPuCount = easy.powerUps.length;
+    resetGame();
+    const hard = initGame(7, 6, 42, 10);
+    expect(easyPuCount).toBeGreaterThan(hard.powerUps.length);
+  });
+
+  it('default difficulty (no arg) matches difficulty 5', () => {
+    const defaultD = initGame(5, 4, 42);
+    const defaultObsCount = defaultD.obstacles.size;
+    resetGame();
+    const explicit5 = initGame(5, 4, 42, 5);
+    expect(defaultObsCount).toBe(explicit5.obstacles.size);
+  });
+});
+
 describe('obstacle placement validity', () => {
   it('a valid path exists from start to target (5x4)', () => {
     const boardData = initGame(5, 4, 42);
