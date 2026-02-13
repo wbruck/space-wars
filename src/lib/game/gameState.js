@@ -195,6 +195,14 @@ export function rollDice() {
   const phase = get(gamePhase);
   if (phase !== 'rolling') return null;
 
+  // Check trapped condition before rolling
+  const boardData = get(board);
+  const pos = get(playerPos);
+  if (boardData && pos && isTrapped(boardData.rays, pos, boardData.obstacles)) {
+    gamePhase.set('lost');
+    return null;
+  }
+
   const raw = Math.floor(Math.random() * 6) + 1;
   const pool = get(movementPool);
   const effective = Math.min(raw, pool);
