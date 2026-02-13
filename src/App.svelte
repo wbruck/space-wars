@@ -27,8 +27,8 @@
     return getAvailableDirections(boardData.rays, pos, boardData.obstacles);
   });
 
-  function handleStart(cols, rows) {
-    initGame(cols, rows);
+  function handleStart(cols, rows, difficulty) {
+    initGame(cols, rows, undefined, difficulty);
   }
 
   function handleDirectionSelect(direction) {
