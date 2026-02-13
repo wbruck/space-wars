@@ -1,5 +1,5 @@
 <script>
-  import { generateGrid } from '../game/hexGrid.js';
+  import { generateGrid, isCenterVertex } from '../game/hexGrid.js';
   import { getAvailableDirections } from '../game/movement.js';
 
   /**
@@ -70,9 +70,26 @@
   });
 
   // Build edges (deduplicated: only draw edge if v1.id < v2.id)
-  let edges = $derived.by(() => {
+  // Separate corner-corner edges from hub-spoke (center↔corner) edges
+  let cornerEdges = $derived.by(() => {
     const edgeList = [];
     for (const [vid, neighbors] of grid.adjacency) {
+      if (isCenterVertex(vid)) continue;
+      const v = grid.vertices.get(vid);
+      for (const nid of neighbors) {
+        if (vid < nid && !isCenterVertex(nid)) {
+          const n = grid.vertices.get(nid);
+          edgeList.push({ x1: v.x, y1: v.y, x2: n.x, y2: n.y });
+        }
+      }
+    }
+    return edgeList;
+  });
+
+  let hubSpokeEdges = $derived.by(() => {
+    const edgeList = [];
+    for (const [vid, neighbors] of grid.adjacency) {
+      if (!isCenterVertex(vid)) continue;
       const v = grid.vertices.get(vid);
       for (const nid of neighbors) {
         if (vid < nid) {
@@ -131,7 +148,18 @@
     });
   });
 
+  // Check if a vertex is in an active state (not default)
+  function isActiveVertex(v) {
+    return v.id === targetVertex ||
+      v.id === startVertex ||
+      obstacles.has(v.id) ||
+      animatedSet.has(v.id) ||
+      previewSet.has(v.id) ||
+      visited.has(v.id);
+  }
+
   // Determine vertex fill color
+  // Center vertices: transparent (hollow ring) in default state, same colors when active
   function vertexColor(v) {
     if (v.id === targetVertex) return '#e8a735';
     if (v.id === startVertex) return '#4caf50';
@@ -139,6 +167,7 @@
     if (animatedSet.has(v.id)) return '#90caf9';
     if (previewSet.has(v.id)) return '#64b5f6';
     if (visited.has(v.id)) return '#b0c4de';
+    if (v.type === 'center') return 'transparent';
     return '#888';
   }
 
@@ -169,8 +198,13 @@
     <polygon {points} class="hex-outline" />
   {/each}
 
-  <!-- Edges between adjacent vertices -->
-  {#each edges as e}
+  <!-- Hub-spoke edges (center↔corner) — thinner/lighter -->
+  {#each hubSpokeEdges as e}
+    <line x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} class="hub-spoke-line" />
+  {/each}
+
+  <!-- Corner-to-corner edges -->
+  {#each cornerEdges as e}
     <line x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2} class="edge-line" />
   {/each}
 
@@ -198,6 +232,8 @@
       r={VERTEX_R}
       fill={vertexColor(v)}
       class="vertex"
+      class:center-vertex={v.type === 'center'}
+      class:center-active={v.type === 'center' && isActiveVertex(v)}
       class:obstacle={obstacles.has(v.id)}
       class:preview={previewSet.has(v.id)}
       class:animated={animatedSet.has(v.id)}
@@ -282,6 +318,11 @@
     stroke-width: 0.5;
   }
 
+  .hub-spoke-line {
+    stroke: #ddd;
+    stroke-width: 0.5;
+  }
+
   .edge-line {
     stroke: #ccc;
     stroke-width: 1;
@@ -291,6 +332,15 @@
     stroke: #555;
     stroke-width: 0.5;
     cursor: pointer;
+  }
+
+  .vertex.center-vertex {
+    stroke: #999;
+    stroke-width: 1;
+  }
+
+  .vertex.center-active {
+    stroke-width: 0.5;
   }
 
   .vertex.obstacle {
@@ -384,11 +434,17 @@
     .hex-outline {
       stroke: #444;
     }
+    .hub-spoke-line {
+      stroke: #444;
+    }
     .edge-line {
       stroke: #555;
     }
     .vertex {
       stroke: #999;
+    }
+    .vertex.center-vertex {
+      stroke: #777;
     }
   }
 </style>
