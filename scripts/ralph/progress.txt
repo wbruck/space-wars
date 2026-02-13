@@ -11,8 +11,13 @@
 - coordToId map in hexGrid.js maps coordinate strings to vertex IDs (handles both corner and center lookups)
 - Svelte 5 runes: use `$props()` for component props, `$state()` for mutable state, `$derived` / `$derived.by` for computed values
 - SVG board rendering: use viewBox with preserveAspectRatio="xMidYMid meet" for responsive scaling
-- Board.svelte accepts props: radius, startVertex, targetVertex, obstacles (Set), playerPos, visited (Set)
-- Game state is in src/lib/game/gameState.js: exports Svelte writable stores (board, playerPos, movementPool, diceValue, gamePhase, visited, movesMade) + initGame(radius, seed?) and resetGame()
+- Board.svelte accepts props: cols, rows, startVertex, targetVertex, obstacles (Set), playerPos, visited (Set)
+- Game state is in src/lib/game/gameState.js: exports Svelte writable stores (board, playerPos, movementPool, diceValue, gamePhase, visited, movesMade) + initGame(cols, rows, seed?) and resetGame()
+- Board layout: rectangular grid using odd-q offset columns for flat-top hexes. Size mappings: Small=5x4(20), Medium=7x6(42), Large=9x8(72)
+- generateGrid(cols, rows, size) returns { vertices, adjacency, rays, hexCenters, size, cols, rows }
+- hexCount(cols, rows) returns cols * rows
+- Movement pool formula: (cols + rows) * 5
+- SetupScreen passes (cols, rows) to onStart callback; App.svelte passes to initGame(cols, rows)
 - Use `get()` from 'svelte/store' to read store values in tests/non-Svelte code
 - hasValidPath(adjacency, start, target, obstacles) exported from gameState.js for BFS reachability checks
 - rollDice() exported from gameState.js: rolls 1-6, caps to remaining pool, transitions phase to selectingDirection
@@ -214,4 +219,23 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - Direction-aware graph traversal (following directional adjacency chain) is the correct approach for ray building with centers. Each vertex maps direction → neighbor, and rays follow these chains.
   - The `coordToId` map is essential: center vertices have IDs with `c:` prefix, but their pixel coordinates match positions in the direction-vector grid. The map translates coordinate strings to the correct vertex ID (corner or center).
   - Corner vertices in the bipartite lattice have two "types" (A and B): Type A has corner neighbors at directions 0,2,4 and center neighbors at 1,3,5; Type B has the reverse. This affects ray patterns.
+---
+
+## 2026-02-13 - US-012
+- Changed board shape from hexagonal boundary to rectangular (square) layout
+- Replaced `generateHexCenters(radius)` axial distance filtering with `generateRectHexCenters(cols, rows, size)` using odd-q offset columns
+- Updated `generateGrid(cols, rows, size)` API to accept cols/rows instead of radius; returns `{ ..., cols, rows }` instead of `{ ..., radius }`
+- Updated `hexCount(cols, rows)` to return `cols * rows`
+- Updated `initGame(cols, rows, seed?)` in gameState.js; movement pool formula changed from `radius * 10` to `(cols + rows) * 5`
+- Updated SetupScreen.svelte: size options now 5x4 (20 hexes), 7x6 (42 hexes), 9x8 (72 hexes); passes (cols, rows) to onStart
+- Updated Board.svelte to accept cols/rows props instead of radius
+- Updated GameOver.svelte board size label to use cols*rows instead of radius switch
+- Updated App.svelte to pass cols/rows through the entire flow
+- Updated all 5 test files to use cols/rows API; all 88 tests pass, build succeeds
+- Files changed: src/lib/game/hexGrid.js, src/lib/game/hexGrid.test.js, src/lib/game/gameState.js, src/lib/game/gameState.test.js, src/lib/game/movement.test.js, src/lib/game/winLose.test.js, src/lib/game/dice.test.js, src/lib/components/SetupScreen.svelte, src/lib/components/Board.svelte, src/lib/components/GameOver.svelte, src/App.svelte, CLAUDE.md
+- **Learnings for future iterations:**
+  - For flat-top hex grids, the correct rectangular layout uses odd-q offset columns (odd columns shifted down by rowSpacing/2), NOT odd-row offsets. Using odd-row offsets breaks the direction vector alignment because column neighbors aren't at the expected pixel positions.
+  - The direction vector approach (stepping by size*cos/sin) requires hex centers to be at positions reachable from corner vertices. Flat-top hexes: colSpacing = size*3/2, rowSpacing = size*sqrt(3), odd cols offset by rowSpacing/2 in y.
+  - Changing from radius-based to cols/rows-based grid touches nearly every file in the codebase: hexGrid.js, gameState.js, all test files, SetupScreen, Board, GameOver, App. Plan for wide-ranging updates.
+  - Movement pool formula `(cols + rows) * 5` gives: Small=45, Medium=65, Large=85, which is appropriate for the new board sizes where crossing one hex = 2 steps.
 ---

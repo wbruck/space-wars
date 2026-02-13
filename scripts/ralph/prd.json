@@ -41,7 +41,7 @@
         "Commit with message: US-012: change board shape to square layout"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
