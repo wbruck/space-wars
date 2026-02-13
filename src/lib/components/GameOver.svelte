@@ -12,12 +12,10 @@
 
   let boardSizeLabel = $derived.by(() => {
     if (!boardData) return '';
-    switch (boardData.radius) {
-      case 2: return 'Small (19 hexes)';
-      case 3: return 'Medium (37 hexes)';
-      case 4: return 'Large (61 hexes)';
-      default: return `Radius ${boardData.radius}`;
-    }
+    const hexes = boardData.cols * boardData.rows;
+    if (hexes <= 20) return `Small (${hexes} hexes)`;
+    if (hexes <= 42) return `Medium (${hexes} hexes)`;
+    return `Large (${hexes} hexes)`;
   });
 </script>
 

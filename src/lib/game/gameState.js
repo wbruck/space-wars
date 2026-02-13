@@ -4,7 +4,7 @@ import { computePath, isTrapped } from './movement.js';
 
 // --- Svelte stores ---
 
-/** Board data: { vertices, adjacency, rays, hexCenters, size, radius, obstacles, startVertex, targetVertex } */
+/** Board data: { vertices, adjacency, rays, hexCenters, size, cols, rows, obstacles, startVertex, targetVertex } */
 export const board = writable(null);
 
 /** Current player vertex ID */
@@ -95,12 +95,13 @@ function makeRng(seed) {
 /**
  * Initialize a new game.
  *
- * @param {number} radius - Board radius (2, 3, or 4)
+ * @param {number} cols - Number of hex columns
+ * @param {number} rows - Number of hex rows
  * @param {number} [seed] - Optional RNG seed for reproducible obstacle placement
  * @returns {object} The board data (also written to stores)
  */
-export function initGame(radius, seed) {
-  const grid = generateGrid(radius, 40);
+export function initGame(cols, rows, seed) {
+  const grid = generateGrid(cols, rows, 40);
   const ids = [...grid.vertices.keys()];
   const rng = seed != null ? makeRng(seed) : Math.random.bind(Math);
 
@@ -166,7 +167,8 @@ export function initGame(radius, seed) {
     rays: grid.rays,
     hexCenters: grid.hexCenters,
     size: grid.size,
-    radius: grid.radius,
+    cols: grid.cols,
+    rows: grid.rows,
     obstacles,
     startVertex,
     targetVertex,
@@ -175,7 +177,7 @@ export function initGame(radius, seed) {
   // Update all stores
   board.set(boardData);
   playerPos.set(startVertex);
-  movementPool.set(radius * 10);
+  movementPool.set((cols + rows) * 5);
   diceValue.set(null);
   gamePhase.set('rolling');
   visited.set(new Set([startVertex]));

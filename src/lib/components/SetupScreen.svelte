@@ -1,16 +1,17 @@
 <script>
   let { onStart } = $props();
 
-  let selectedRadius = $state(2);
+  let selectedSize = $state(0);
 
   const sizes = [
-    { radius: 2, label: 'Small', hexes: 19 },
-    { radius: 3, label: 'Medium', hexes: 37 },
-    { radius: 4, label: 'Large', hexes: 61 },
+    { cols: 5, rows: 4, label: 'Small', hexes: 20 },
+    { cols: 7, rows: 6, label: 'Medium', hexes: 42 },
+    { cols: 9, rows: 8, label: 'Large', hexes: 72 },
   ];
 
   function handleStart() {
-    onStart(selectedRadius);
+    const s = sizes[selectedSize];
+    onStart(s.cols, s.rows);
   }
 </script>
 
@@ -18,11 +19,11 @@
   <p class="subtitle">Hex Vertex Strategy Board Game</p>
 
   <div class="size-options">
-    {#each sizes as size}
+    {#each sizes as size, i}
       <button
         class="size-btn"
-        class:active={selectedRadius === size.radius}
-        onclick={() => selectedRadius = size.radius}
+        class:active={selectedSize === i}
+        onclick={() => selectedSize = i}
       >
         {size.label} ({size.hexes} hexes)
       </button>

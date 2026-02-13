@@ -8,7 +8,7 @@ describe('getAvailableDirections', () => {
   let grid;
 
   beforeEach(() => {
-    grid = generateGrid(2, 40);
+    grid = generateGrid(5, 4, 40);
   });
 
   it('returns available directions for an interior vertex', () => {
@@ -74,7 +74,7 @@ describe('computePath', () => {
   let grid;
 
   beforeEach(() => {
-    grid = generateGrid(2, 40);
+    grid = generateGrid(5, 4, 40);
   });
 
   it('computes straight-line path for given steps', () => {
@@ -178,7 +178,7 @@ describe('isTrapped', () => {
   let grid;
 
   beforeEach(() => {
-    grid = generateGrid(2, 40);
+    grid = generateGrid(5, 4, 40);
   });
 
   it('returns false for an interior vertex with no obstacles', () => {
@@ -228,7 +228,7 @@ describe('movement integration with game state', () => {
   });
 
   it('available directions work with initialized game board', () => {
-    const boardData = initGame(2, 42);
+    const boardData = initGame(5, 4, 42);
     const pos = get(board).startVertex;
     const rays = boardData.rays;
 
@@ -238,7 +238,7 @@ describe('movement integration with game state', () => {
   });
 
   it('computePath respects game obstacles', () => {
-    const boardData = initGame(2, 42);
+    const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
     const rays = boardData.rays;
 

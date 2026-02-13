@@ -33,7 +33,7 @@ describe('Win condition: reaching the target vertex', () => {
   });
 
   it('sets gamePhase to won when player lands on target vertex', async () => {
-    const boardData = initGame(2, 42);
+    const boardData = initGame(5, 4, 42);
     const target = boardData.targetVertex;
     const rays = boardData.rays;
 
@@ -73,7 +73,7 @@ describe('Win condition: reaching the target vertex', () => {
   });
 
   it('computePath stops at target when passing through it', () => {
-    const boardData = initGame(2, 42);
+    const boardData = initGame(5, 4, 42);
     const target = boardData.targetVertex;
     const rays = boardData.rays;
 
@@ -125,7 +125,7 @@ describe('Lose condition: movement pool exhausted', () => {
   });
 
   it('sets gamePhase to lost when pool reaches 0 after move', async () => {
-    const boardData = initGame(2, 42);
+    const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
     const rays = boardData.rays;
 
@@ -155,7 +155,7 @@ describe('Lose condition: movement pool exhausted', () => {
   });
 
   it('sets gamePhase to lost when pool reaches 0 with multi-step move', async () => {
-    const boardData = initGame(2, 42);
+    const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
     const rays = boardData.rays;
 
@@ -176,7 +176,7 @@ describe('Lose condition: movement pool exhausted', () => {
 
     // Reset and set pool exactly to path length so it reaches 0
     resetGame();
-    initGame(2, 42);
+    initGame(5, 4, 42);
     playerPos.set(pos);
     movementPool.set(pathLen);
     diceValue.set(pathLen);
@@ -202,7 +202,7 @@ describe('Lose condition: player trapped', () => {
   });
 
   it('isTrapped returns true when all directions blocked', () => {
-    const boardData = initGame(2, 42);
+    const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
     const rays = boardData.rays;
 
@@ -219,13 +219,13 @@ describe('Lose condition: player trapped', () => {
   });
 
   it('isTrapped returns false when at least one direction is open', () => {
-    const boardData = initGame(2, 42);
+    const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
     expect(isTrapped(boardData.rays, pos, boardData.obstacles)).toBe(false);
   });
 
   it('sets gamePhase to lost after move when player becomes trapped', async () => {
-    const boardData = initGame(2, 42);
+    const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
     const rays = boardData.rays;
 
@@ -272,7 +272,7 @@ describe('Lose condition: player trapped', () => {
   });
 
   it('rollDice detects trapped at start of turn and sets lost', () => {
-    const boardData = initGame(2, 42);
+    const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
     const rays = boardData.rays;
 
@@ -304,7 +304,7 @@ describe('Win/lose detection runs after every move', () => {
   });
 
   it('game continues (back to rolling) when no win/lose condition met', async () => {
-    const boardData = initGame(2, 42);
+    const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
     const rays = boardData.rays;
 

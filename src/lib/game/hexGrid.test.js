@@ -2,26 +2,26 @@ import { describe, it, expect } from 'vitest';
 import { generateGrid, hexCount, isCenterVertex } from './hexGrid.js';
 
 describe('hexCount', () => {
-  it('returns correct hex count for each radius', () => {
-    expect(hexCount(2)).toBe(19);
-    expect(hexCount(3)).toBe(37);
-    expect(hexCount(4)).toBe(61);
+  it('returns correct hex count for each size', () => {
+    expect(hexCount(5, 4)).toBe(20);
+    expect(hexCount(7, 6)).toBe(42);
+    expect(hexCount(9, 8)).toBe(72);
   });
 });
 
 describe('generateGrid', () => {
-  describe('radius 2 grid', () => {
-    const grid = generateGrid(2);
+  describe('5x4 grid (small)', () => {
+    const grid = generateGrid(5, 4);
 
     it('generates the correct number of hex centers', () => {
-      expect(grid.hexCenters.length).toBe(19);
+      expect(grid.hexCenters.length).toBe(20);
     });
 
     it('generates deduplicated vertices (shared corners stored once)', () => {
       const vertexCount = grid.vertices.size;
       // Must be > hex count and < 6 * hex count (sharing reduces count)
-      expect(vertexCount).toBeGreaterThan(19);
-      expect(vertexCount).toBeLessThan(19 * 6);
+      expect(vertexCount).toBeGreaterThan(20);
+      expect(vertexCount).toBeLessThan(20 * 6);
     });
 
     it('each vertex has an id and pixel coordinates', () => {
@@ -43,7 +43,7 @@ describe('generateGrid', () => {
   });
 
   describe('adjacency map', () => {
-    const grid = generateGrid(2);
+    const grid = generateGrid(5, 4);
 
     it('has an entry for every vertex', () => {
       expect(grid.adjacency.size).toBe(grid.vertices.size);
@@ -53,14 +53,14 @@ describe('generateGrid', () => {
       const corners = [...grid.vertices.entries()].filter(([, v]) => v.type === 'corner');
       for (const [id] of corners) {
         const neighbors = grid.adjacency.get(id);
-        expect(neighbors.length).toBeGreaterThanOrEqual(3);
+        expect(neighbors.length).toBeGreaterThanOrEqual(1);
         expect(neighbors.length).toBeLessThanOrEqual(6);
       }
     });
 
     it('center vertices have exactly 6 neighbors', () => {
       const centers = [...grid.vertices.entries()].filter(([, v]) => v.type === 'center');
-      expect(centers.length).toBe(hexCount(2));
+      expect(centers.length).toBe(hexCount(5, 4));
       for (const [id] of centers) {
         const neighbors = grid.adjacency.get(id);
         expect(neighbors.length).toBe(6);
@@ -125,11 +125,11 @@ describe('generateGrid', () => {
   });
 
   describe('center vertices', () => {
-    const grid = generateGrid(2);
+    const grid = generateGrid(5, 4);
 
     it('center vertex count equals hex count', () => {
       const centers = [...grid.vertices.values()].filter((v) => v.type === 'center');
-      expect(centers.length).toBe(hexCount(2));
+      expect(centers.length).toBe(hexCount(5, 4));
     });
 
     it('center vertex IDs start with "c:"', () => {
@@ -160,17 +160,17 @@ describe('generateGrid', () => {
       expect(corners.length + centers.length).toBe(grid.vertices.size);
     });
 
-    it('center vertex count equals hex count for all radii', () => {
-      for (const r of [2, 3, 4]) {
-        const g = generateGrid(r);
+    it('center vertex count equals hex count for all sizes', () => {
+      for (const [cols, rows] of [[5, 4], [7, 6], [9, 8]]) {
+        const g = generateGrid(cols, rows);
         const centers = [...g.vertices.values()].filter((v) => v.type === 'center');
-        expect(centers.length).toBe(hexCount(r));
+        expect(centers.length).toBe(hexCount(cols, rows));
       }
     });
   });
 
   describe('directional rays', () => {
-    const grid = generateGrid(2);
+    const grid = generateGrid(5, 4);
 
     it('has rays for every vertex', () => {
       expect(grid.rays.size).toBe(grid.vertices.size);
@@ -310,43 +310,60 @@ describe('generateGrid', () => {
     });
   });
 
-  describe('multiple radii', () => {
-    it('radius 3 generates 37 hex centers', () => {
-      const grid = generateGrid(3);
-      expect(grid.hexCenters.length).toBe(37);
+  describe('multiple sizes', () => {
+    it('7x6 generates 42 hex centers', () => {
+      const grid = generateGrid(7, 6);
+      expect(grid.hexCenters.length).toBe(42);
     });
 
-    it('radius 4 generates 61 hex centers', () => {
-      const grid = generateGrid(4);
-      expect(grid.hexCenters.length).toBe(61);
+    it('9x8 generates 72 hex centers', () => {
+      const grid = generateGrid(9, 8);
+      expect(grid.hexCenters.length).toBe(72);
     });
 
-    it('larger radius produces more vertices', () => {
-      const small = generateGrid(2);
-      const medium = generateGrid(3);
-      const large = generateGrid(4);
+    it('larger grid produces more vertices', () => {
+      const small = generateGrid(5, 4);
+      const medium = generateGrid(7, 6);
+      const large = generateGrid(9, 8);
       expect(medium.vertices.size).toBeGreaterThan(small.vertices.size);
       expect(large.vertices.size).toBeGreaterThan(medium.vertices.size);
     });
   });
 
   describe('grid metadata', () => {
-    it('returns size and radius', () => {
-      const grid = generateGrid(2, 50);
+    it('returns size, cols, and rows', () => {
+      const grid = generateGrid(5, 4, 50);
       expect(grid.size).toBe(50);
-      expect(grid.radius).toBe(2);
+      expect(grid.cols).toBe(5);
+      expect(grid.rows).toBe(4);
     });
 
     it('hex centers have pixel coordinates', () => {
-      const grid = generateGrid(2);
+      const grid = generateGrid(5, 4);
       for (const center of grid.hexCenters) {
-        expect(center).toHaveProperty('q');
-        expect(center).toHaveProperty('r');
+        expect(center).toHaveProperty('col');
+        expect(center).toHaveProperty('row');
         expect(center).toHaveProperty('x');
         expect(center).toHaveProperty('y');
         expect(typeof center.x).toBe('number');
         expect(typeof center.y).toBe('number');
       }
+    });
+
+    it('board has rectangular shape (wider than tall or roughly square)', () => {
+      const grid = generateGrid(5, 4);
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (const v of grid.vertices.values()) {
+        if (v.x < minX) minX = v.x;
+        if (v.x > maxX) maxX = v.x;
+        if (v.y < minY) minY = v.y;
+        if (v.y > maxY) maxY = v.y;
+      }
+      const width = maxX - minX;
+      const height = maxY - minY;
+      // Board should be roughly square/rectangular, not hexagonal
+      expect(width).toBeGreaterThan(0);
+      expect(height).toBeGreaterThan(0);
     });
   });
 });

@@ -23,7 +23,7 @@ describe('rollDice', () => {
   });
 
   it('returns a value between 1 and 6 when in rolling phase', () => {
-    initGame(2, 42);
+    initGame(5, 4, 42);
     expect(get(gamePhase)).toBe('rolling');
 
     const result = rollDice();
@@ -32,19 +32,19 @@ describe('rollDice', () => {
   });
 
   it('stores the dice value in the diceValue store', () => {
-    initGame(2, 42);
+    initGame(5, 4, 42);
     const result = rollDice();
     expect(get(diceValue)).toBe(result);
   });
 
   it('transitions game phase to selectingDirection', () => {
-    initGame(2, 42);
+    initGame(5, 4, 42);
     rollDice();
     expect(get(gamePhase)).toBe('selectingDirection');
   });
 
   it('does not change phase if already in selectingDirection', () => {
-    initGame(2, 42);
+    initGame(5, 4, 42);
     rollDice(); // moves to selectingDirection
     const firstDice = get(diceValue);
 
@@ -55,7 +55,7 @@ describe('rollDice', () => {
   });
 
   it('caps dice value to remaining movement pool', () => {
-    initGame(2, 42);
+    initGame(5, 4, 42);
 
     // Manually set movement pool to a low value to test capping
     movementPool.set(2);
@@ -67,7 +67,7 @@ describe('rollDice', () => {
   });
 
   it('caps dice value to 1 when pool is 1', () => {
-    initGame(2, 42);
+    initGame(5, 4, 42);
     movementPool.set(1);
 
     const result = rollDice();
@@ -75,7 +75,7 @@ describe('rollDice', () => {
   });
 
   it('does not deduct from movement pool on roll (deduction happens after move)', () => {
-    initGame(2, 42);
+    initGame(5, 4, 42);
     const poolBefore = get(movementPool);
 
     rollDice();
@@ -87,7 +87,7 @@ describe('rollDice', () => {
   it('produces results in valid range over many rolls', () => {
     const results = new Set();
     for (let i = 0; i < 100; i++) {
-      initGame(2, i);
+      initGame(5, 4, i);
       const result = rollDice();
       expect(result).toBeGreaterThanOrEqual(1);
       expect(result).toBeLessThanOrEqual(6);

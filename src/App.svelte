@@ -27,8 +27,8 @@
     return getAvailableDirections(boardData.rays, pos, boardData.obstacles);
   });
 
-  function handleStart(radius) {
-    initGame(radius);
+  function handleStart(cols, rows) {
+    initGame(cols, rows);
   }
 
   function handleDirectionSelect(direction) {
@@ -55,7 +55,8 @@
 
   {:else if boardData}
     <Board
-      radius={boardData.radius}
+      cols={boardData.cols}
+      rows={boardData.rows}
       startVertex={boardData.startVertex}
       targetVertex={boardData.targetVertex}
       obstacles={boardData.obstacles}

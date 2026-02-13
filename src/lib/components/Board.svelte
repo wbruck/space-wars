@@ -4,7 +4,8 @@
 
   /**
    * Board component props:
-   * @prop {number} radius - Board radius (2, 3, or 4)
+   * @prop {number} cols - Number of hex columns
+   * @prop {number} rows - Number of hex rows
    * @prop {string|null} startVertex - Vertex ID for start position
    * @prop {string|null} targetVertex - Vertex ID for target position
    * @prop {Set<string>} obstacles - Set of obstacle vertex IDs
@@ -20,7 +21,8 @@
    * @prop {function} onConfirmMove - Callback when move is confirmed
    */
   let {
-    radius = 2,
+    cols = 5,
+    rows = 4,
     startVertex = null,
     targetVertex = null,
     obstacles = new Set(),
@@ -38,7 +40,7 @@
 
   const HEX_SIZE = 40;
 
-  let grid = $derived(generateGrid(radius, HEX_SIZE));
+  let grid = $derived(generateGrid(cols, rows, HEX_SIZE));
 
   // Compute SVG viewBox from vertex positions
   let viewBox = $derived.by(() => {

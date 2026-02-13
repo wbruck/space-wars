@@ -31,9 +31,10 @@ Gameplay phases show `Board` + `Dice` + `HUD` together.
 
 Centralized Svelte writable stores: `board`, `playerPos`, `movementPool`, `diceValue`, `gamePhase`, `visited`, `movesMade`, `selectedDirection`, `previewPath`, `animatingPath`, `animationStep`.
 
-Key exports: `initGame(radius, seed?)`, `rollDice()`, `selectDirection(dir)`, `executeMove(callback?)`, `resetGame()`, `hasValidPath()`.
+Key exports: `initGame(cols, rows, seed?)`, `rollDice()`, `selectDirection(dir)`, `executeMove(callback?)`, `resetGame()`, `hasValidPath()`.
 
-- `initGame` accepts an optional seed for deterministic tests (xorshift32 RNG)
+- `initGame` accepts cols/rows for board dimensions and an optional seed for deterministic tests (xorshift32 RNG)
+- Movement pool formula: `(cols + rows) * 5`
 - `executeMove` animates step-by-step with setTimeout (150ms/step), then checks win/lose/trapped
 - Movement pool deduction happens AFTER the move completes, using actual steps taken (not dice value)
 
@@ -41,7 +42,9 @@ Key exports: `initGame(radius, seed?)`, `rollDice()`, `selectDirection(dir)`, `e
 
 Spaces are at hex **vertices** (corners) AND hex **centers**. Corner vertices form the original triangular lattice; center vertices fill gaps to create a denser graph. Each center vertex has **6 neighbors** (its hex's 6 corners). Each corner vertex has up to **6 neighbors** (3 corners + up to 3 centers). The 6 movement directions come from 3 lattice axes x 2 directions. Directional rays are built via graph traversal and include both corner and center vertices.
 
-`generateGrid(radius, size)` returns `{ vertices, adjacency, rays, hexCenters, size, radius }`. Corner vertex IDs are coordinate strings like `"40,69.282"`. Center vertex IDs use `c:` prefix like `"c:0,0"`. Vertices have a `type` property (`"corner"` or `"center"`). Use `isCenterVertex(id)` to distinguish them.
+Board layout is rectangular using offset columns (odd-q) for flat-top hexes. Size mappings: Small = 5x4 (20 hexes), Medium = 7x6 (42 hexes), Large = 9x8 (72 hexes).
+
+`generateGrid(cols, rows, size)` returns `{ vertices, adjacency, rays, hexCenters, size, cols, rows }`. Corner vertex IDs are coordinate strings like `"40,69.282"`. Center vertex IDs use `c:` prefix like `"c:0,0"`. Vertices have a `type` property (`"corner"` or `"center"`). Use `isCenterVertex(id)` to distinguish them.
 
 ### Movement (`src/lib/game/movement.js`)
 
@@ -56,7 +59,7 @@ Path computation uses **rays** (not adjacency). Remaining steps after hitting an
 - **Board.svelte** — receives all game data as **props** from App.svelte
 - **HUD.svelte, GameOver.svelte** — subscribe directly to stores (no props needed)
 - **Dice.svelte** — uses `$derived()` for store auto-subscription
-- **SetupScreen.svelte** — local `$state()` for radius, callback prop for start
+- **SetupScreen.svelte** — local `$state()` for size selection, callback prop for start (passes cols, rows)
 
 ## Svelte 5 Patterns
 
@@ -71,7 +74,7 @@ In `.js` files and tests, use `get()` from `svelte/store` to read store values.
 
 ## Testing
 
-80 tests across 5 files in `src/lib/game/`. Tests use seeded RNG (`initGame(radius, seed)`) for reproducibility. For async tests with `executeMove`, wrap in a Promise (vitest deprecated `done()` callbacks).
+88 tests across 5 files in `src/lib/game/`. Tests use seeded RNG (`initGame(cols, rows, seed)`) for reproducibility. For async tests with `executeMove`, wrap in a Promise (vitest deprecated `done()` callbacks).
 
 ## Mobile & SVG
 

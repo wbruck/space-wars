@@ -6,11 +6,9 @@
  * lattice; center vertices fill the gaps, creating a denser graph where
  * movement rays alternate corner → center → corner → center.
  *
- * Coordinate system:
- * - Hex centers use axial coordinates (q, r).
- * - Corner vertices are at the 6 corners of each hex, shared between up to 3 hexes.
- * - Center vertices are at the center of each hex.
- * - Flat-top hex orientation is used.
+ * Board layout: rectangular grid of flat-top hexes using offset rows.
+ * Even rows at base position, odd rows shifted right by size * 3/2.
+ * Size mappings: Small = 5x4 (20 hexes), Medium = 7x6 (42), Large = 9x8 (72).
  *
  * For a flat-top hex with center (cx, cy) and size S:
  *   corner i (0..5) = (cx + S*cos(60°*i), cy + S*sin(60°*i))
@@ -31,27 +29,25 @@
 const SQRT3 = Math.sqrt(3);
 
 /**
- * Convert axial (q, r) to pixel center for flat-top hexes.
- * Size = distance from center to corner.
+ * Generate hex centers for a rectangular grid using offset columns (odd-q).
+ * Flat-top orientation: columns advance by size * 3/2 in x,
+ * rows advance by size * sqrt(3) in y. Odd columns offset down by
+ * size * sqrt(3) / 2.
+ *
+ * @param {number} cols - Number of hex columns
+ * @param {number} rows - Number of hex rows
+ * @param {number} size - Hex size (center to corner distance)
+ * @returns {Array<{col: number, row: number, x: number, y: number}>}
  */
-function axialToPixel(q, r, size) {
-  const x = size * (3 / 2) * q;
-  const y = size * ((SQRT3 / 2) * q + SQRT3 * r);
-  return { x, y };
-}
-
-/**
- * Generate all hex centers within the given radius (axial distance <= radius).
- * radius=2 gives 19 hexes, radius=3 gives 37, radius=4 gives 61.
- */
-function generateHexCenters(radius) {
+function generateRectHexCenters(cols, rows, size) {
   const centers = [];
-  for (let q = -radius; q <= radius; q++) {
-    for (let r = -radius; r <= radius; r++) {
-      const s = -q - r;
-      if (Math.abs(s) <= radius) {
-        centers.push({ q, r });
-      }
+  const colSpacing = size * 3 / 2;
+  const rowSpacing = size * SQRT3;
+  for (let col = 0; col < cols; col++) {
+    for (let row = 0; row < rows; row++) {
+      const x = col * colSpacing;
+      const y = row * rowSpacing + (col % 2 === 1 ? rowSpacing / 2 : 0);
+      centers.push({ col, row, x, y });
     }
   }
   return centers;
@@ -104,20 +100,21 @@ function getDirectionVectors(size) {
 
 /**
  * Generate the full hex vertex grid with both corner and center vertices.
+ * Board is rectangular: cols x rows hexes in offset-row layout.
  *
- * @param {number} radius - Board radius in hexes (2=small, 3=medium, 4=large)
+ * @param {number} cols - Number of hex columns
+ * @param {number} rows - Number of hex rows
  * @param {number} [size=40] - Hex size (center to corner distance in px)
- * @returns {{ vertices: Map<string, object>, adjacency: Map<string, string[]>, rays: Map<string, Array<{direction: number, vertices: string[]}>>, hexCenters: Array, size: number, radius: number }}
+ * @returns {{ vertices: Map<string, object>, adjacency: Map<string, string[]>, rays: Map<string, Array<{direction: number, vertices: string[]}>>, hexCenters: Array, size: number, cols: number, rows: number }}
  */
-export function generateGrid(radius, size = 40) {
-  const hexCenters = generateHexCenters(radius);
+export function generateGrid(cols, rows, size = 40) {
+  const hexCenters = generateRectHexCenters(cols, rows, size);
   const vertexMap = new Map(); // key -> { id, x, y, type }
   // Maps coordinate string -> vertex ID for position-based lookups
   const coordToId = new Map();
 
   // Generate corner vertices from hex corners
-  for (const { q, r } of hexCenters) {
-    const { x: cx, y: cy } = axialToPixel(q, r, size);
+  for (const { x: cx, y: cy } of hexCenters) {
     for (let i = 0; i < 6; i++) {
       const angle = (Math.PI / 3) * i;
       const vx = cx + size * Math.cos(angle);
@@ -136,8 +133,7 @@ export function generateGrid(radius, size = 40) {
   }
 
   // Generate center vertices at each hex center
-  for (const { q, r } of hexCenters) {
-    const { x: cx, y: cy } = axialToPixel(q, r, size);
+  for (const { x: cx, y: cy } of hexCenters) {
     const cKey = centerKey(cx, cy);
     const coordStr = vertexKey(cx, cy);
     if (!vertexMap.has(cKey)) {
@@ -200,10 +196,9 @@ export function generateGrid(radius, size = 40) {
     rays.set(key, vertexRays);
   }
 
-  // Compute hex center pixel positions for rendering
-  const hexCentersWithPixels = hexCenters.map(({ q, r }) => {
-    const { x, y } = axialToPixel(q, r, size);
-    return { q, r, x: roundCoord(x), y: roundCoord(y) };
+  // Hex center pixel positions for rendering (already computed)
+  const hexCentersWithPixels = hexCenters.map(({ col, row, x, y }) => {
+    return { col, row, x: roundCoord(x), y: roundCoord(y) };
   });
 
   return {
@@ -212,14 +207,17 @@ export function generateGrid(radius, size = 40) {
     rays,
     hexCenters: hexCentersWithPixels,
     size,
-    radius,
+    cols,
+    rows,
   };
 }
 
 /**
- * Get the expected hex count for a given radius.
- * Formula: 3*r^2 + 3*r + 1
+ * Get the expected hex count for a rectangular grid.
+ * @param {number} cols - Number of hex columns
+ * @param {number} rows - Number of hex rows
+ * @returns {number}
  */
-export function hexCount(radius) {
-  return 3 * radius * radius + 3 * radius + 1;
+export function hexCount(cols, rows) {
+  return cols * rows;
 }
