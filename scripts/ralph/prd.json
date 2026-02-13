@@ -21,7 +21,7 @@
         "Commit with message: US-011: add hex center vertices to grid math"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

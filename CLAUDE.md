@@ -39,9 +39,9 @@ Key exports: `initGame(radius, seed?)`, `rollDice()`, `selectDirection(dir)`, `e
 
 ### Hex Grid (`src/lib/game/hexGrid.js`)
 
-Spaces are at hex **vertices** (corners), not centers, forming a triangular lattice. Each vertex has **3 direct neighbors** (not 6). The 6 movement directions come from 3 lattice axes x 2 directions. Directional rays extend in straight lines, skipping gaps in the bipartite structure.
+Spaces are at hex **vertices** (corners) AND hex **centers**. Corner vertices form the original triangular lattice; center vertices fill gaps to create a denser graph. Each center vertex has **6 neighbors** (its hex's 6 corners). Each corner vertex has up to **6 neighbors** (3 corners + up to 3 centers). The 6 movement directions come from 3 lattice axes x 2 directions. Directional rays are built via graph traversal and include both corner and center vertices.
 
-`generateGrid(radius, size)` returns `{ vertices, adjacency, rays, hexCenters, size, radius }`. Vertex IDs are coordinate strings like `"40,69.282"`.
+`generateGrid(radius, size)` returns `{ vertices, adjacency, rays, hexCenters, size, radius }`. Corner vertex IDs are coordinate strings like `"40,69.282"`. Center vertex IDs use `c:` prefix like `"c:0,0"`. Vertices have a `type` property (`"corner"` or `"center"`). Use `isCenterVertex(id)` to distinguish them.
 
 ### Movement (`src/lib/game/movement.js`)
 

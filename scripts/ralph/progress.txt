@@ -5,8 +5,10 @@
 - Use `npm run dev` for dev server, `npm run build` for production build
 - PRD is at tasks/prd.json, progress log is at scripts/ralph/progress.txt
 - Use `npm test` to run vitest unit tests
-- Hex vertex grid: vertices are at hex corners, each has 3 direct neighbors (not 6). The 6 directions come from 3 axes × 2 directions. Rays skip gaps in the bipartite lattice.
-- Vertex IDs are coordinate-based strings like "40,69.282" (roundCoord(x),roundCoord(y))
+- Hex vertex grid: vertices are at hex corners AND hex centers. Corner vertices have up to 6 neighbors (3 corners + up to 3 centers). Center vertices have exactly 6 neighbors (their hex's 6 corners). The 6 directions come from 3 axes × 2 directions.
+- Vertex IDs: corner vertices use coordinate strings like "40,69.282", center vertices use "c:" prefix like "c:0,0". Use `isCenterVertex(id)` to distinguish them.
+- Rays are built via direction-aware graph traversal (not geometric stepping). Rays include both corner and center vertices. Each vertex has a `type` property ("corner" or "center").
+- coordToId map in hexGrid.js maps coordinate strings to vertex IDs (handles both corner and center lookups)
 - Svelte 5 runes: use `$props()` for component props, `$state()` for mutable state, `$derived` / `$derived.by` for computed values
 - SVG board rendering: use viewBox with preserveAspectRatio="xMidYMid meet" for responsive scaling
 - Board.svelte accepts props: radius, startVertex, targetVertex, obstacles (Set), playerPos, visited (Set)
@@ -193,4 +195,23 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - Apple HIG / Material Design minimum touch target: 44x44px; use min-height on buttons to enforce
   - `overflow-x: hidden` on html + body prevents any horizontal scrolling from small overflows
   - Browser automation (MCP) was not available; manual browser verification needed for device emulation testing
+---
+
+## 2026-02-13 - US-011
+- Added hex center vertices to the grid math in src/lib/game/hexGrid.js
+- Each hex center is now a vertex in the vertices Map with `c:` prefix IDs (e.g., "c:0,0") and `type: 'center'`
+- Corner vertices gain `type: 'corner'` property for distinguishing
+- Adjacency: each center has 6 neighbors (its hex's 6 corners); corners gain up to 3 center neighbors; corner-to-corner edges preserved
+- Rays rebuilt using direction-aware graph traversal via `dirAdj` map (directional adjacency: vertex → direction → neighbor)
+- Exported `isCenterVertex(id)` utility function
+- Added `coordToId` map for position-based lookups that handles both corner and center vertices
+- Updated hexGrid.test.js: replaced old adjacency tests (max 3 neighbors) with new tests for center vertices (6 neighbors each, count equals hex count, IDs distinguishable), corner neighbor ranges, and ray center integration
+- All 87 tests pass across 5 test files, build succeeds cleanly
+- Files changed: src/lib/game/hexGrid.js (updated), src/lib/game/hexGrid.test.js (updated)
+- **Learnings for future iterations:**
+  - Hex centers do NOT fall on every "gap" in the bipartite lattice. Centers are at hex center pixel positions which only align with direction vectors in 3 of 6 directions from any corner. The other 3 directions have corner-to-corner edges.
+  - Geometric ray stepping (old approach) cannot produce alternating corner-center-corner patterns because consecutive corners may be adjacent without an intermediate center in the same direction.
+  - Direction-aware graph traversal (following directional adjacency chain) is the correct approach for ray building with centers. Each vertex maps direction → neighbor, and rays follow these chains.
+  - The `coordToId` map is essential: center vertices have IDs with `c:` prefix, but their pixel coordinates match positions in the direction-vector grid. The map translates coordinate strings to the correct vertex ID (corner or center).
+  - Corner vertices in the bipartite lattice have two "types" (A and B): Type A has corner neighbors at directions 0,2,4 and center neighbors at 1,3,5; Type B has the reverse. This affects ray patterns.
 ---
