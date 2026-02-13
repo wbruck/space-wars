@@ -3,6 +3,9 @@
 - Directory layout: src/lib/components/ (Svelte UI), src/lib/game/ (game logic), src/lib/utils/ (helpers)
 - Use `npm run dev` for dev server, `npm run build` for production build
 - PRD is at tasks/prd.json, progress log is at scripts/ralph/progress.txt
+- Use `npm test` to run vitest unit tests
+- Hex vertex grid: vertices are at hex corners, each has 3 direct neighbors (not 6). The 6 directions come from 3 axes × 2 directions. Rays skip gaps in the bipartite lattice.
+- Vertex IDs are coordinate-based strings like "40,69.282" (roundCoord(x),roundCoord(y))
 
 # Ralph Progress Log
 Started: Fri Feb 13 08:49:32 CST 2026
@@ -19,4 +22,19 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - Svelte 5 is the version installed (with runes syntax); Vite 7
   - No TypeScript in this project - using plain JS with jsconfig.json
   - Build output goes to dist/ (already in .gitignore)
+---
+
+## 2026-02-13 - US-002
+- Implemented src/lib/game/hexGrid.js with generateGrid(radius, size) and hexCount(radius) exports
+- Vertices generated from hex corners (flat-top, axial coords), deduplicated via coordinate rounding
+- Adjacency map: each vertex has up to 3 neighbors (hex edge connections)
+- Directional rays: 6 rays per vertex (0°-300° in 60° steps), rays skip over gaps in bipartite lattice
+- 24 unit tests in hexGrid.test.js covering vertex generation, adjacency, rays, multiple radii
+- Files changed: src/lib/game/hexGrid.js (new), src/lib/game/hexGrid.test.js (new), package.json (added vitest + test script)
+- **Learnings for future iterations:**
+  - Hex vertices form a bipartite graph: each vertex has 3 neighbors, not 6. The "6 directions" come from 3 lattice axes × 2 directions each.
+  - Direction vectors at 0°, 60°, 120°, 180°, 240°, 300° with magnitude=size cover all possible edge directions, but each vertex only has edges in 3 of these 6 directions (alternating pattern).
+  - Ray computation must skip gaps: stepping by direction vector may land on empty space; continue stepping and collect vertices that exist.
+  - Coordinate deduplication via roundCoord (round to 3 decimal places) works well for eliminating floating-point duplicates.
+  - The `distFromOrigin` bound in ray walking prevents infinite loops for edge vertices.
 ---

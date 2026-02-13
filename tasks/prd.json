@@ -37,7 +37,7 @@
         "Commit with message: US-002: implement hex vertex grid math"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
