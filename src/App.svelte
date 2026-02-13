@@ -1,10 +1,11 @@
 <script>
   import Board from './lib/components/Board.svelte';
   import Dice from './lib/components/Dice.svelte';
+  import HUD from './lib/components/HUD.svelte';
   import {
-    board, playerPos, movementPool, diceValue, gamePhase, visited, movesMade,
+    board, playerPos, gamePhase, visited,
     selectedDirection, previewPath, animatingPath, animationStep,
-    initGame, resetGame, selectDirection, executeMove,
+    initGame, selectDirection, executeMove,
   } from './lib/game/gameState.js';
   import { getAvailableDirections } from './lib/game/movement.js';
 
@@ -14,8 +15,6 @@
   let boardData = $derived($board);
   let phase = $derived($gamePhase);
   let pos = $derived($playerPos);
-  let pool = $derived($movementPool);
-  let dice = $derived($diceValue);
   let visitedSet = $derived($visited);
   let selDir = $derived($selectedDirection);
   let preview = $derived($previewPath);
@@ -75,20 +74,7 @@
 
     <Dice />
 
-    <div class="hud-placeholder">
-      <span>Moves: {pool}</span>
-      {#if dice != null}
-        <span>Rolled: {dice}</span>
-      {/if}
-      <span class="phase-label">
-        {#if phase === 'rolling'}Roll the dice
-        {:else if phase === 'selectingDirection'}Choose a direction
-        {:else if phase === 'moving'}Moving...
-        {:else if phase === 'won'}You won!
-        {:else if phase === 'lost'}Game over
-        {/if}
-      </span>
-    </div>
+    <HUD />
   {/if}
 </main>
 
@@ -144,24 +130,8 @@
     background: #388e3c;
   }
 
-  .hud-placeholder {
-    display: flex;
-    gap: 1.5rem;
-    justify-content: center;
-    align-items: center;
-    margin-top: 0.5rem;
-    font-size: 0.95rem;
-    color: #555;
-    flex-wrap: wrap;
-  }
-
-  .phase-label {
-    font-style: italic;
-  }
-
   @media (prefers-color-scheme: dark) {
     h1 { color: #eee; }
     p { color: #aaa; }
-    .hud-placeholder { color: #bbb; }
   }
 </style>
