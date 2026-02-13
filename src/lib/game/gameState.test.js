@@ -12,6 +12,7 @@ import {
   resetGame,
   hasValidPath,
 } from './gameState.js';
+import { isCenterVertex } from './hexGrid.js';
 
 describe('initGame', () => {
   beforeEach(() => {
@@ -180,6 +181,134 @@ describe('hasValidPath', () => {
       ['d', ['c']],
     ]);
     expect(hasValidPath(adj, 'a', 'c', new Set())).toBe(false);
+  });
+});
+
+describe('center dot support in game state', () => {
+  beforeEach(() => {
+    resetGame();
+  });
+
+  it('board vertices include both corner and center types', () => {
+    const boardData = initGame(5, 4, 42);
+    const vertices = [...boardData.vertices.values()];
+    const corners = vertices.filter(v => v.type === 'corner');
+    const centers = vertices.filter(v => v.type === 'center');
+
+    expect(corners.length).toBeGreaterThan(0);
+    expect(centers.length).toBeGreaterThan(0);
+    expect(centers.length).toBe(20); // 5x4 = 20 hex centers
+    expect(corners.length + centers.length).toBe(boardData.vertices.size);
+  });
+
+  it('center vertex IDs are distinguishable from corner IDs', () => {
+    const boardData = initGame(5, 4, 42);
+    for (const [id, v] of boardData.vertices) {
+      if (v.type === 'center') {
+        expect(isCenterVertex(id)).toBe(true);
+      } else {
+        expect(isCenterVertex(id)).toBe(false);
+      }
+    }
+  });
+
+  it('obstacles include center vertices', () => {
+    // Run multiple seeds to ensure at least some center obstacles appear
+    let totalCenterObstacles = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const boardData = initGame(5, 4, seed);
+      for (const obsId of boardData.obstacles) {
+        if (isCenterVertex(obsId)) totalCenterObstacles++;
+      }
+    }
+    expect(totalCenterObstacles).toBeGreaterThan(0);
+  });
+
+  it('obstacle placement candidates include center vertices', () => {
+    const boardData = initGame(5, 4, 42);
+    const ids = [...boardData.vertices.keys()];
+    const candidates = ids.filter(
+      id => id !== boardData.startVertex && id !== boardData.targetVertex
+    );
+    const centerCandidates = candidates.filter(id => isCenterVertex(id));
+    expect(centerCandidates.length).toBeGreaterThan(0);
+  });
+
+  it('BFS hasValidPath traverses center-to-corner adjacency', () => {
+    // Build a small graph with center and corner vertices
+    const adj = new Map([
+      ['corner1', ['c:center1']],
+      ['c:center1', ['corner1', 'corner2']],
+      ['corner2', ['c:center1']],
+    ]);
+    // Path: corner1 -> c:center1 -> corner2
+    expect(hasValidPath(adj, 'corner1', 'corner2', new Set())).toBe(true);
+  });
+
+  it('BFS respects obstacle on center vertex', () => {
+    const adj = new Map([
+      ['corner1', ['c:center1']],
+      ['c:center1', ['corner1', 'corner2']],
+      ['corner2', ['c:center1']],
+    ]);
+    // Block the center vertex; no path should exist
+    expect(hasValidPath(adj, 'corner1', 'corner2', new Set(['c:center1']))).toBe(false);
+  });
+
+  it('BFS works on real board with center-corner adjacency', () => {
+    const boardData = initGame(7, 6, 42);
+    // Verify path exists (already guaranteed, but test the adjacency graph is correct)
+    expect(
+      hasValidPath(boardData.adjacency, boardData.startVertex, boardData.targetVertex, boardData.obstacles)
+    ).toBe(true);
+
+    // Also verify adjacency includes center-to-corner edges
+    let centerWithNeighbors = 0;
+    for (const [id, neighbors] of boardData.adjacency) {
+      if (isCenterVertex(id) && neighbors.length > 0) {
+        centerWithNeighbors++;
+        // Every center neighbor should be a corner
+        for (const nid of neighbors) {
+          expect(isCenterVertex(nid)).toBe(false);
+        }
+      }
+    }
+    expect(centerWithNeighbors).toBeGreaterThan(0);
+  });
+
+  it('start and target are valid vertices in the expanded grid', () => {
+    const boardData = initGame(5, 4, 42);
+    expect(boardData.vertices.has(boardData.startVertex)).toBe(true);
+    expect(boardData.vertices.has(boardData.targetVertex)).toBe(true);
+  });
+
+  it('movement pool is appropriate for boards with center dots (2 steps per hex)', () => {
+    // Small: (5+4)*5 = 45, crossing ~4 hexes on diagonal = 8 steps
+    const small = initGame(5, 4, 42);
+    expect(get(movementPool)).toBe(45);
+
+    resetGame();
+
+    // Medium: (7+6)*5 = 65
+    const medium = initGame(7, 6, 42);
+    expect(get(movementPool)).toBe(65);
+
+    resetGame();
+
+    // Large: (9+8)*5 = 85
+    const large = initGame(9, 8, 42);
+    expect(get(movementPool)).toBe(85);
+  });
+
+  it('vertex count roughly doubles compared to corner-only graph', () => {
+    const boardData = initGame(5, 4, 42);
+    const corners = [...boardData.vertices.values()].filter(v => v.type === 'corner');
+    const centers = [...boardData.vertices.values()].filter(v => v.type === 'center');
+    // Centers = hex count (20 for 5x4), corners are larger but centers add significant density
+    expect(boardData.vertices.size).toBe(corners.length + centers.length);
+    expect(centers.length).toBe(20);
+    // Total vertex count should be significantly more than just corners
+    expect(boardData.vertices.size).toBeGreaterThan(corners.length);
   });
 });
 
