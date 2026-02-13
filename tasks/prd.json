@@ -79,7 +79,7 @@
         "Commit with message: US-004: implement game state management"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

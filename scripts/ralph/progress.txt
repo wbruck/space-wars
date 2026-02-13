@@ -9,6 +9,9 @@
 - Svelte 5 runes: use `$props()` for component props, `$state()` for mutable state, `$derived` / `$derived.by` for computed values
 - SVG board rendering: use viewBox with preserveAspectRatio="xMidYMid meet" for responsive scaling
 - Board.svelte accepts props: radius, startVertex, targetVertex, obstacles (Set), playerPos, visited (Set)
+- Game state is in src/lib/game/gameState.js: exports Svelte writable stores (board, playerPos, movementPool, diceValue, gamePhase, visited, movesMade) + initGame(radius, seed?) and resetGame()
+- Use `get()` from 'svelte/store' to read store values in tests/non-Svelte code
+- hasValidPath(adjacency, start, target, obstacles) exported from gameState.js for BFS reachability checks
 
 # Ralph Progress Log
 Started: Fri Feb 13 08:49:32 CST 2026
@@ -57,4 +60,20 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - Edge deduplication: only draw edge when vid < nid to avoid double-drawing
   - Hex outlines are drawn from hexCenters data (not vertices), computing 6 corner points per hex
   - Browser automation (MCP) was not available for visual testing; manual browser verification needed
+---
+
+## 2026-02-13 - US-004
+- Created src/lib/game/gameState.js with Svelte writable stores and initGame(radius, seed) function
+- Stores: board, playerPos, movementPool, diceValue, gamePhase, visited, movesMade
+- initGame() generates grid, picks start/target vertices far apart, places random obstacles (~12% of vertices)
+- BFS validation ensures a path exists from start to target; regenerates obstacles if no path found (up to 20 attempts)
+- Optional seed parameter for reproducible testing (xorshift32 RNG)
+- Exported hasValidPath() for reuse in future stories
+- 19 unit tests covering initialization for all radii, obstacle placement validity, BFS correctness, and reset
+- Files changed: src/lib/game/gameState.js (new), src/lib/game/gameState.test.js (new)
+- **Learnings for future iterations:**
+  - Svelte writable stores work well in plain JS modules (not just .svelte files); import `get` from 'svelte/store' to read values in tests
+  - Start/target placement strategy: sort vertices by distance from origin, pick farthest as start, then pick vertex farthest from start as target
+  - BFS path validation is essential before committing obstacle placement; wrap in retry loop
+  - The seeded RNG (xorshift32) enables deterministic tests while keeping random behavior in production
 ---
