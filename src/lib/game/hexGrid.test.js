@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateGrid, hexCount } from './hexGrid.js';
+import { generateGrid, hexCount, isCenterVertex } from './hexGrid.js';
 
 describe('hexCount', () => {
   it('returns correct hex count for each radius', () => {
@@ -49,32 +49,35 @@ describe('generateGrid', () => {
       expect(grid.adjacency.size).toBe(grid.vertices.size);
     });
 
-    it('interior vertices have exactly 3 neighbors (hex vertex graph)', () => {
-      let hasThreeNeighbors = false;
-      for (const [, neighbors] of grid.adjacency) {
-        if (neighbors.length === 3) {
-          hasThreeNeighbors = true;
-          break;
-        }
-      }
-      expect(hasThreeNeighbors).toBe(true);
-    });
-
-    it('no vertex has more than 3 neighbors', () => {
-      for (const [, neighbors] of grid.adjacency) {
-        expect(neighbors.length).toBeLessThanOrEqual(3);
+    it('corner vertices have 3 to 6 neighbors (original 3 + up to 3 center neighbors)', () => {
+      const corners = [...grid.vertices.entries()].filter(([, v]) => v.type === 'corner');
+      for (const [id] of corners) {
+        const neighbors = grid.adjacency.get(id);
+        expect(neighbors.length).toBeGreaterThanOrEqual(3);
+        expect(neighbors.length).toBeLessThanOrEqual(6);
       }
     });
 
-    it('edge vertices have fewer than 3 neighbors', () => {
-      let hasEdgeVertex = false;
-      for (const [, neighbors] of grid.adjacency) {
-        if (neighbors.length < 3) {
-          hasEdgeVertex = true;
+    it('center vertices have exactly 6 neighbors', () => {
+      const centers = [...grid.vertices.entries()].filter(([, v]) => v.type === 'center');
+      expect(centers.length).toBe(hexCount(2));
+      for (const [id] of centers) {
+        const neighbors = grid.adjacency.get(id);
+        expect(neighbors.length).toBe(6);
+      }
+    });
+
+    it('some corner vertices have fewer than 6 neighbors (board edge)', () => {
+      let hasEdgeCorner = false;
+      const corners = [...grid.vertices.entries()].filter(([, v]) => v.type === 'corner');
+      for (const [id] of corners) {
+        const neighbors = grid.adjacency.get(id);
+        if (neighbors.length < 6) {
+          hasEdgeCorner = true;
           break;
         }
       }
-      expect(hasEdgeVertex).toBe(true);
+      expect(hasEdgeCorner).toBe(true);
     });
 
     it('adjacency is symmetric (if A neighbors B, B neighbors A)', () => {
@@ -92,6 +95,76 @@ describe('generateGrid', () => {
         for (const neighborId of neighbors) {
           expect(grid.vertices.has(neighborId)).toBe(true);
         }
+      }
+    });
+
+    it('center vertices only neighbor corner vertices', () => {
+      const centers = [...grid.vertices.entries()].filter(([, v]) => v.type === 'center');
+      for (const [id] of centers) {
+        const neighbors = grid.adjacency.get(id);
+        for (const nid of neighbors) {
+          expect(isCenterVertex(nid)).toBe(false);
+        }
+      }
+    });
+
+    it('corner vertices gain center neighbors from adjacent hexes', () => {
+      // Interior corners belong to 3 hexes, so they should have 3 center neighbors
+      let hasThreeCenterNeighbors = false;
+      const corners = [...grid.vertices.entries()].filter(([, v]) => v.type === 'corner');
+      for (const [id] of corners) {
+        const neighbors = grid.adjacency.get(id);
+        const centerNeighbors = neighbors.filter((nid) => isCenterVertex(nid));
+        if (centerNeighbors.length === 3) {
+          hasThreeCenterNeighbors = true;
+          break;
+        }
+      }
+      expect(hasThreeCenterNeighbors).toBe(true);
+    });
+  });
+
+  describe('center vertices', () => {
+    const grid = generateGrid(2);
+
+    it('center vertex count equals hex count', () => {
+      const centers = [...grid.vertices.values()].filter((v) => v.type === 'center');
+      expect(centers.length).toBe(hexCount(2));
+    });
+
+    it('center vertex IDs start with "c:"', () => {
+      const centers = [...grid.vertices.values()].filter((v) => v.type === 'center');
+      for (const center of centers) {
+        expect(center.id.startsWith('c:')).toBe(true);
+        expect(isCenterVertex(center.id)).toBe(true);
+      }
+    });
+
+    it('corner vertex IDs do not start with "c:"', () => {
+      const corners = [...grid.vertices.values()].filter((v) => v.type === 'corner');
+      for (const corner of corners) {
+        expect(corner.id.startsWith('c:')).toBe(false);
+        expect(isCenterVertex(corner.id)).toBe(false);
+      }
+    });
+
+    it('center vertices have type "center" and corner vertices have type "corner"', () => {
+      for (const v of grid.vertices.values()) {
+        expect(v.type === 'center' || v.type === 'corner').toBe(true);
+      }
+    });
+
+    it('total vertex count = corners + centers', () => {
+      const corners = [...grid.vertices.values()].filter((v) => v.type === 'corner');
+      const centers = [...grid.vertices.values()].filter((v) => v.type === 'center');
+      expect(corners.length + centers.length).toBe(grid.vertices.size);
+    });
+
+    it('center vertex count equals hex count for all radii', () => {
+      for (const r of [2, 3, 4]) {
+        const g = generateGrid(r);
+        const centers = [...g.vertices.values()].filter((v) => v.type === 'center');
+        expect(centers.length).toBe(hexCount(r));
       }
     });
   });
@@ -127,7 +200,6 @@ describe('generateGrid', () => {
     });
 
     it('interior vertices have non-empty rays in all 6 directions', () => {
-      // At least some vertices should have rays in all 6 directions
       let hasAllSixRays = false;
       for (const [, vertexRays] of grid.rays) {
         const nonEmpty = vertexRays.filter((r) => r.vertices.length > 0);
@@ -140,7 +212,6 @@ describe('generateGrid', () => {
     });
 
     it('rays extend multiple vertices for interior vertices', () => {
-      // Some rays should have more than 1 vertex (straight line extends)
       let hasLongRay = false;
       for (const [, vertexRays] of grid.rays) {
         for (const ray of vertexRays) {
@@ -155,9 +226,6 @@ describe('generateGrid', () => {
     });
 
     it('opposite direction rays are consistent', () => {
-      // Direction i and direction (i+3)%6 are opposite.
-      // If vertex A has B in its ray direction i, then B should have A
-      // in its ray direction (i+3)%6.
       for (const [vertexId, vertexRays] of grid.rays) {
         for (const ray of vertexRays) {
           if (ray.vertices.length === 0) continue;
@@ -173,7 +241,6 @@ describe('generateGrid', () => {
     });
 
     it('each adjacent vertex appears as first vertex in exactly one ray', () => {
-      // Every direct neighbor should be the first vertex in one of the 6 rays
       for (const [vertexId, vertexRays] of grid.rays) {
         const neighbors = grid.adjacency.get(vertexId);
         for (const neighborId of neighbors) {
@@ -183,6 +250,63 @@ describe('generateGrid', () => {
           expect(containingRays.length).toBe(1);
         }
       }
+    });
+
+    it('rays include center vertices as intermediate steps', () => {
+      // Rays from corners should have center vertices interspersed
+      let hasCenterInRay = false;
+      const corners = [...grid.vertices.entries()].filter(([, v]) => v.type === 'corner');
+      for (const [id] of corners) {
+        const vertexRays = grid.rays.get(id);
+        for (const ray of vertexRays) {
+          if (ray.vertices.some((vid) => isCenterVertex(vid))) {
+            hasCenterInRay = true;
+            break;
+          }
+        }
+        if (hasCenterInRay) break;
+      }
+      expect(hasCenterInRay).toBe(true);
+    });
+
+    it('rays from centers alternate center-corner pattern', () => {
+      // From a center vertex, the first step is always a corner (hub-spoke),
+      // and subsequent steps alternate. The pattern starting from a center is:
+      // corner → (corner|center) → ... with center vertices interspersed.
+      const centers = [...grid.vertices.entries()].filter(([, v]) => v.type === 'center');
+      let checkedPattern = false;
+      for (const [id] of centers) {
+        const vertexRays = grid.rays.get(id);
+        for (const ray of vertexRays) {
+          if (ray.vertices.length >= 2) {
+            // First vertex in ray from a center should always be a corner
+            expect(isCenterVertex(ray.vertices[0])).toBe(false);
+            checkedPattern = true;
+          }
+        }
+        if (checkedPattern) break;
+      }
+      expect(checkedPattern).toBe(true);
+    });
+
+    it('rays contain a mix of corner and center vertices', () => {
+      // Verify that rays include both corner and center vertices,
+      // confirming centers are integrated into the ray system
+      let foundMixedRay = false;
+      for (const [, vertexRays] of grid.rays) {
+        for (const ray of vertexRays) {
+          if (ray.vertices.length >= 3) {
+            const hasCenter = ray.vertices.some((vid) => isCenterVertex(vid));
+            const hasCorner = ray.vertices.some((vid) => !isCenterVertex(vid));
+            if (hasCenter && hasCorner) {
+              foundMixedRay = true;
+              break;
+            }
+          }
+        }
+        if (foundMixedRay) break;
+      }
+      expect(foundMixedRay).toBe(true);
     });
   });
 

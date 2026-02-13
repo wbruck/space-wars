@@ -2,23 +2,30 @@
  * Hex vertex grid math module.
  *
  * The game board is a hex grid where playable spaces are at hex VERTICES
- * (corners), forming a triangular lattice. Players move along hex edges
- * in 6 directions (3 axes x 2 directions each).
+ * (corners) AND hex centers. Corner vertices form the original triangular
+ * lattice; center vertices fill the gaps, creating a denser graph where
+ * movement rays alternate corner → center → corner → center.
  *
  * Coordinate system:
  * - Hex centers use axial coordinates (q, r).
- * - Vertices are at the 6 corners of each hex, shared between up to 3 hexes.
+ * - Corner vertices are at the 6 corners of each hex, shared between up to 3 hexes.
+ * - Center vertices are at the center of each hex.
  * - Flat-top hex orientation is used.
  *
  * For a flat-top hex with center (cx, cy) and size S:
  *   corner i (0..5) = (cx + S*cos(60°*i), cy + S*sin(60°*i))
  *
- * Each vertex has exactly 3 adjacent vertices (connected by hex edges)
- * for interior vertices, and fewer at board edges. The 3 edges at each
- * vertex define 3 axes; movement along any axis in either direction
- * produces 6 directional rays.
+ * Center vertices have 6 neighbors (the hex's 6 corners, hub-spoke).
+ * Corner vertices have their original 3 edge neighbors PLUS up to 3
+ * additional center neighbors (from the hexes they belong to).
  *
- * Vertex deduplication uses coordinate rounding to a string key.
+ * Directional rays now include center vertices as intermediate steps,
+ * so crossing one hex costs 2 ray steps instead of ~1. Rays are built
+ * by direction-aware graph traversal (not geometric stepping).
+ *
+ * Vertex IDs:
+ * - Corner vertices: coordinate string, e.g., "40,69.282"
+ * - Center vertices: prefixed with "c:", e.g., "c:0,0"
  */
 
 const SQRT3 = Math.sqrt(3);
@@ -65,16 +72,24 @@ function vertexKey(x, y) {
 }
 
 /**
+ * Create a center vertex key from pixel coordinates.
+ */
+function centerKey(x, y) {
+  return `c:${roundCoord(x)},${roundCoord(y)}`;
+}
+
+/**
+ * Check if a vertex ID is a center vertex.
+ */
+export function isCenterVertex(id) {
+  return id.startsWith('c:');
+}
+
+/**
  * The 6 movement direction vectors on the triangular lattice.
- *
- * Hex vertices have 3 edges each. These edges point in 3 directions that
- * alternate depending on the vertex "type" (A or B in the bipartite graph).
- * However, the 6 ray directions are universal: they represent all possible
- * movement directions along the lattice axes.
  *
  * For flat-top hexes of size S, the 6 directions at 0°, 60°, 120°, 180°,
  * 240°, 300° with step size S cover all possible edge directions.
- * At any given vertex, only 3 of these 6 will lead to an adjacent vertex.
  */
 function getDirectionVectors(size) {
   return [0, 1, 2, 3, 4, 5].map((i) => {
@@ -88,7 +103,7 @@ function getDirectionVectors(size) {
 }
 
 /**
- * Generate the full hex vertex grid.
+ * Generate the full hex vertex grid with both corner and center vertices.
  *
  * @param {number} radius - Board radius in hexes (2=small, 3=medium, 4=large)
  * @param {number} [size=40] - Hex size (center to corner distance in px)
@@ -96,87 +111,88 @@ function getDirectionVectors(size) {
  */
 export function generateGrid(radius, size = 40) {
   const hexCenters = generateHexCenters(radius);
-  const vertexMap = new Map(); // key -> { id, x, y }
+  const vertexMap = new Map(); // key -> { id, x, y, type }
+  // Maps coordinate string -> vertex ID for position-based lookups
+  const coordToId = new Map();
 
-  // Generate all vertices from hex corners
+  // Generate corner vertices from hex corners
   for (const { q, r } of hexCenters) {
     const { x: cx, y: cy } = axialToPixel(q, r, size);
     for (let i = 0; i < 6; i++) {
       const angle = (Math.PI / 3) * i;
       const vx = cx + size * Math.cos(angle);
       const vy = cy + size * Math.sin(angle);
-      const key = vertexKey(vx, vy);
-      if (!vertexMap.has(key)) {
-        vertexMap.set(key, {
-          id: key,
+      const coordStr = vertexKey(vx, vy);
+      if (!vertexMap.has(coordStr)) {
+        vertexMap.set(coordStr, {
+          id: coordStr,
           x: roundCoord(vx),
           y: roundCoord(vy),
+          type: 'corner',
         });
+        coordToId.set(coordStr, coordStr);
       }
     }
   }
 
-  // Build adjacency map: two vertices are adjacent if they share a hex edge.
-  // We check all 6 direction vectors; for each vertex, exactly 3 will land
-  // on another vertex (the 3 hex-edge neighbors).
+  // Generate center vertices at each hex center
+  for (const { q, r } of hexCenters) {
+    const { x: cx, y: cy } = axialToPixel(q, r, size);
+    const cKey = centerKey(cx, cy);
+    const coordStr = vertexKey(cx, cy);
+    if (!vertexMap.has(cKey)) {
+      vertexMap.set(cKey, {
+        id: cKey,
+        x: roundCoord(cx),
+        y: roundCoord(cy),
+        type: 'center',
+      });
+      coordToId.set(coordStr, cKey);
+    }
+  }
+
+  // Build adjacency map using direction vectors.
+  // For each vertex, step by each direction vector and check for a vertex
+  // at that position. This finds both corner-corner and corner-center neighbors.
   const dirVectors = getDirectionVectors(size);
   const adjacency = new Map();
+  // Also build directional adjacency: vertex -> direction -> neighborId
+  // This is used for ray construction via graph traversal.
+  const dirAdj = new Map();
 
   for (const [key, vertex] of vertexMap) {
     const neighbors = [];
-    for (const { dx, dy } of dirVectors) {
-      const nKey = vertexKey(vertex.x + dx, vertex.y + dy);
-      if (vertexMap.has(nKey)) {
-        neighbors.push(nKey);
+    const dirMap = new Map();
+    for (const { direction, dx, dy } of dirVectors) {
+      const nCoord = vertexKey(vertex.x + dx, vertex.y + dy);
+      const nId = coordToId.get(nCoord);
+      if (nId !== undefined) {
+        neighbors.push(nId);
+        dirMap.set(direction, nId);
       }
     }
     adjacency.set(key, neighbors);
+    dirAdj.set(key, dirMap);
   }
 
-  // Precompute directional rays for each vertex.
-  // For each of the 6 directions, walk along that axis as far as possible.
-  // At each step, we move by the direction vector. Because the lattice
-  // is bipartite, the direction alternates between "occupied" and "unoccupied"
-  // every step. So we walk in steps of size S, and some steps will miss
-  // (no vertex there); we skip those and continue looking for the next vertex
-  // along the ray. Actually, since vertices alternate in a zig-zag pattern
-  // along each axis, we need to walk in the correct lattice direction.
-  //
-  // The key insight: moving along one axis (e.g., direction 0 at 0°) from
-  // a vertex, the next vertex in that direction is at distance S. But it might
-  // not be a direct neighbor — it's only a neighbor if there's a hex edge
-  // connecting them. However, movement along a ray continues in a straight line:
-  // vertex → skip → vertex → skip → etc. The pattern is: from a "type A" vertex
-  // at direction 0°, the neighbor is at direction 0° distance S. From a "type B"
-  // vertex, direction 0° has NO neighbor at distance S, but there IS one at 2S.
-  //
-  // Actually this is simpler: the ray in direction d from vertex V consists of
-  // all vertices reachable by repeatedly stepping in direction d. Since only
-  // every other step lands on a vertex, we just keep stepping and collecting
-  // the ones that exist.
+  // Precompute directional rays using direction-aware graph traversal.
+  // From each vertex, follow the directional adjacency chain in each direction.
+  // This produces properly alternating corner → center → corner → center rays.
   const rays = new Map();
 
-  for (const [key, vertex] of vertexMap) {
+  for (const [key] of vertexMap) {
     const vertexRays = [];
-    for (const { direction, dx, dy } of dirVectors) {
+    for (const { direction } of dirVectors) {
       const rayVertices = [];
-      let cx = vertex.x;
-      let cy = vertex.y;
+      let current = key;
 
-      // Walk in this direction, up to a generous max
       for (let step = 0; step < 50; step++) {
-        cx = roundCoord(cx + dx);
-        cy = roundCoord(cy + dy);
-        const nKey = vertexKey(cx, cy);
-        if (vertexMap.has(nKey)) {
-          rayVertices.push(nKey);
-        }
-        // Stop if we've gone far enough that we're clearly outside the grid.
-        // We use a generous bound: 2 * grid diameter.
-        // The grid diameter is roughly 2 * radius * size * 2 = 4 * radius * size
-        const maxDist = 4 * radius * size;
-        const distFromOrigin = Math.sqrt(cx * cx + cy * cy);
-        if (distFromOrigin > maxDist) break;
+        const nextDirMap = dirAdj.get(current);
+        if (!nextDirMap) break;
+        const next = nextDirMap.get(direction);
+        if (next === undefined) break;
+        rayVertices.push(next);
+        current = next;
       }
 
       vertexRays.push({ direction, vertices: rayVertices });
