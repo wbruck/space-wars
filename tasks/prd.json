@@ -181,7 +181,7 @@
         "Commit with message: US-009: build setup and game-over screens"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

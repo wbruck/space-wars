@@ -23,6 +23,7 @@
 - Win/lose checks: executeMove checks win (target reached), lose (pool=0), lose (trapped) after each move; rollDice checks trapped before rolling
 - For async tests with executeMove, use `executeMoveAsync()` helper returning a Promise (vitest deprecated done() callbacks)
 - HUD.svelte subscribes directly to stores (no props); other self-contained UI components can follow this pattern
+- Screen routing in App.svelte: setup→SetupScreen, won|lost→GameOver, else→Board+Dice+HUD (if/else-if on gamePhase)
 
 # Ralph Progress Log
 Started: Fri Feb 13 08:49:32 CST 2026
@@ -154,4 +155,22 @@ Started: Fri Feb 13 08:49:32 CST 2026
   - HUD.svelte is self-contained: it subscribes directly to stores, no props needed from parent
   - When extracting inline UI to a component, clean up the parent's unused imports/derived vars to keep code tidy
   - Browser automation (MCP) was not available for visual testing; manual browser verification needed
+---
+
+## 2026-02-13 - US-009
+- Created src/lib/components/SetupScreen.svelte with board size selection (Small/Medium/Large with hex counts)
+- SetupScreen receives onStart callback prop, manages selectedRadius locally, passes radius to parent on Start Game
+- Created src/lib/components/GameOver.svelte with conditional win/lose message and stats display
+- GameOver subscribes to stores (gamePhase, movementPool, movesMade, board) for stats: moves made, points remaining (win only), board size
+- Play Again button calls onPlayAgain prop callback which triggers resetGame()
+- Updated App.svelte screen routing: setup→SetupScreen, won/lost→GameOver, gameplay phases→Board+Dice+HUD
+- Cleaned up App.svelte: removed inline setup markup, unused styles, and selectedRadius state
+- Added resetGame import to App.svelte for Play Again functionality
+- All 76 tests pass, build succeeds cleanly
+- Files changed: src/lib/components/SetupScreen.svelte (new), src/lib/components/GameOver.svelte (new), src/App.svelte (updated)
+- **Learnings for future iterations:**
+  - Screen routing in App.svelte uses if/else-if chain on gamePhase: setup→SetupScreen, won|lost→GameOver, else→gameplay
+  - SetupScreen uses local state for radius selection (not a store), passes value via callback - simpler than a store for ephemeral UI state
+  - GameOver subscribes to stores directly (like HUD) for stats display, only needs onPlayAgain callback prop
+  - Browser automation (MCP) was not available; manual browser verification needed
 ---
