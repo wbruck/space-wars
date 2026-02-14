@@ -160,16 +160,17 @@ export class PowerUp extends BoardObject {
 }
 
 /**
- * Generate board objects (obstacles and power-ups) based on difficulty.
+ * Generate board objects (obstacles, blackholes, enemies, and power-ups) based on difficulty.
  *
  * @param {Map<string, object>} vertices - Vertex map from generateGrid
  * @param {string} startVertex - Start vertex ID (excluded from placement)
  * @param {string} targetVertex - Target vertex ID (excluded from placement)
  * @param {number} [difficulty=5] - Difficulty level 1-10
  * @param {() => number} rng - Random number generator returning 0-1
- * @returns {{ obstacles: Obstacle[], powerUps: PowerUp[], obstacleSet: Set<string> }}
+ * @param {Map<string, Array<{direction: number, vertices: string[]}>>} [rays] - Precomputed ray map for enemy kill zones
+ * @returns {{ obstacles: Obstacle[], blackholes: BlackHole[], enemies: Enemy[], powerUps: PowerUp[], obstacleSet: Set<string>, blackholeSet: Set<string>, enemyZones: Set<string> }}
  */
-export function generateBoardObjects(vertices, startVertex, targetVertex, difficulty = 5, rng) {
+export function generateBoardObjects(vertices, startVertex, targetVertex, difficulty = 5, rng, rays) {
   const eligible = [...vertices.keys()].filter(
     id => id !== startVertex && id !== targetVertex
   );
@@ -183,8 +184,21 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
   // Calculate counts based on difficulty
   const obstaclePct = 0.05 + (difficulty - 1) * (0.15 / 9);
   const powerUpPct = 0.15 - (difficulty - 1) * (0.12 / 9);
-  const obstacleCount = Math.floor(eligible.length * obstaclePct);
+  const totalObstacleCount = Math.floor(eligible.length * obstaclePct);
   const powerUpCount = Math.floor(eligible.length * powerUpPct);
+
+  // Split total obstacle count into regular, blackhole, and enemy
+  let regularCount, blackholeCount, enemyCount;
+  if (difficulty <= 2) {
+    // No enemies at difficulty 1-2
+    regularCount = Math.floor(totalObstacleCount * 0.8);
+    blackholeCount = totalObstacleCount - regularCount;
+    enemyCount = 0;
+  } else {
+    regularCount = Math.floor(totalObstacleCount * 0.6);
+    blackholeCount = Math.floor(totalObstacleCount * 0.2);
+    enemyCount = totalObstacleCount - regularCount - blackholeCount;
+  }
 
   // Value ranges
   const obsMin = Math.max(1, difficulty - 2);
@@ -192,23 +206,58 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
   const puMin = Math.max(1, 11 - difficulty - 2);
   const puMax = Math.min(10, 11 - difficulty + 2);
 
+  let idx = 0;
+
+  // Regular obstacles — in obstacleSet
   const obstacles = [];
   const obstacleSet = new Set();
-  for (let i = 0; i < obstacleCount; i++) {
-    const vertexId = eligible[i];
+  for (let i = 0; i < regularCount; i++) {
+    const vertexId = eligible[idx++];
     const value = obsMin + Math.floor(rng() * (obsMax - obsMin + 1));
     obstacles.push(new Obstacle(vertexId, value));
     obstacleSet.add(vertexId);
   }
 
+  // Blackholes — NOT in obstacleSet
+  const blackholes = [];
+  const blackholeSet = new Set();
+  for (let i = 0; i < blackholeCount; i++) {
+    const vertexId = eligible[idx++];
+    const value = obsMin + Math.floor(rng() * (obsMax - obsMin + 1));
+    blackholes.push(new BlackHole(vertexId, value));
+    blackholeSet.add(vertexId);
+  }
+
+  // Enemies — in obstacleSet (they block movement at their own vertex)
+  const enemies = [];
+  const enemyZones = new Set();
+  for (let i = 0; i < enemyCount; i++) {
+    const vertexId = eligible[idx++];
+    const value = obsMin + Math.floor(rng() * (obsMax - obsMin + 1));
+    const direction = Math.floor(rng() * 6);
+    const enemy = new Enemy(vertexId, value, direction);
+    enemies.push(enemy);
+    obstacleSet.add(vertexId);
+
+    // Compute kill zone from rays
+    if (rays) {
+      const affected = enemy.getAffectedVertices(null, rays);
+      // Skip the first element (enemy's own vertex) since that's in obstacleSet
+      for (let j = 1; j < affected.length; j++) {
+        enemyZones.add(affected[j]);
+      }
+    }
+  }
+
+  // Power-ups
   const powerUps = [];
   for (let i = 0; i < powerUpCount; i++) {
-    const vertexId = eligible[obstacleCount + i];
+    const vertexId = eligible[idx++];
     const value = puMin + Math.floor(rng() * (puMax - puMin + 1));
     powerUps.push(new PowerUp(vertexId, value));
   }
 
-  return { obstacles, powerUps, obstacleSet };
+  return { obstacles, blackholes, enemies, powerUps, obstacleSet, blackholeSet, enemyZones };
 }
 
 /**

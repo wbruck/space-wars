@@ -259,58 +259,149 @@ describe('generateBoardObjects', () => {
   const targetVertex = ids[ids.length - 1];
   const eligibleCount = ids.length - 2;
 
-  it('returns obstacles, powerUps, and obstacleSet', () => {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42));
+  it('returns all expected fields', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
     expect(result).toHaveProperty('obstacles');
+    expect(result).toHaveProperty('blackholes');
+    expect(result).toHaveProperty('enemies');
     expect(result).toHaveProperty('powerUps');
     expect(result).toHaveProperty('obstacleSet');
+    expect(result).toHaveProperty('blackholeSet');
+    expect(result).toHaveProperty('enemyZones');
     expect(Array.isArray(result.obstacles)).toBe(true);
+    expect(Array.isArray(result.blackholes)).toBe(true);
+    expect(Array.isArray(result.enemies)).toBe(true);
     expect(Array.isArray(result.powerUps)).toBe(true);
     expect(result.obstacleSet).toBeInstanceOf(Set);
+    expect(result.blackholeSet).toBeInstanceOf(Set);
+    expect(result.enemyZones).toBeInstanceOf(Set);
   });
 
   it('excludes start and target vertices', () => {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42));
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
     const allVertexIds = [
       ...result.obstacles.map(o => o.vertexId),
+      ...result.blackholes.map(b => b.vertexId),
+      ...result.enemies.map(e => e.vertexId),
       ...result.powerUps.map(p => p.vertexId),
     ];
     expect(allVertexIds).not.toContain(startVertex);
     expect(allVertexIds).not.toContain(targetVertex);
   });
 
-  it('has no overlap between obstacles and power-ups', () => {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42));
-    const obstacleIds = new Set(result.obstacles.map(o => o.vertexId));
-    for (const pu of result.powerUps) {
-      expect(obstacleIds.has(pu.vertexId)).toBe(false);
+  it('has no overlap between any object types', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    const allIds = [
+      ...result.obstacles.map(o => o.vertexId),
+      ...result.blackholes.map(b => b.vertexId),
+      ...result.enemies.map(e => e.vertexId),
+      ...result.powerUps.map(p => p.vertexId),
+    ];
+    expect(new Set(allIds).size).toBe(allIds.length);
+  });
+
+  it('obstacleSet contains regular obstacle and enemy vertex IDs but not blackholes', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    // Regular obstacles are in obstacleSet
+    for (const obs of result.obstacles) {
+      expect(result.obstacleSet.has(obs.vertexId)).toBe(true);
+    }
+    // Enemies are in obstacleSet
+    for (const enemy of result.enemies) {
+      expect(result.obstacleSet.has(enemy.vertexId)).toBe(true);
+    }
+    // Blackholes are NOT in obstacleSet
+    for (const bh of result.blackholes) {
+      expect(result.obstacleSet.has(bh.vertexId)).toBe(false);
     }
   });
 
-  it('obstacleSet matches obstacle vertex IDs', () => {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42));
-    const expected = new Set(result.obstacles.map(o => o.vertexId));
-    expect(result.obstacleSet).toEqual(expected);
+  it('blackholeSet matches blackhole vertex IDs', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    const expected = new Set(result.blackholes.map(b => b.vertexId));
+    expect(result.blackholeSet).toEqual(expected);
   });
 
-  it('obstacle count scales with difficulty at level 1 (~5%)', () => {
+  it('total obstacle count scales with difficulty at level 1 (~5%)', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 1, makeRng(42));
-    const expectedCount = Math.floor(eligibleCount * 0.05);
-    expect(result.obstacles.length).toBe(expectedCount);
+    const expectedTotal = Math.floor(eligibleCount * 0.05);
+    const actualTotal = result.obstacles.length + result.blackholes.length + result.enemies.length;
+    expect(actualTotal).toBe(expectedTotal);
   });
 
-  it('obstacle count scales with difficulty at level 5 (~12.2%)', () => {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42));
+  it('total obstacle count scales with difficulty at level 5 (~12.2%)', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
     const pct = 0.05 + (5 - 1) * (0.15 / 9);
-    const expectedCount = Math.floor(eligibleCount * pct);
-    expect(result.obstacles.length).toBe(expectedCount);
+    const expectedTotal = Math.floor(eligibleCount * pct);
+    const actualTotal = result.obstacles.length + result.blackholes.length + result.enemies.length;
+    expect(actualTotal).toBe(expectedTotal);
   });
 
-  it('obstacle count scales with difficulty at level 10 (~20%)', () => {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 10, makeRng(42));
+  it('total obstacle count scales with difficulty at level 10 (~20%)', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 10, makeRng(42), grid.rays);
     const pct = 0.05 + (10 - 1) * (0.15 / 9);
-    const expectedCount = Math.floor(eligibleCount * pct);
-    expect(result.obstacles.length).toBe(expectedCount);
+    const expectedTotal = Math.floor(eligibleCount * pct);
+    const actualTotal = result.obstacles.length + result.blackholes.length + result.enemies.length;
+    expect(actualTotal).toBe(expectedTotal);
+  });
+
+  it('type distribution is ~60/20/20 at difficulty 5+', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    const pct = 0.05 + (5 - 1) * (0.15 / 9);
+    const total = Math.floor(eligibleCount * pct);
+    const expectedRegular = Math.floor(total * 0.6);
+    const expectedBlackholes = Math.floor(total * 0.2);
+    const expectedEnemies = total - expectedRegular - expectedBlackholes;
+    expect(result.obstacles.length).toBe(expectedRegular);
+    expect(result.blackholes.length).toBe(expectedBlackholes);
+    expect(result.enemies.length).toBe(expectedEnemies);
+  });
+
+  it('no enemies at difficulty 1-2, ~80/20 regular/blackhole split', () => {
+    for (const diff of [1, 2]) {
+      const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, diff, makeRng(42));
+      expect(result.enemies.length).toBe(0);
+      const pct = 0.05 + (diff - 1) * (0.15 / 9);
+      const total = Math.floor(eligibleCount * pct);
+      const expectedRegular = Math.floor(total * 0.8);
+      const expectedBlackholes = total - expectedRegular;
+      expect(result.obstacles.length).toBe(expectedRegular);
+      expect(result.blackholes.length).toBe(expectedBlackholes);
+    }
+  });
+
+  it('enemies appear at difficulty 3+', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 3, makeRng(42), grid.rays);
+    expect(result.enemies.length).toBeGreaterThan(0);
+  });
+
+  it('enemy direction is 0-5', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    for (const enemy of result.enemies) {
+      expect(enemy.direction).toBeGreaterThanOrEqual(0);
+      expect(enemy.direction).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it('enemy range equals enemy value', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    for (const enemy of result.enemies) {
+      expect(enemy.range).toBe(enemy.value);
+    }
+  });
+
+  it('enemy kill zones computed from rays', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    // Recompute expected kill zones
+    const expectedZones = new Set();
+    for (const enemy of result.enemies) {
+      const affected = enemy.getAffectedVertices(null, grid.rays);
+      // Skip own vertex (index 0)
+      for (let i = 1; i < affected.length; i++) {
+        expectedZones.add(affected[i]);
+      }
+    }
+    expect(result.enemyZones).toEqual(expectedZones);
   });
 
   it('power-up count scales inversely at level 1 (~15%)', () => {
@@ -321,7 +412,7 @@ describe('generateBoardObjects', () => {
   });
 
   it('power-up count scales inversely at level 10 (~3%)', () => {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 10, makeRng(42));
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 10, makeRng(42), grid.rays);
     const pct = 0.15 - (10 - 1) * (0.12 / 9);
     const expectedCount = Math.floor(eligibleCount * pct);
     expect(result.powerUps.length).toBe(expectedCount);
@@ -336,7 +427,7 @@ describe('generateBoardObjects', () => {
   });
 
   it('obstacle values are within range at difficulty 10', () => {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 10, makeRng(42));
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 10, makeRng(42), grid.rays);
     for (const obs of result.obstacles) {
       expect(obs.value).toBeGreaterThanOrEqual(8); // max(1, 10-2)
       expect(obs.value).toBeLessThanOrEqual(10);
@@ -352,7 +443,7 @@ describe('generateBoardObjects', () => {
   });
 
   it('power-up values are within range at difficulty 10', () => {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 10, makeRng(42));
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 10, makeRng(42), grid.rays);
     for (const pu of result.powerUps) {
       expect(pu.value).toBeGreaterThanOrEqual(1);  // max(1, 11-10-2) = 1
       expect(pu.value).toBeLessThanOrEqual(3);     // min(10, 11-10+2) = 3
@@ -360,16 +451,42 @@ describe('generateBoardObjects', () => {
   });
 
   it('is deterministic with same seed', () => {
-    const r1 = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42));
-    const r2 = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42));
+    const r1 = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    const r2 = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
     expect(r1.obstacles.map(o => o.vertexId)).toEqual(r2.obstacles.map(o => o.vertexId));
+    expect(r1.blackholes.map(b => b.vertexId)).toEqual(r2.blackholes.map(b => b.vertexId));
+    expect(r1.enemies.map(e => e.vertexId)).toEqual(r2.enemies.map(e => e.vertexId));
     expect(r1.powerUps.map(p => p.vertexId)).toEqual(r2.powerUps.map(p => p.vertexId));
   });
 
   it('defaults difficulty to 5', () => {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, undefined, makeRng(42));
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, undefined, makeRng(42), grid.rays);
     const pct = 0.05 + (5 - 1) * (0.15 / 9);
-    const expectedCount = Math.floor(eligibleCount * pct);
-    expect(result.obstacles.length).toBe(expectedCount);
+    const expectedTotal = Math.floor(eligibleCount * pct);
+    const actualTotal = result.obstacles.length + result.blackholes.length + result.enemies.length;
+    expect(actualTotal).toBe(expectedTotal);
+  });
+
+  it('works without rays parameter (backward compat)', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42));
+    expect(result.enemyZones).toBeInstanceOf(Set);
+    expect(result.enemyZones.size).toBe(0);
+    expect(result.enemies.length).toBeGreaterThan(0);
+  });
+
+  it('all blackholes are instanceof BlackHole', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    for (const bh of result.blackholes) {
+      expect(bh).toBeInstanceOf(BlackHole);
+      expect(bh.type).toBe('blackhole');
+    }
+  });
+
+  it('all enemies are instanceof Enemy', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    for (const enemy of result.enemies) {
+      expect(enemy).toBeInstanceOf(Enemy);
+      expect(enemy.type).toBe('enemy');
+    }
   });
 });

@@ -109,12 +109,12 @@ describe('board object integration', () => {
     expect(types).toContain('powerup');
   });
 
-  it('obstacles Set matches obstacle vertex IDs in boardObjects', () => {
+  it('obstacles Set matches obstacle and enemy vertex IDs in boardObjects', () => {
     const boardData = initGame(5, 4, 42);
-    const obstacleIds = boardData.boardObjects
-      .filter(o => o.type === 'obstacle')
+    const blockingIds = boardData.boardObjects
+      .filter(o => o.type === 'obstacle' || o.type === 'enemy')
       .map(o => o.vertexId);
-    expect(new Set(obstacleIds)).toEqual(boardData.obstacles);
+    expect(new Set(blockingIds)).toEqual(boardData.obstacles);
   });
 
   it('different difficulty values produce different obstacle counts', () => {

@@ -135,11 +135,20 @@ export function initGame(cols, rows, seed, difficulty = 5) {
   let powerUps = [];
   const maxAttempts = 20;
 
+  let blackholes = [];
+  let enemies = [];
+  let blackholeSet = new Set();
+  let enemyZones = new Set();
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, difficulty, rng);
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, difficulty, rng, grid.rays);
     obstacles = result.obstacleSet;
-    boardObjects = [...result.obstacles, ...result.powerUps];
+    boardObjects = [...result.obstacles, ...result.blackholes, ...result.enemies, ...result.powerUps];
     powerUps = result.powerUps;
+    blackholes = result.blackholes;
+    enemies = result.enemies;
+    blackholeSet = result.blackholeSet;
+    enemyZones = result.enemyZones;
 
     if (hasValidPath(grid.adjacency, startVertex, targetVertex, obstacles)) {
       break;
@@ -148,6 +157,10 @@ export function initGame(cols, rows, seed, difficulty = 5) {
       obstacles = new Set();
       boardObjects = [];
       powerUps = [];
+      blackholes = [];
+      enemies = [];
+      blackholeSet = new Set();
+      enemyZones = new Set();
     }
   }
 
@@ -162,6 +175,10 @@ export function initGame(cols, rows, seed, difficulty = 5) {
     obstacles,
     boardObjects,
     powerUps,
+    blackholes,
+    enemies,
+    blackholeSet,
+    enemyZones,
     startVertex,
     targetVertex,
   };
