@@ -13,6 +13,8 @@ Started: Sat Feb 14 13:42:44 CST 2026
 - startCombat() reads the persistent player ship via `get(playerShip)`; enemy ship persistence uses `enemyObj.combatShip` on the board object (different pattern due to multiple enemies)
 - `_checkCombatEnd()` priority order: (1) enemy bridge destroyed → playerWin, (2) player bridge destroyed → playerDestroyed, (3) all player components destroyed → playerDestroyed, (4) enemy weapons destroyed + engines intact → enemyFled, (5) max turns → playerLose
 - RNG targeting in tests: `Math.floor(rng * componentCount)` determines target index; for idx 2 of 3, use roll 5 → rng=0.75 → floor(0.75*3)=2
+- CombatEngine.escape() sets combatOver=true and result='escaped'; resolveCombat handles 'escaped' identically to 'playerLose' (returns to preCombatPlayerPos, deducts steps)
+- New combat results follow the same code path in resolveCombat — 'escaped' falls through to the else branch (not playerDestroyed, not playerWin/enemyFled) naturally
 
 ---
 
@@ -63,4 +65,18 @@ Started: Sat Feb 14 13:42:44 CST 2026
   - The `_checkCombatEnd()` check order determines priority for edge cases (e.g., both bridges destroyed same turn). New end conditions must be inserted at the correct position in the priority chain.
   - `resolveCombat('playerDestroyed')` already handles the full game-over flow (sets loseReason='enemy', gamePhase='lost'), so no gameState.js changes were needed for this story
   - RNG targeting in tests: for 3 active components, `Math.floor(rng * 3)` determines target index. Roll 5 gives rng=(5-0.5)/6=0.75 → floor(0.75*3)=2 (Bridge at index 2)
+---
+
+## 2026-02-14 - US-040
+- Added `escape()` method to `CombatEngine` class in combat.js that sets `combatOver = true` and `result = 'escaped'`
+- Added 'escaped' result handling in `resolveCombat()` — falls through to the existing else branch, returning player to preCombatPlayerPos and deducting movement pool by steps taken (identical to playerLose/enemyFled behavior)
+- Added Escape button to CombatScreen.svelte with yellow/amber styling (#f9a825), min 44px touch target, disabled when !isPlayerTurn/rolling/combatOver
+- Added 'Escaped!' end message overlay in CombatScreen.svelte handleCombatEnd switch
+- Added 4 unit tests in combat.test.js: escape sets result, no-op when over, escape first turn, escape with damaged components
+- Added 4 unit tests in gameState.test.js: escape returns to preCombatPos, deducts steps, returns to rolling phase, triggers game over on pool exhaustion
+- Files changed: `src/lib/game/combat.js`, `src/lib/game/combat.test.js`, `src/lib/game/gameState.test.js`, `src/lib/components/CombatScreen.svelte`, `scripts/ralph/prd.json`
+- **Learnings for future iterations:**
+  - New combat results in resolveCombat don't necessarily need new code — the existing if/else chain handles them by falling through to the else (retreat) branch if they don't match playerDestroyed, playerWin, or enemyFled
+  - The `handleCombatEnd` function in CombatScreen.svelte is the display layer — it only sets endMessage text and triggers resolveCombat after a delay. Adding new result types just needs a new case in the switch
+  - CombatScreen escape bypasses the dice animation (no roll needed) — calls engine.escape() directly, increments tick, then calls handleCombatEnd immediately
 ---
