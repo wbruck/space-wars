@@ -9,6 +9,8 @@ Started: Sat Feb 14 13:42:44 CST 2026
 - Direction arrows and selection happen inside the SVG (no layout impact); the confirm button is outside the SVG (causes layout impact if conditionally rendered)
 - CombatScreen.svelte: outcome text (.roll-result, .target-label) is rendered in a fixed-height `.outcome-area` below target buttons, NOT in the dice area within the ships-container flex row
 - CombatScreen.svelte uses a `tick` state counter incremented after engine mutations to force reactive updates for derived state from mutable combat engine
+- Player ship persistence uses a Svelte writable store (`playerShip`) in gameState.js, not a boardData property, because boardData is spread for reactivity and ship instances have mutable internal state
+- startCombat() reads the persistent player ship via `get(playerShip)`; enemy ship persistence uses `enemyObj.combatShip` on the board object (different pattern due to multiple enemies)
 
 ---
 
@@ -34,4 +36,16 @@ Started: Sat Feb 14 13:42:44 CST 2026
   - Moving conditionally rendered text to a separate fixed-height area below the main layout is the cleanest fix for this class of layout shift
   - CombatScreen is self-contained (no props from App.svelte), all data comes from stores
   - No browser testing tools were available; manual browser verification recommended
+---
+
+## 2026-02-14 - US-039
+- Added `playerShip` writable store to gameState.js for persistent player ship health across combat encounters
+- `initGame()` creates a fresh `PlayerShip` and sets the store; `resetGame()` sets store to null
+- `startCombat()` reads from the `playerShip` store via `get(playerShip)` instead of creating `new PlayerShip()` each time
+- Added 7 unit tests covering: persistence between encounters, damage accumulation, fresh ship on initGame, reset clearing, and same-instance verification
+- Files changed: `src/lib/game/gameState.js`, `src/lib/game/gameState.test.js`, `scripts/ralph/prd.json`
+- **Learnings for future iterations:**
+  - The player ship store pattern mirrors enemy ship persistence but uses a Svelte store instead of a board object property, since there's only one player ship and it needs to survive boardData spreads
+  - CombatEngine constructor already accepted a `playerShip` parameter, so no changes to combat.js were needed
+  - Tests can directly mutate `engine.playerShip.getComponent('X').takeDamage(n)` to simulate combat damage without running full attack sequences
 ---
