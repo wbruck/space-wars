@@ -15,6 +15,8 @@ Started: Sat Feb 14 13:42:44 CST 2026
 - RNG targeting in tests: `Math.floor(rng * componentCount)` determines target index; for idx 2 of 3, use roll 5 → rng=0.75 → floor(0.75*3)=2
 - CombatEngine.escape() sets combatOver=true and result='escaped'; resolveCombat handles 'escaped' identically to 'playerLose' (returns to preCombatPlayerPos, deducts steps)
 - New combat results follow the same code path in resolveCombat — 'escaped' falls through to the else branch (not playerDestroyed, not playerWin/enemyFled) naturally
+- PlayerShip.canAttack mirrors EnemyShip.canAttack: checks Weapons component destroyed state. CombatEngine.executePlayerAttack() has a defensive guard that no-ops (returns roll:0, isHit:false) when canAttack is false
+- When adding defensive guards to executePlayerAttack, update existing tests that rely on the player attacking after their weapons are destroyed (e.g., simulation tests with enemy destroying all components)
 
 ---
 
@@ -79,4 +81,18 @@ Started: Sat Feb 14 13:42:44 CST 2026
   - New combat results in resolveCombat don't necessarily need new code — the existing if/else chain handles them by falling through to the else (retreat) branch if they don't match playerDestroyed, playerWin, or enemyFled
   - The `handleCombatEnd` function in CombatScreen.svelte is the display layer — it only sets endMessage text and triggers resolveCombat after a delay. Adding new result types just needs a new case in the switch
   - CombatScreen escape bypasses the dice animation (no roll needed) — calls engine.escape() directly, increments tick, then calls handleCombatEnd immediately
+---
+
+## 2026-02-14 - US-041
+- Added `canAttack` getter to `PlayerShip` in combat.js, mirroring the existing `EnemyShip.canAttack` pattern: returns false when Weapons component is destroyed
+- Added defensive guard in `executePlayerAttack()` that returns a no-op result (roll:0, isHit:false) when `playerShip.canAttack` is false, without advancing turn or logging
+- Updated CombatScreen.svelte: derived `canAttack` from engine with tick reactivity pattern, disabled all target buttons when `canAttack` is false, added `!canAttack` guard to `handleTargetClick()`
+- Added "Weapons destroyed – Escape to retreat!" message in outcome area when weapons destroyed, player's turn, and no other result showing
+- Added 6 unit tests: 4 for PlayerShip.canAttack getter (active, destroyed, damaged, missing component), 2 for executePlayerAttack defensive guard (refuses attack, doesn't advance turn/log)
+- Updated existing simulation test ("enemy destroys all player components") to target Engines before Weapons so player can still attack in early turns
+- Files changed: `src/lib/game/combat.js`, `src/lib/game/combat.test.js`, `src/lib/components/CombatScreen.svelte`, `scripts/ralph/prd.json`
+- **Learnings for future iterations:**
+  - Adding defensive guards to executePlayerAttack can break simulation tests that assume the player can always attack — restructure those tests to destroy Weapons last (or after other components)
+  - The outcome-area in CombatScreen.svelte supports multiple conditional display states using `{#if}...{:else if}` chains — the weapons-offline message is the first condition (shown when canAttack is false, player's turn, no combat result showing)
+  - The tick reactivity pattern is used for all derived state from the mutable combat engine: `let canAttack = $derived.by(() => { tick; return engine?.playerShip?.canAttack ?? true; })`
 ---
