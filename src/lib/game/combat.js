@@ -85,3 +85,39 @@ export class PlayerShip extends Ship {
     super('Player Ship', components || defaultComponents);
   }
 }
+
+/**
+ * Enemy ship with 1 HP per component and behavioral getters.
+ * Bridge destruction is the ONLY way to fully defeat an enemy.
+ */
+export class EnemyShip extends Ship {
+  /**
+   * @param {ShipComponent[]} [components] - Optional custom components
+   */
+  constructor(components) {
+    const defaultComponents = [
+      new ShipComponent('Weapons', 1),
+      new ShipComponent('Engines', 1),
+      new ShipComponent('Bridge', 1),
+    ];
+    super('Enemy Ship', components || defaultComponents);
+  }
+
+  /** @returns {boolean} False if Weapons component is destroyed — enemy auto-misses attacks */
+  get canAttack() {
+    const weapons = this.getComponent('Weapons');
+    return weapons ? !weapons.destroyed : false;
+  }
+
+  /** @returns {boolean} False if Engines component is destroyed */
+  get canFlee() {
+    const engines = this.getComponent('Engines');
+    return engines ? !engines.destroyed : false;
+  }
+
+  /** @returns {boolean} True if Bridge component is destroyed — enemy fully defeated */
+  get isBridgeDestroyed() {
+    const bridge = this.getComponent('Bridge');
+    return bridge ? bridge.destroyed : false;
+  }
+}

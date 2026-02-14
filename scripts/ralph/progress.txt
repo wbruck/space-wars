@@ -1,144 +1,39 @@
 # Ralph Progress Log
-Started: Thu Feb 13 20:24:00 CST 2026
+Started: Fri Feb 13 21:26:55 CST 2026
 
 ## Codebase Patterns
-- BoardObject class hierarchy: BoardObject → Obstacle/PowerUp (and new subclasses BlackHole, Enemy). Enemy also extends Obstacle.
-- Enemy has `direction` (0-5) and `range` (= value) properties; getAffectedVertices takes optional `rays` as second param
-- Subclasses override `this.type` and `this.id` in constructor after calling super()
-- `createBoardObject` factory uses a switch on type string to instantiate the correct class
-- Tests use `makeRng(seed)` (xorshift32) for deterministic randomness
-- The `ralph/board-objects` branch has all game code; `main` only has ralph scripts
-- `generateBoardObjects` accepts optional `rays` param as last arg; without it, enemyZones will be empty
-- `boardData` in gameState now includes: `blackholes`, `enemies`, `blackholeSet`, `enemyZones` fields
-- obstacleSet contains regular obstacle + enemy vertex IDs (NOT blackholes)
-- `computePath` accepts optional `blackholes` and `enemyZones` params (6th and 7th args); uses `?.has()` for backward compat
-- Hazard check order in computePath: obstacle (stop before, vertex NOT in path) > blackhole (include, stop) > enemy zone (include, stop) > target (include, stop)
-- `selectDirection` in gameState.js passes `boardData.blackholeSet` and `boardData.enemyZones` to computePath
-- `getAvailableDirections` is NOT changed for hazards — it only checks obstacleSet
-- `loseReason` store tracks cause of loss: 'blackhole', 'enemy', 'trapped', 'exhausted', or null
-- Hazard death checks in executeMove happen BEFORE win/lose checks (blackhole on target = death, not win)
-- Use optional chaining (`?.has()`) on `boardData.blackholeSet` and `boardData.enemyZones` for backward compat in executeMove
-- To test hazard deaths in winLose.test.js, inject hazard sets into boardData via `board.set({...boardData, blackholeSet: new Set([vertex])})`
-- Board.svelte rendering: new object types need updates in `vertexColor()`, `isActiveVertex()`, SVG markers, CSS (light + dark mode), and the prop from App.svelte
-- `vertexColor()` priority order: target > start > enemy > blackhole > killZone > obstacle > animated > preview > visited > center > default
-- Board.svelte passes new Set props from App.svelte using `boardData.xxxSet ?? new Set()` for safety
-- Enemy render data is constructed in App.svelte from `boardData.enemies` using `getAffectedVertices(null, boardData.rays)` — Board.svelte receives precomputed `{ vertexId, direction, range, killZoneVertices }` objects
-- Board.svelte uses derived sets (`enemyVertexSet`, `killZoneSet`) for efficient vertex lookups in `vertexColor()` and `isActiveVertex()`
-- Enemy direction indicators use same angle math as direction arrows: `(Math.PI / 3) * direction`
+- Combat classes live in src/lib/game/combat.js, tests in src/lib/game/combat.test.js
+- ShipComponent(name, maxHp) — has `destroyed` getter and `takeDamage(amount)` returning `{ destroyed: boolean }`
+- Ship(name, components) — has `isDestroyed`, `getActiveComponents()`, `getComponent(name)`
+- PlayerShip extends Ship with default components: Weapons (2 HP), Engines (2 HP), Bridge (2 HP)
+- Player components have 2 HP each; enemy components have 1 HP each
+- EnemyShip extends Ship with behavioral getters: canAttack, canFlee, isBridgeDestroyed
+- Bridge destruction (isBridgeDestroyed) is the ONLY way to fully defeat an enemy — isDestroyed checks ALL components
+- Behavioral getters return false if the named component doesn't exist (custom components edge case)
 
 ---
 
-## 2026-02-13 20:24 - US-022
-- Implemented BlackHole class extending Obstacle in src/lib/game/boardObjects.js
-- Constructor sets type='blackhole', id='blackhole:'+vertexId
-- onPlayerInteraction() returns { killed: true, cause: 'blackhole' }
-- Updated createBoardObject factory to handle 'blackhole' type
-- Added 7 unit tests for BlackHole (type, value, vertexId, onPlayerInteraction, instanceof, getAffectedVertices, factory)
-- Files changed: src/lib/game/boardObjects.js, src/lib/game/boardObjects.test.js
+## 2026-02-13 21:28 - US-029
+- Created src/lib/game/combat.js with ShipComponent, Ship, and PlayerShip classes
+- ShipComponent: name, maxHp, currentHp, destroyed getter, takeDamage(amount) method
+- Ship: name, components array, isDestroyed getter, getActiveComponents(), getComponent(name)
+- PlayerShip: extends Ship with default Weapons/Engines/Bridge at 2 HP each, configurable via constructor
+- Created src/lib/game/combat.test.js with 24 tests covering all classes
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
 - **Learnings for future iterations:**
-  - Branch ralph/board-objects is the parent branch with all game code, not main
-  - BlackHole inherits from Obstacle but overrides type and id after super() call
-  - BlackHoles should NOT be in obstacleSet (they don't block movement)
+  - takeDamage returns { destroyed: boolean } indicating if THIS hit destroyed it (false if already dead)
+  - PlayerShip constructor accepts optional components array to override defaults
+  - Follow same test patterns as boardObjects.test.js (describe blocks per class, instanceof checks)
 ---
 
-## 2026-02-13 20:26 - US-023
-- Implemented Enemy class extending Obstacle in src/lib/game/boardObjects.js
-- Constructor accepts (vertexId, value, direction), sets type='enemy', id='enemy:'+vertexId, range=value
-- onPlayerInteraction() returns { killed: true, cause: 'enemy' }
-- getAffectedVertices(adjacency, rays) returns own vertex + kill zone vertices from rays along facing direction
-- Updated createBoardObject factory to handle 'enemy' type with additional direction parameter
-- Added 11 unit tests for Enemy (type, value/direction/range storage, vertexId, onPlayerInteraction, instanceof, getAffectedVertices with mock rays including range limit, short ray, no matching direction)
-- Plus 1 factory test for createBoardObject('enemy', ...)
-- Files changed: src/lib/game/boardObjects.js, src/lib/game/boardObjects.test.js
+## 2026-02-13 21:30 - US-030
+- Created EnemyShip class extending Ship in src/lib/game/combat.js
+- Default components: Weapons (1 HP), Engines (1 HP), Bridge (1 HP) — configurable via constructor
+- Behavioral getters: canAttack (Weapons alive), canFlee (Engines alive), isBridgeDestroyed (Bridge dead)
+- Added 19 unit tests covering defaults, HP, instanceof, custom components, all getters, behavioral combos, and edge cases
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
 - **Learnings for future iterations:**
-  - Enemy's getAffectedVertices takes rays as optional 2nd param (base class signature only has adjacency)
-  - Enemy's own vertex IS in obstacleSet (blocks movement like regular obstacle), unlike BlackHole
-  - Kill zone computed from rays.get(vertexId) → find ray matching direction → take first `range` vertices
----
-
-## 2026-02-13 20:30 - US-024
-- Updated generateBoardObjects to split total obstacle count into ~60% regular, ~20% blackhole, ~20% enemy (at difficulty 3+)
-- At difficulty 1-2: no enemies, ~80% regular / ~20% blackhole split
-- Added `rays` as optional last parameter to generateBoardObjects for enemy kill zone computation
-- BlackHoles NOT added to obstacleSet; Enemies ARE added to obstacleSet
-- Enemy kill zones computed using getAffectedVertices and stored in enemyZones Set
-- Return type now includes: blackholes, enemies, blackholeSet, enemyZones
-- Updated initGame in gameState.js to pass grid.rays and capture all new fields into boardData
-- Updated gameState.test.js: fixed obstacle Set test to account for enemy vertices in obstacleSet
-- Rewrote/expanded boardObjects tests: 58 tests total (was 48), covering type distribution, no-enemies-at-low-difficulty, kill zone computation, backward compat
-- Files changed: src/lib/game/boardObjects.js, src/lib/game/boardObjects.test.js, src/lib/game/gameState.js, src/lib/game/gameState.test.js
-- **Learnings for future iterations:**
-  - When changing generateBoardObjects return shape, also update gameState.test.js which asserts on boardData.obstacles Set contents
-  - Enemy kill zone vertices in enemyZones Set exclude the enemy's own vertex (that's in obstacleSet)
-  - Without rays param, enemies still get created but enemyZones will be empty — backward compatible
----
-
-## 2026-02-13 20:32 - US-025
-- Updated computePath in movement.js to accept optional blackholes (Set<string>) and enemyZones (Set<string>) params
-- Hazard check order per vertex: obstacle (stop before) > blackhole (include, then stop) > enemy zone (include, then stop) > target (include, then stop)
-- Return object now includes hitBlackhole and hitByEnemy flags (default false)
-- Uses optional chaining (?.) on blackholes/enemyZones for full backward compatibility
-- Updated selectDirection in gameState.js to pass boardData.blackholeSet and boardData.enemyZones to computePath
-- getAvailableDirections is NOT changed — directions through blackholes/enemy zones remain selectable
-- Added 10 unit tests: blackhole stop, enemy zone stop, clear path, backward compat, priority ordering (obstacle>blackhole, blackhole>enemy), first-vertex hazards, invalid direction, getAvailableDirections unchanged
-- Files changed: src/lib/game/movement.js, src/lib/game/movement.test.js, src/lib/game/gameState.js
-- **Learnings for future iterations:**
-  - computePath's new params are optional with `?.has()` — existing callers don't need changes
-  - Key difference: obstacles stop BEFORE vertex (not included), blackholes/enemies stop ON vertex (included in path)
-  - selectDirection is the integration point in gameState.js that bridges boardData hazard sets to computePath
----
-
-## 2026-02-13 20:38 - US-026
-- Added `loseReason` writable store (default null) to gameState.js — tracks cause: 'blackhole', 'enemy', 'trapped', 'exhausted'
-- In executeMove, added blackhole and enemy zone death checks BEFORE existing win/lose checks
-- Blackhole on target = death (not win) — hazard checks take priority
-- Set loseReason to 'exhausted' when pool runs out, 'trapped' when trapped after move
-- In rollDice, set loseReason to 'trapped' when trapped at start of turn
-- loseReason reset to null in resetGame()
-- Uses optional chaining (?.) on blackholeSet/enemyZones for backward compat with tests that don't set these fields
-- Added 10 unit tests: blackhole death, blackhole-on-target death, enemy zone death, loseReason initial null, loseReason after initGame null, loseReason reset, loseReason exhausted, loseReason trapped (rollDice), loseReason trapped (after move), win path keeps loseReason null
-- Files changed: src/lib/game/gameState.js, src/lib/game/winLose.test.js
-- **Learnings for future iterations:**
-  - Hazard death order: blackhole > enemy zone > win > exhausted > trapped
-  - To test hazard deaths, inject blackholeSet/enemyZones into boardData via board.set({...boardData, blackholeSet: new Set([...])})
-  - loseReason must be set BEFORE gamePhase.set('lost') so subscribers see both updates consistently
-  - Optional chaining on boardData.blackholeSet?.has() lets existing tests (without blackholeSet) work without changes
----
-
-## 2026-02-13 20:41 - US-027
-- Added `blackholes` prop (Set<string>) to Board.svelte for blackhole vertex IDs
-- Blackholes rendered as dark purple (#1a0033) circles with concentric ring indicator (outer ring + inner core)
-- Blackhole vertices do NOT get the obstacle X marker — they have their own unique visual
-- Updated `vertexColor()` to check blackholes BEFORE obstacles (dark purple fill)
-- Updated `isActiveVertex()` to include blackholes (ensures center vertices fill correctly)
-- App.svelte passes `boardData.blackholeSet ?? new Set()` as blackholes prop
-- Added dark mode variants with lighter purple (#ce93d8) for visibility
-- CSS classes: `.vertex.blackhole`, `.blackhole-ring`, `.blackhole-core`
-- Files changed: src/lib/components/Board.svelte, src/App.svelte
-- **Learnings for future iterations:**
-  - Blackholes are NOT in obstacleSet, so the `{#if obstacles.has(v.id)}` X marker conditional naturally excludes them
-  - Use `?? new Set()` fallback when passing boardData sets as props for safety
-  - `isActiveVertex` controls whether center vertices render as filled or hollow rings — must include new object types
-  - Browser verification skipped (no Chrome extension connected) — manual check needed
----
-
-## 2026-02-13 20:44 - US-028
-- Added `enemies` prop (array of `{ vertexId, direction, range, killZoneVertices }`) to Board.svelte
-- Derived sets: `enemyVertexSet` for enemy vertex IDs, `killZoneSet` for all kill zone vertex IDs
-- Enemy vertices rendered as red (#c62828) circles — visually distinct from regular obstacles and blackholes
-- Kill zone shown as semi-transparent red overlay circles (rgba(198,40,40,0.25)) rendered BEFORE vertices (behind them)
-- Enemy direction indicated with arrow line + polygon arrowhead from enemy position along facing angle
-- Updated X marker conditional to exclude enemy vertices: `{#if obstacles.has(v.id) && !enemyVertexSet.has(v.id)}`
-- Updated `vertexColor()` priority: enemy > blackhole > killZone > obstacle
-- Updated `isActiveVertex()` to include enemyVertexSet and killZoneSet
-- App.svelte constructs enemy render data using `enemy.getAffectedVertices(null, boardData.rays)` — slicing off own vertex for killZoneVertices
-- Dark mode variants: lighter red (#ef5350) for enemy stroke, direction arrow, and kill zone overlay
-- CSS classes: `.vertex.enemy`, `.vertex.kill-zone`, `.kill-zone-overlay`, `.enemy-direction`, `.enemy-arrow-head`
-- Files changed: src/lib/components/Board.svelte, src/App.svelte
-- **Learnings for future iterations:**
-  - Enemy render data should be precomputed in App.svelte, not in Board.svelte — keeps Board component free of game logic imports
-  - `getAffectedVertices` returns [ownVertex, ...killZone], so `affected.slice(1)` gives just the kill zone
-  - Kill zone overlay circles use r=VERTEX_R+3 to be slightly larger than the vertex, creating a visible halo effect
-  - Enemy X marker exclusion: enemies are in obstacleSet, so the X marker conditional needs `&& !enemyVertexSet.has(v.id)` to avoid double-rendering
-  - Browser verification skipped (no Chrome extension connected) — manual check needed
+  - isBridgeDestroyed is separate from isDestroyed — Bridge destruction = player victory even with other components alive
+  - Behavioral getters safely return false when the named component doesn't exist (for custom ships)
+  - EnemyShip pattern mirrors PlayerShip: constructor with optional components, defaults in constructor body
 ---
