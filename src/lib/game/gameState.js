@@ -18,7 +18,7 @@ export const movementPool = writable(0);
 /** Current dice roll (1-6 or null) */
 export const diceValue = writable(null);
 
-/** Game phase: 'galaxy' | 'rolling' | 'selectingDirection' | 'moving' | 'combat' | 'won' | 'lost' | 'galaxyComplete' */
+/** Game phase: 'galaxy' | 'rolling' | 'selectingDirection' | 'moving' | 'combat' | 'engagementChoice' | 'won' | 'lost' | 'galaxyComplete' */
 export const gamePhase = writable('galaxy');
 
 /** Set of visited vertex IDs */
@@ -53,6 +53,9 @@ export const currentBoardPos = writable(null);
 
 /** Persistent player ship — damage carries across combats within a board */
 export const playerShipStore = writable(null);
+
+/** Pending engagement choice: null | { enemyId, approachAdvantage, preCombatPos, path, triggerIndex, zoneType } */
+export const pendingEngagement = writable(null);
 
 // --- Helper functions ---
 
@@ -317,10 +320,27 @@ export function executeMove(onAnimationComplete) {
         const enemyObj = boardData.enemies.find(e => e.id === enemyId);
         const enemyFacing = enemyObj ? enemyObj.direction : 0;
         const approachAdvantage = getApproachAdvantage(zoneInfo.zoneType, moveDirection, enemyFacing);
-        // Clear animation state before entering combat
+        // Clear animation state before entering combat/choice
         animatingPath.set([]);
         animationStep.set(-1);
-        startCombat(enemyId, approachAdvantage, preMovePos, path, path.length - 1);
+
+        if (zoneInfo.zoneType === 'proximity') {
+          // Proximity zones give the player a choice to engage or avoid
+          pendingEngagement.set({
+            enemyId,
+            approachAdvantage,
+            preCombatPos: preMovePos,
+            path,
+            triggerIndex: path.length - 1,
+            zoneType: zoneInfo.zoneType,
+          });
+          // Update player position to the final spot (they landed there)
+          playerPos.set(finalPos);
+          gamePhase.set('engagementChoice');
+        } else {
+          // Vision zones are mandatory — auto-start combat
+          startCombat(enemyId, approachAdvantage, preMovePos, path, path.length - 1);
+        }
         if (onAnimationComplete) onAnimationComplete();
         return;
       }
@@ -608,6 +628,73 @@ export function resolveCombat(result) {
 }
 
 /**
+ * Confirm engagement: player chooses to fight the proximity enemy.
+ * Proceeds to startCombat with the pending engagement data.
+ */
+export function confirmEngagement() {
+  const pending = get(pendingEngagement);
+  if (!pending) return;
+
+  pendingEngagement.set(null);
+  startCombat(pending.enemyId, pending.approachAdvantage, pending.preCombatPos, pending.path, pending.triggerIndex);
+}
+
+/**
+ * Decline engagement: player chooses to avoid the proximity enemy.
+ * Player stays at current position, movement pool is deducted, game continues.
+ */
+export function declineEngagement() {
+  const pending = get(pendingEngagement);
+  if (!pending) return;
+
+  const boardData = get(board);
+
+  // Player stays at current position (already set during executeMove)
+  // Mark path as visited
+  const vis = get(visited);
+  const newVis = new Set(vis);
+  for (const vid of pending.path) {
+    newVis.add(vid);
+  }
+  visited.set(newVis);
+
+  // Deduct movement pool by steps taken
+  const stepsUsed = pending.triggerIndex + 1;
+  const pool = get(movementPool);
+  const newPool = pool - stepsUsed;
+  movementPool.set(newPool);
+
+  // Increment moves made
+  movesMade.update((n) => n + 1);
+
+  // Clear state
+  pendingEngagement.set(null);
+  selectedDirection.set(null);
+  previewPath.set([]);
+  animatingPath.set([]);
+  animationStep.set(-1);
+  diceValue.set(null);
+
+  // Check lose condition: out of movement points
+  if (newPool <= 0) {
+    loseReason.set('exhausted');
+    gamePhase.set('lost');
+    return;
+  }
+
+  // Check trapped condition
+  const pos = get(playerPos);
+  if (boardData && isTrapped(boardData.rays, pos, boardData.obstacles)) {
+    loseReason.set('trapped');
+    gamePhase.set('lost');
+    return;
+  }
+
+  // Back to rolling
+  gamePhase.set('rolling');
+}
+
+/**
  * Reset game to setup phase.
  */
 export function resetGame() {
@@ -626,4 +713,5 @@ export function resetGame() {
   combatState.set(null);
   playerShipStore.set(null);
   currentBoardPos.set(null);
+  pendingEngagement.set(null);
 }

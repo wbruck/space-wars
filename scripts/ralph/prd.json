@@ -159,7 +159,7 @@
         "Commit with message starting with US-043"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

@@ -20,6 +20,8 @@ Started: Sat Feb 14 13:42:44 CST 2026
 - Enemy.visionRange (1-6) is decoupled from Enemy.value; `range` property now equals `visionRange` (not `value`). `getAffectedVertices()` uses `visionRange` for ray loop limit.
 - Enemy generation uses a budget system: `enemyBudget = enemySlots * 3`, each enemy costs its `visionRange`. This produces variable enemy counts — low-range enemies allow more placements, high-range fewer.
 - Adding new RNG calls in `generateBoardObjects` shifts all subsequent random draws, which can break tests that depend on specific seeded board layouts (e.g., engagement trigger tests). Filter zone vertices when setting up test scenarios.
+- Proximity zones use `engagementChoice` game phase with `pendingEngagement` store; vision zones auto-start combat. The engagement flow stores pending data then hands off to `confirmEngagement()` or `declineEngagement()`.
+- Tests that set up trapped/win/lose scenarios after a move must clear `enemyZones` and `enemyZoneMap` on the board to prevent the new engagement choice from intercepting the expected game flow.
 
 ---
 
@@ -114,4 +116,22 @@ Started: Sat Feb 14 13:42:44 CST 2026
   - Adding new `rng()` calls in `generateBoardObjects` shifts all subsequent random draws, breaking tests that depend on specific seeded board layouts. Always filter for existing zones when setting up test scenarios.
   - Budget-based generation produces variable counts — tests should check range constraints and budget limits rather than exact counts
   - The `Enemy` constructor backward compat (no visionRange → clamped value) preserves existing `createBoardObject('enemy', ...)` calls that don't pass visionRange
+---
+
+## 2026-02-14 - US-043
+- Added `engagementChoice` game phase and `pendingEngagement` writable store to gameState.js
+- When `executeMove()` lands on a proximity zone, it stores pending engagement data and sets `engagementChoice` phase instead of auto-starting combat
+- Vision zones continue to auto-start combat (no choice)
+- Added `confirmEngagement()` function: reads pendingEngagement, calls startCombat with stored data
+- Added `declineEngagement()` function: player stays at current position, deducts movement pool for steps taken, marks path as visited, returns to rolling (or lost if pool exhausted/trapped)
+- Created `EngagementModal.svelte` component with "Engage Enemy" (blue) and "Avoid" (gray) buttons, semi-transparent backdrop, approach info display
+- Updated `App.svelte` to show EngagementModal overlay during `engagementChoice` phase on top of the board
+- Updated `resetGame()` to clear `pendingEngagement` store
+- Added 9 unit tests: proximity triggers choice, vision auto-engages, confirmEngagement starts combat, declineEngagement returns to rolling, deducts steps, triggers game over on pool exhaustion, marks visited, stores approach advantage, resetGame clears pending
+- Fixed 2 winLose.test.js tests that broke because their trapped scenario destination was in an enemy proximity zone — cleared enemyZones/enemyZoneMap when setting up boards
+- Files changed: `src/lib/game/gameState.js`, `src/lib/game/gameState.test.js`, `src/lib/game/winLose.test.js`, `src/lib/components/EngagementModal.svelte`, `src/App.svelte`, `scripts/ralph/prd.json`
+- **Learnings for future iterations:**
+  - Adding new game phases that intercept executeMove (like engagementChoice for proximity) can break tests that expect specific phases after a move. Those tests need to clear enemy zone data to avoid the new phase.
+  - The engagement choice pattern uses a separate store (`pendingEngagement`) rather than overloading `combatState`, keeping the two flows independent until `confirmEngagement` bridges them.
+  - `declineEngagement()` mirrors the post-move cleanup logic from `executeMove()` (mark visited, deduct pool, check lose conditions) — future changes to post-move logic should check both paths.
 ---

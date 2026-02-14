@@ -11,6 +11,7 @@ import {
   loseReason,
   combatState,
   playerShipStore,
+  pendingEngagement,
   selectedDirection,
   previewPath,
   animatingPath,
@@ -20,6 +21,8 @@ import {
   hasValidPath,
   startCombat,
   resolveCombat,
+  confirmEngagement,
+  declineEngagement,
   selectDirection,
   executeMove,
 } from './gameState.js';
@@ -1043,6 +1046,232 @@ describe('engagement trigger in executeMove (US-034)', () => {
     // Should be in rolling phase (normal move, no combat)
     expect(get(gamePhase)).toBe('rolling');
     expect(get(combatState)).toBeNull();
+  });
+});
+
+describe('engagement choice for proximity zones (US-043)', () => {
+  let boardData;
+
+  beforeEach(() => {
+    resetGame();
+    boardData = initGame(5, 4, 42, 5);
+  });
+
+  function executeMoveAsync() {
+    return new Promise((resolve) => {
+      executeMove(() => resolve());
+    });
+  }
+
+  /**
+   * Set up an enemy zone on a path vertex with a specific zoneType.
+   */
+  function setupEnemyOnPathWithZoneType(zoneType) {
+    const pos = get(playerPos);
+    const rays = boardData.rays.get(pos);
+    const longRay = rays.find((r) => {
+      if (r.vertices.length < 3) return false;
+      return !boardData.obstacles.has(r.vertices[0]) && !boardData.obstacles.has(r.vertices[1])
+        && !boardData.enemyZoneMap.has(r.vertices[0]) && !boardData.enemyZoneMap.has(r.vertices[1]);
+    });
+    if (!longRay) return null;
+
+    const zoneVertex = longRay.vertices[1];
+    const enemyVertex = 'fake-enemy-vertex-043';
+    const enemyDirection = 2;
+    const enemy = new Enemy(enemyVertex, 3, enemyDirection);
+
+    boardData.enemies.push(enemy);
+    boardData.enemyZones.add(zoneVertex);
+    boardData.enemyZoneMap.set(zoneVertex, { enemyId: enemy.id, zoneType });
+    board.set(boardData);
+
+    return { enemy, zoneVertex, direction: longRay.direction, enemyDirection };
+  }
+
+  it('proximity zone triggers engagementChoice phase instead of combat', async () => {
+    const setup = setupEnemyOnPathWithZoneType('proximity');
+    if (!setup) return;
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+    const path = get(previewPath);
+    expect(path).toContain(setup.zoneVertex);
+
+    await executeMoveAsync();
+
+    expect(get(gamePhase)).toBe('engagementChoice');
+    expect(get(pendingEngagement)).not.toBeNull();
+    expect(get(pendingEngagement).enemyId).toBe(setup.enemy.id);
+    expect(get(pendingEngagement).zoneType).toBe('proximity');
+    expect(get(combatState)).toBeNull();
+  });
+
+  it('vision zone auto-starts combat with no choice', async () => {
+    const setup = setupEnemyOnPathWithZoneType('vision');
+    if (!setup) return;
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+
+    await executeMoveAsync();
+
+    expect(get(gamePhase)).toBe('combat');
+    expect(get(combatState)).not.toBeNull();
+    expect(get(pendingEngagement)).toBeNull();
+  });
+
+  it('confirmEngagement starts combat from pending data', async () => {
+    const setup = setupEnemyOnPathWithZoneType('proximity');
+    if (!setup) return;
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+
+    await executeMoveAsync();
+
+    expect(get(gamePhase)).toBe('engagementChoice');
+
+    confirmEngagement();
+
+    expect(get(gamePhase)).toBe('combat');
+    expect(get(combatState)).not.toBeNull();
+    expect(get(combatState).enemyId).toBe(setup.enemy.id);
+    expect(get(pendingEngagement)).toBeNull();
+  });
+
+  it('declineEngagement skips combat and returns to rolling', async () => {
+    const setup = setupEnemyOnPathWithZoneType('proximity');
+    if (!setup) return;
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+
+    await executeMoveAsync();
+
+    expect(get(gamePhase)).toBe('engagementChoice');
+    const poolBefore = get(movementPool);
+
+    declineEngagement();
+
+    expect(get(gamePhase)).toBe('rolling');
+    expect(get(combatState)).toBeNull();
+    expect(get(pendingEngagement)).toBeNull();
+    // Player stays at current position (the zone vertex)
+    expect(get(playerPos)).toBe(setup.zoneVertex);
+  });
+
+  it('declineEngagement deducts steps from movement pool', async () => {
+    const setup = setupEnemyOnPathWithZoneType('proximity');
+    if (!setup) return;
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+
+    await executeMoveAsync();
+
+    const pending = get(pendingEngagement);
+    const expectedSteps = pending.triggerIndex + 1;
+
+    declineEngagement();
+
+    expect(get(movementPool)).toBe(20 - expectedSteps);
+  });
+
+  it('declineEngagement triggers game over if pool runs out', async () => {
+    const setup = setupEnemyOnPathWithZoneType('proximity');
+    if (!setup) return;
+
+    // Set pool to exactly the steps that will be used
+    movementPool.set(2);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+
+    await executeMoveAsync();
+
+    const pending = get(pendingEngagement);
+    // Set pool to exactly triggerIndex + 1 so it runs out
+    movementPool.set(pending.triggerIndex + 1);
+
+    declineEngagement();
+
+    expect(get(gamePhase)).toBe('lost');
+    expect(get(loseReason)).toBe('exhausted');
+  });
+
+  it('declineEngagement marks path vertices as visited', async () => {
+    const setup = setupEnemyOnPathWithZoneType('proximity');
+    if (!setup) return;
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+    const path = get(previewPath);
+
+    await executeMoveAsync();
+
+    declineEngagement();
+
+    const vis = get(visited);
+    for (const vid of path) {
+      expect(vis.has(vid)).toBe(true);
+    }
+  });
+
+  it('pendingEngagement stores approach advantage', async () => {
+    const setup = setupEnemyOnPathWithZoneType('proximity');
+    if (!setup) return;
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+
+    await executeMoveAsync();
+
+    const pending = get(pendingEngagement);
+    expect(pending.approachAdvantage).toBeDefined();
+    expect(pending.approachAdvantage).toHaveProperty('firstAttacker');
+    expect(pending.approachAdvantage).toHaveProperty('bonusAttacks');
+  });
+
+  it('resetGame clears pendingEngagement', async () => {
+    const setup = setupEnemyOnPathWithZoneType('proximity');
+    if (!setup) return;
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+
+    await executeMoveAsync();
+
+    expect(get(pendingEngagement)).not.toBeNull();
+
+    resetGame();
+
+    expect(get(pendingEngagement)).toBeNull();
   });
 });
 
