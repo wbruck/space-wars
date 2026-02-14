@@ -26,6 +26,7 @@
     startVertex = null,
     targetVertex = null,
     obstacles = new Set(),
+    blackholes = new Set(),
     playerPos = null,
     visited = new Set(),
     gamePhase = 'setup',
@@ -153,6 +154,7 @@
     return v.id === targetVertex ||
       v.id === startVertex ||
       obstacles.has(v.id) ||
+      blackholes.has(v.id) ||
       animatedSet.has(v.id) ||
       previewSet.has(v.id) ||
       visited.has(v.id);
@@ -163,6 +165,7 @@
   function vertexColor(v) {
     if (v.id === targetVertex) return '#e8a735';
     if (v.id === startVertex) return '#4caf50';
+    if (blackholes.has(v.id)) return '#1a0033';
     if (obstacles.has(v.id)) return '#444';
     if (animatedSet.has(v.id)) return '#90caf9';
     if (previewSet.has(v.id)) return '#64b5f6';
@@ -234,11 +237,12 @@
       class="vertex"
       class:center-vertex={v.type === 'center'}
       class:center-active={v.type === 'center' && isActiveVertex(v)}
+      class:blackhole={blackholes.has(v.id)}
       class:obstacle={obstacles.has(v.id)}
       class:preview={previewSet.has(v.id)}
       class:animated={animatedSet.has(v.id)}
     />
-    <!-- X marker for obstacles -->
+    <!-- X marker for obstacles (not blackholes) -->
     {#if obstacles.has(v.id)}
       <line
         x1={v.x - 5} y1={v.y - 5}
@@ -249,6 +253,21 @@
         x1={v.x + 5} y1={v.y - 5}
         x2={v.x - 5} y2={v.y + 5}
         class="obstacle-x"
+      />
+    {/if}
+    <!-- Blackhole concentric ring indicator -->
+    {#if blackholes.has(v.id)}
+      <circle
+        cx={v.x}
+        cy={v.y}
+        r={5}
+        class="blackhole-ring"
+      />
+      <circle
+        cx={v.x}
+        cy={v.y}
+        r={2}
+        class="blackhole-core"
       />
     {/if}
   {/each}
@@ -364,6 +383,24 @@
     pointer-events: none;
   }
 
+  .vertex.blackhole {
+    stroke: #7b1fa2;
+    stroke-width: 1.5;
+    cursor: default;
+  }
+
+  .blackhole-ring {
+    fill: none;
+    stroke: #9c27b0;
+    stroke-width: 1;
+    pointer-events: none;
+  }
+
+  .blackhole-core {
+    fill: #9c27b0;
+    pointer-events: none;
+  }
+
   .preview-line {
     stroke: #64b5f6;
     stroke-width: 2.5;
@@ -445,6 +482,15 @@
     }
     .vertex.center-vertex {
       stroke: #777;
+    }
+    .vertex.blackhole {
+      stroke: #ce93d8;
+    }
+    .blackhole-ring {
+      stroke: #ce93d8;
+    }
+    .blackhole-core {
+      fill: #ce93d8;
     }
   }
 </style>

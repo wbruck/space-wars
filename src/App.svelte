@@ -60,6 +60,7 @@
       startVertex={boardData.startVertex}
       targetVertex={boardData.targetVertex}
       obstacles={boardData.obstacles}
+      blackholes={boardData.blackholeSet ?? new Set()}
       playerPos={pos}
       visited={visitedSet}
       gamePhase={phase}
