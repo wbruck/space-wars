@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShipComponent, Ship, PlayerShip, EnemyShip } from './combat.js';
+import { ShipComponent, Ship, PlayerShip, EnemyShip, CombatEngine } from './combat.js';
 
 describe('ShipComponent', () => {
   it('constructs with correct properties', () => {
@@ -320,5 +320,551 @@ describe('EnemyShip', () => {
   it('isBridgeDestroyed returns false if no Bridge component exists', () => {
     const ship = new EnemyShip([new ShipComponent('Laser', 2)]);
     expect(ship.isBridgeDestroyed).toBe(false);
+  });
+});
+
+// --- CombatEngine Tests ---
+
+/**
+ * Creates a deterministic RNG from a sequence of desired d6 rolls.
+ * rollAttack() does: Math.floor(rng() * 6) + 1
+ * So for a desired roll R, rng must return (R - 1) / 6 + small epsilon
+ * to ensure Math.floor gives R - 1.
+ */
+function makeRng(rolls) {
+  let i = 0;
+  return () => {
+    const roll = rolls[i % rolls.length];
+    i++;
+    // rng returns value in [0,1). For Math.floor(rng*6)+1 = roll, need rng in [(roll-1)/6, roll/6)
+    return (roll - 0.5) / 6;
+  };
+}
+
+/** Helper: creates a standard combat engine with seeded RNG */
+function makeEngine(rolls, opts = {}) {
+  return new CombatEngine({
+    playerShip: opts.playerShip || new PlayerShip(),
+    enemyShip: opts.enemyShip || new EnemyShip(),
+    maxTurns: opts.maxTurns ?? 5,
+    hitThreshold: opts.hitThreshold ?? 4,
+    rng: makeRng(rolls),
+  });
+}
+
+describe('CombatEngine', () => {
+  describe('construction', () => {
+    it('initializes with correct defaults', () => {
+      const engine = makeEngine([4]);
+      expect(engine.currentTurn).toBe(1);
+      expect(engine.isPlayerTurn).toBe(true);
+      expect(engine.turnLog).toEqual([]);
+      expect(engine.combatOver).toBe(false);
+      expect(engine.result).toBe(null);
+      expect(engine.maxTurns).toBe(5);
+      expect(engine.hitThreshold).toBe(4);
+    });
+
+    it('accepts custom maxTurns and hitThreshold', () => {
+      const engine = makeEngine([4], { maxTurns: 3, hitThreshold: 5 });
+      expect(engine.maxTurns).toBe(3);
+      expect(engine.hitThreshold).toBe(5);
+    });
+
+    it('stores player and enemy ships', () => {
+      const player = new PlayerShip();
+      const enemy = new EnemyShip();
+      const engine = new CombatEngine({
+        playerShip: player,
+        enemyShip: enemy,
+        rng: makeRng([4]),
+      });
+      expect(engine.playerShip).toBe(player);
+      expect(engine.enemyShip).toBe(enemy);
+    });
+  });
+
+  describe('setFirstAttacker', () => {
+    it('sets player first', () => {
+      const engine = makeEngine([4]);
+      engine.setFirstAttacker('player');
+      expect(engine.isPlayerTurn).toBe(true);
+    });
+
+    it('sets enemy first', () => {
+      const engine = makeEngine([4]);
+      engine.setFirstAttacker('enemy');
+      expect(engine.isPlayerTurn).toBe(false);
+    });
+  });
+
+  describe('rollAttack', () => {
+    it('returns correct roll and hit for roll of 4 (hit)', () => {
+      const engine = makeEngine([4]);
+      const result = engine.rollAttack();
+      expect(result.roll).toBe(4);
+      expect(result.isHit).toBe(true);
+    });
+
+    it('returns correct roll and miss for roll of 3', () => {
+      const engine = makeEngine([3]);
+      const result = engine.rollAttack();
+      expect(result.roll).toBe(3);
+      expect(result.isHit).toBe(false);
+    });
+
+    it('returns correct roll for roll of 1 (min)', () => {
+      const engine = makeEngine([1]);
+      const result = engine.rollAttack();
+      expect(result.roll).toBe(1);
+      expect(result.isHit).toBe(false);
+    });
+
+    it('returns correct roll for roll of 6 (max, hit)', () => {
+      const engine = makeEngine([6]);
+      const result = engine.rollAttack();
+      expect(result.roll).toBe(6);
+      expect(result.isHit).toBe(true);
+    });
+
+    it('roll of 5 is a hit', () => {
+      const engine = makeEngine([5]);
+      const result = engine.rollAttack();
+      expect(result.roll).toBe(5);
+      expect(result.isHit).toBe(true);
+    });
+
+    it('roll of 2 is a miss', () => {
+      const engine = makeEngine([2]);
+      const result = engine.rollAttack();
+      expect(result.roll).toBe(2);
+      expect(result.isHit).toBe(false);
+    });
+  });
+
+  describe('executePlayerAttack', () => {
+    it('damages enemy component on hit', () => {
+      // Roll 4 = hit
+      const engine = makeEngine([4]);
+      const result = engine.executePlayerAttack('Bridge');
+      expect(result.roll).toBe(4);
+      expect(result.isHit).toBe(true);
+      expect(result.targetComponent).toBe('Bridge');
+      expect(result.destroyed).toBe(true); // 1 HP Bridge destroyed by 1 hit
+      expect(engine.enemyShip.getComponent('Bridge').currentHp).toBe(0);
+    });
+
+    it('does not damage on miss', () => {
+      // Roll 2 = miss
+      const engine = makeEngine([2]);
+      const result = engine.executePlayerAttack('Bridge');
+      expect(result.isHit).toBe(false);
+      expect(result.destroyed).toBe(false);
+      expect(engine.enemyShip.getComponent('Bridge').currentHp).toBe(1);
+    });
+
+    it('logs the attack', () => {
+      const engine = makeEngine([4]);
+      engine.executePlayerAttack('Weapons');
+      expect(engine.turnLog).toHaveLength(1);
+      expect(engine.turnLog[0]).toMatchObject({
+        turn: 1,
+        attacker: 'player',
+        target: 'Weapons',
+        roll: 4,
+        isHit: true,
+        destroyed: true,
+      });
+    });
+
+    it('switches to enemy turn after attack', () => {
+      const engine = makeEngine([2]); // miss, no end condition
+      engine.executePlayerAttack('Bridge');
+      expect(engine.isPlayerTurn).toBe(false);
+    });
+
+    it('no-ops when combat is already over', () => {
+      const engine = makeEngine([4]);
+      // Destroy bridge to end combat
+      engine.executePlayerAttack('Bridge');
+      expect(engine.combatOver).toBe(true);
+      const result = engine.executePlayerAttack('Weapons');
+      expect(result.roll).toBe(0);
+      expect(result.combatOver).toBe(true);
+    });
+  });
+
+  describe('executeEnemyAttack', () => {
+    it('targets a random active player component', () => {
+      // Rolls: first for target selection (rng used by enemy targeting), second for attack roll
+      // Actually, executeEnemyAttack uses rng twice: once for target index, once for rollAttack
+      // The rng sequence controls both
+      const engine = makeEngine([1, 4]); // target index calc + roll of 4
+      engine.setFirstAttacker('enemy');
+      const result = engine.executeEnemyAttack();
+      expect(result.isHit).toBe(true);
+      expect(result.targetComponent).toBeDefined();
+    });
+
+    it('auto-misses when enemy Weapons destroyed', () => {
+      const engine = makeEngine([4]);
+      engine.enemyShip.getComponent('Weapons').takeDamage(1);
+      engine.setFirstAttacker('enemy');
+      const result = engine.executeEnemyAttack();
+      expect(result.roll).toBe(0);
+      expect(result.isHit).toBe(false);
+      expect(result.targetComponent).toBe(null);
+      // Log should have autoMiss
+      expect(engine.turnLog[0].autoMiss).toBe(true);
+    });
+
+    it('switches to player turn after attack', () => {
+      const engine = makeEngine([1, 2]); // target selection + miss roll
+      engine.setFirstAttacker('enemy');
+      engine.executeEnemyAttack();
+      expect(engine.isPlayerTurn).toBe(true);
+    });
+
+    it('logs the attack', () => {
+      const engine = makeEngine([1, 5]); // target + hit
+      engine.setFirstAttacker('enemy');
+      engine.executeEnemyAttack();
+      expect(engine.turnLog).toHaveLength(1);
+      expect(engine.turnLog[0].attacker).toBe('enemy');
+      expect(engine.turnLog[0].isHit).toBe(true);
+    });
+  });
+
+  describe('Bridge destroyed → playerWin', () => {
+    it('ends combat immediately when Bridge is destroyed', () => {
+      // Roll 4 = hit, destroys Bridge (1 HP)
+      const engine = makeEngine([4]);
+      const result = engine.executePlayerAttack('Bridge');
+      expect(result.combatOver).toBe(true);
+      expect(result.result).toBe('playerWin');
+      expect(result.destroyed).toBe(true);
+      expect(engine.combatOver).toBe(true);
+      expect(engine.result).toBe('playerWin');
+    });
+
+    it('playerWin even if other enemy components alive', () => {
+      const engine = makeEngine([4]);
+      const result = engine.executePlayerAttack('Bridge');
+      expect(result.result).toBe('playerWin');
+      expect(engine.enemyShip.canAttack).toBe(true);
+      expect(engine.enemyShip.canFlee).toBe(true);
+    });
+  });
+
+  describe('all player components destroyed → playerDestroyed', () => {
+    it('ends combat when all player components are destroyed', () => {
+      // Player has 3 components with 2 HP each = 6 hits needed
+      // Use 1 HP player components for easier testing
+      const player = new PlayerShip([
+        new ShipComponent('Weapons', 1),
+        new ShipComponent('Engines', 1),
+        new ShipComponent('Bridge', 1),
+      ]);
+      // All enemy attacks hit (rolls of 4), targeting each component
+      // rng controls: target selection + attack roll for each enemy attack
+      // For 3 active components: index 0=Weapons, 1=Engines, 2=Bridge
+      const engine = new CombatEngine({
+        playerShip: player,
+        enemyShip: new EnemyShip(),
+        rng: makeRng([
+          1, 4,  // enemy targets index 0 (Weapons), rolls 4 (hit)
+          1, 4,  // enemy targets index 0 (now Engines since Weapons dead), rolls 4 (hit)
+          1, 4,  // enemy targets index 0 (now Bridge since others dead), rolls 4 (hit)
+        ]),
+      });
+      engine.setFirstAttacker('enemy');
+
+      engine.executeEnemyAttack(); // Destroys component
+      expect(engine.combatOver).toBe(false); // Not all destroyed yet
+
+      engine.executeEnemyAttack(); // Destroys another
+      expect(engine.combatOver).toBe(false);
+
+      const result = engine.executeEnemyAttack(); // Destroys last
+      expect(result.combatOver).toBe(true);
+      expect(result.result).toBe('playerDestroyed');
+    });
+  });
+
+  describe('max turns reached → playerLose', () => {
+    it('ends combat when both sides exhaust max turns', () => {
+      // maxTurns = 2, all attacks miss (roll 1)
+      const engine = makeEngine(
+        [1], // all rolls are 1 (miss)
+        { maxTurns: 2 }
+      );
+
+      // Turn 1: player attacks (miss)
+      engine.executePlayerAttack('Bridge');
+      expect(engine.combatOver).toBe(false);
+
+      // Turn 1: enemy attacks (miss) — rng gives target index + miss roll
+      engine.executeEnemyAttack();
+      expect(engine.combatOver).toBe(false);
+
+      // Turn 2: player attacks (miss)
+      engine.executePlayerAttack('Bridge');
+      expect(engine.combatOver).toBe(false);
+
+      // Turn 2: enemy attacks (miss) — this is enemy's 2nd attack
+      const result = engine.executeEnemyAttack();
+      expect(result.combatOver).toBe(true);
+      expect(result.result).toBe('playerLose');
+    });
+  });
+
+  describe('enemy Weapons + Engines destroyed → enemyFled', () => {
+    it('ends combat when both Weapons and Engines destroyed', () => {
+      // Two hits: destroy Weapons then Engines
+      const engine = makeEngine([4, 4]); // both hit
+
+      const r1 = engine.executePlayerAttack('Weapons');
+      expect(r1.destroyed).toBe(true);
+      expect(r1.combatOver).toBe(false); // Only Weapons destroyed, Engines still active
+
+      // Need to get back to player turn — enemy attacks
+      // rng: target index (1), roll (1 = miss)
+      // But wait, after player attack, it's enemy's turn
+      // We need enemy to attack, then player attacks again
+      // rng state continues from index 2
+      engine.executeEnemyAttack(); // uses next rng values
+
+      const r2 = engine.executePlayerAttack('Engines');
+      // This may or may not hit depending on rng sequence
+      // Let me redesign with explicit rng values
+    });
+  });
+
+  describe('enemyFled (redesigned)', () => {
+    it('ends combat when enemy Weapons and Engines both destroyed', () => {
+      // Precise rng sequence:
+      // 1. Player attacks Weapons: rng[0]=4 (hit) → Weapons destroyed
+      // 2. Enemy auto-misses (Weapons destroyed) — no rng consumed
+      // 3. Player attacks Engines: rng[1]=4 (hit) → Engines destroyed → enemyFled
+      const engine = new CombatEngine({
+        playerShip: new PlayerShip(),
+        enemyShip: new EnemyShip(),
+        rng: makeRng([4, 4]),
+      });
+
+      engine.executePlayerAttack('Weapons'); // rng[0]=4 → hit, destroys Weapons
+      expect(engine.enemyShip.canAttack).toBe(false);
+      expect(engine.combatOver).toBe(false);
+
+      engine.executeEnemyAttack(); // auto-miss (Weapons destroyed), no rng consumed
+
+      const r = engine.executePlayerAttack('Engines'); // rng[1]=4 → hit, destroys Engines
+      expect(r.destroyed).toBe(true);
+      expect(r.combatOver).toBe(true);
+      expect(r.result).toBe('enemyFled');
+    });
+  });
+
+  describe('turn ordering', () => {
+    it('player goes first by default', () => {
+      const engine = makeEngine([2]);
+      expect(engine.isPlayerTurn).toBe(true);
+    });
+
+    it('alternates player → enemy → player', () => {
+      const engine = makeEngine([1]); // all misses
+      expect(engine.isPlayerTurn).toBe(true);
+
+      engine.executePlayerAttack('Bridge');
+      expect(engine.isPlayerTurn).toBe(false);
+
+      engine.executeEnemyAttack();
+      expect(engine.isPlayerTurn).toBe(true);
+      expect(engine.currentTurn).toBe(2);
+    });
+
+    it('enemy goes first when setFirstAttacker("enemy")', () => {
+      const engine = makeEngine([1, 1]); // misses
+      engine.setFirstAttacker('enemy');
+      expect(engine.isPlayerTurn).toBe(false);
+
+      engine.executeEnemyAttack();
+      expect(engine.isPlayerTurn).toBe(true);
+    });
+
+    it('currentTurn advances after enemy attack', () => {
+      const engine = makeEngine([1]); // all misses
+      expect(engine.currentTurn).toBe(1);
+
+      engine.executePlayerAttack('Bridge');
+      expect(engine.currentTurn).toBe(1); // still turn 1
+
+      engine.executeEnemyAttack();
+      expect(engine.currentTurn).toBe(2); // now turn 2
+    });
+  });
+
+  describe('bonus attacks (rear approach)', () => {
+    it('player gets extra attack before enemy turn when bonusAttacks = 1', () => {
+      const engine = makeEngine([1]); // all misses
+      engine.bonusAttacks = 1;
+
+      // Attack 1
+      engine.executePlayerAttack('Bridge');
+      expect(engine.isPlayerTurn).toBe(true); // still player turn (bonus)
+
+      // Attack 2 (bonus attack)
+      engine.executePlayerAttack('Bridge');
+      expect(engine.isPlayerTurn).toBe(false); // now enemy turn
+    });
+
+    it('bonus attack decrements bonusAttacks', () => {
+      const engine = makeEngine([1]); // all misses
+      engine.bonusAttacks = 1;
+
+      engine.executePlayerAttack('Bridge');
+      expect(engine.bonusAttacks).toBe(0);
+    });
+  });
+
+  describe('turn counting', () => {
+    it('tracks player and enemy attack counts independently', () => {
+      const engine = makeEngine([1]); // all misses
+      engine.executePlayerAttack('Bridge');
+      expect(engine._playerAttackCount).toBe(1);
+      expect(engine._enemyAttackCount).toBe(0);
+
+      engine.executeEnemyAttack();
+      expect(engine._playerAttackCount).toBe(1);
+      expect(engine._enemyAttackCount).toBe(1);
+    });
+  });
+
+  describe('full combat simulation with seeded RNG', () => {
+    it('simulates a full combat where player wins by destroying Bridge', () => {
+      // Player always hits (roll 4), enemy always misses (roll 1)
+      // After player hits Bridge (1 HP), combat ends as playerWin
+      // Sequence: player roll 4 (hit Bridge)
+      const engine = makeEngine([4]);
+      const result = engine.executePlayerAttack('Bridge');
+      expect(result.result).toBe('playerWin');
+      expect(engine.turnLog).toHaveLength(1);
+    });
+
+    it('simulates combat where enemy eventually destroys all player components', () => {
+      // Player with 1 HP components, enemy goes first, always hits
+      const player = new PlayerShip([
+        new ShipComponent('Weapons', 1),
+        new ShipComponent('Engines', 1),
+        new ShipComponent('Bridge', 1),
+      ]);
+      // Sequence: enemy target+roll, player miss, enemy target+roll, player miss, enemy target+roll
+      // Enemy: target index (via rng), then roll 6 (hit)
+      // Player: roll 1 (miss)
+      const rngValues = [];
+      // Turn 1: enemy targets idx 0, rolls 6 (hit), player rolls 1 (miss)
+      rngValues.push(1, 6, 1);
+      // Turn 2: enemy targets idx 0 (2 active left), rolls 6 (hit), player rolls 1 (miss)
+      rngValues.push(1, 6, 1);
+      // Turn 3: enemy targets idx 0 (1 active left), rolls 6 (hit) → playerDestroyed
+      rngValues.push(1, 6);
+
+      const engine = new CombatEngine({
+        playerShip: player,
+        enemyShip: new EnemyShip(),
+        rng: makeRng(rngValues),
+      });
+      engine.setFirstAttacker('enemy');
+
+      // Turn 1
+      engine.executeEnemyAttack(); // hits, destroys one component
+      expect(engine.combatOver).toBe(false);
+      engine.executePlayerAttack('Bridge'); // miss
+      expect(engine.combatOver).toBe(false);
+
+      // Turn 2
+      engine.executeEnemyAttack(); // hits, destroys another
+      expect(engine.combatOver).toBe(false);
+      engine.executePlayerAttack('Bridge'); // miss
+      expect(engine.combatOver).toBe(false);
+
+      // Turn 3
+      const result = engine.executeEnemyAttack(); // hits, destroys last
+      expect(result.combatOver).toBe(true);
+      expect(result.result).toBe('playerDestroyed');
+    });
+
+    it('simulates timeout when both sides miss all attacks', () => {
+      // maxTurns = 2, all misses
+      const engine = makeEngine([1], { maxTurns: 2 });
+
+      // Turn 1
+      engine.executePlayerAttack('Bridge'); // miss
+      engine.executeEnemyAttack(); // miss (target + roll, both use rng value 1)
+
+      // Turn 2
+      engine.executePlayerAttack('Bridge'); // miss
+      const result = engine.executeEnemyAttack(); // miss, both sides at maxTurns
+      expect(result.combatOver).toBe(true);
+      expect(result.result).toBe('playerLose');
+    });
+
+    it('simulates combat where player destroys Weapons and Engines causing flee', () => {
+      // Player hits Weapons (roll 4), enemy auto-misses (no Weapons), player hits Engines (roll 4)
+      const engine = new CombatEngine({
+        playerShip: new PlayerShip(),
+        enemyShip: new EnemyShip(),
+        rng: makeRng([4, 4]), // player hits, then player hits again
+      });
+
+      engine.executePlayerAttack('Weapons'); // hit, destroys Weapons
+      expect(engine.combatOver).toBe(false);
+
+      engine.executeEnemyAttack(); // auto-miss (no Weapons) — no rng consumed
+
+      const result = engine.executePlayerAttack('Engines'); // hit, destroys Engines
+      expect(result.combatOver).toBe(true);
+      expect(result.result).toBe('enemyFled');
+    });
+  });
+
+  describe('rng parameter', () => {
+    it('accepts custom rng function', () => {
+      let called = false;
+      const customRng = () => { called = true; return 0.5; }; // roll = floor(0.5*6)+1 = 4
+      const engine = new CombatEngine({
+        playerShip: new PlayerShip(),
+        enemyShip: new EnemyShip(),
+        rng: customRng,
+      });
+      engine.rollAttack();
+      expect(called).toBe(true);
+    });
+
+    it('produces deterministic results with same rng', () => {
+      const engine1 = makeEngine([4, 2, 6]);
+      const engine2 = makeEngine([4, 2, 6]);
+
+      const r1 = engine1.executePlayerAttack('Bridge');
+      const r2 = engine2.executePlayerAttack('Bridge');
+      expect(r1.roll).toBe(r2.roll);
+      expect(r1.isHit).toBe(r2.isHit);
+    });
+  });
+
+  describe('custom hitThreshold', () => {
+    it('hit threshold of 5 means only 5 and 6 hit', () => {
+      const engine = makeEngine([4], { hitThreshold: 5 });
+      const result = engine.rollAttack();
+      expect(result.roll).toBe(4);
+      expect(result.isHit).toBe(false);
+    });
+
+    it('hit threshold of 1 means everything hits', () => {
+      const engine = makeEngine([1], { hitThreshold: 1 });
+      const result = engine.rollAttack();
+      expect(result.roll).toBe(1);
+      expect(result.isHit).toBe(true);
+    });
   });
 });

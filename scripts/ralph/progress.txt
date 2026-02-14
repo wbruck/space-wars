@@ -10,6 +10,11 @@ Started: Fri Feb 13 21:26:55 CST 2026
 - EnemyShip extends Ship with behavioral getters: canAttack, canFlee, isBridgeDestroyed
 - Bridge destruction (isBridgeDestroyed) is the ONLY way to fully defeat an enemy — isDestroyed checks ALL components
 - Behavioral getters return false if the named component doesn't exist (custom components edge case)
+- CombatEngine constructor takes { playerShip, enemyShip, maxTurns?, hitThreshold?, rng? }
+- CombatEngine.rng accepts () => number for deterministic tests; rollAttack does Math.floor(rng()*6)+1
+- Auto-miss (Weapons destroyed) does NOT consume rng values — it short-circuits before rolling
+- Combat end priority: Bridge destroyed (playerWin) > playerDestroyed > enemyFled > maxTurns (playerLose)
+- bonusAttacks field controls extra player attacks before enemy's first turn (for rear approach advantage)
 
 ---
 
@@ -36,4 +41,22 @@ Started: Fri Feb 13 21:26:55 CST 2026
   - isBridgeDestroyed is separate from isDestroyed — Bridge destruction = player victory even with other components alive
   - Behavioral getters safely return false when the named component doesn't exist (for custom ships)
   - EnemyShip pattern mirrors PlayerShip: constructor with optional components, defaults in constructor body
+---
+
+## 2026-02-13 21:35 - US-031
+- Created CombatEngine class in src/lib/game/combat.js
+- Constructor: { playerShip, enemyShip, maxTurns (default 5), hitThreshold (default 4), rng? }
+- State: currentTurn, isPlayerTurn, turnLog, combatOver, result, bonusAttacks
+- Methods: setFirstAttacker(attacker), rollAttack(), executePlayerAttack(targetComponentName), executeEnemyAttack()
+- Combat end conditions: playerWin (Bridge destroyed), playerDestroyed (all player components), enemyFled (Weapons+Engines destroyed), playerLose (maxTurns reached)
+- Enemy auto-misses when Weapons destroyed (short-circuits, no rng consumed)
+- Bonus attack system: bonusAttacks field allows extra player attacks before enemy's first turn
+- Added 41 new CombatEngine tests (total 84 in combat.test.js) covering construction, roll mechanics, attacks, all end conditions, turn ordering, bonus attacks, full simulations, rng determinism, custom thresholds
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
+- **Learnings for future iterations:**
+  - Auto-miss does NOT consume rng values — tests must account for this when sequencing rolls
+  - makeRng helper: desired roll R → rng returns (R - 0.5) / 6 for Math.floor(rng()*6)+1 = R
+  - executeEnemyAttack consumes 2 rng values (target selection + attack roll) unless auto-miss
+  - Turn counter advances after enemy attack (not player attack) — currentTurn increments in _advanceTurn when switching from enemy→player
+  - Class ordering in combat.js: ShipComponent → Ship → PlayerShip → EnemyShip → CombatEngine
 ---
