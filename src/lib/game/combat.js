@@ -123,6 +123,26 @@ export class EnemyShip extends Ship {
 }
 
 /**
+ * Determine first-attack advantage based on approach direction.
+ * @param {number} playerDirection - Player's movement direction (0-5)
+ * @param {number} enemyFacingDirection - Enemy's facing direction (0-5)
+ * @returns {{ firstAttacker: 'player'|'enemy', bonusAttacks: number }}
+ */
+export function getApproachAdvantage(playerDirection, enemyFacingDirection) {
+  const front = (enemyFacingDirection + 3) % 6;
+  if (playerDirection === front) {
+    // Head-on: enemy attacks first
+    return { firstAttacker: 'enemy', bonusAttacks: 0 };
+  }
+  if (playerDirection === enemyFacingDirection) {
+    // Rear: player gets 2 attacks before enemy's first turn
+    return { firstAttacker: 'player', bonusAttacks: 1 };
+  }
+  // Side: player first, normal alternation
+  return { firstAttacker: 'player', bonusAttacks: 0 };
+}
+
+/**
  * Turn-based combat engine resolving attacks between player and enemy ships.
  */
 export class CombatEngine {

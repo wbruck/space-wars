@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShipComponent, Ship, PlayerShip, EnemyShip, CombatEngine } from './combat.js';
+import { ShipComponent, Ship, PlayerShip, EnemyShip, CombatEngine, getApproachAdvantage } from './combat.js';
 
 describe('ShipComponent', () => {
   it('constructs with correct properties', () => {
@@ -866,5 +866,150 @@ describe('CombatEngine', () => {
       expect(result.roll).toBe(1);
       expect(result.isHit).toBe(true);
     });
+  });
+});
+
+// --- getApproachAdvantage Tests ---
+
+describe('getApproachAdvantage', () => {
+  describe('with enemy facing direction 0', () => {
+    const enemyFacing = 0;
+
+    it('rear approach: playerDir === enemyFacing (dir 0)', () => {
+      const result = getApproachAdvantage(0, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(1);
+    });
+
+    it('side approach: dir 1', () => {
+      const result = getApproachAdvantage(1, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('side approach: dir 2', () => {
+      const result = getApproachAdvantage(2, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('front approach: playerDir === (0+3)%6 = 3 (dir 3)', () => {
+      const result = getApproachAdvantage(3, enemyFacing);
+      expect(result.firstAttacker).toBe('enemy');
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('side approach: dir 4', () => {
+      const result = getApproachAdvantage(4, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('side approach: dir 5', () => {
+      const result = getApproachAdvantage(5, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+    });
+  });
+
+  describe('with enemy facing direction 2', () => {
+    const enemyFacing = 2;
+
+    it('front approach: playerDir === (2+3)%6 = 5 (dir 5)', () => {
+      const result = getApproachAdvantage(5, enemyFacing);
+      expect(result.firstAttacker).toBe('enemy');
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('rear approach: playerDir === 2 (dir 2)', () => {
+      const result = getApproachAdvantage(2, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(1);
+    });
+
+    it('side approach: dir 0', () => {
+      const result = getApproachAdvantage(0, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('side approach: dir 1', () => {
+      const result = getApproachAdvantage(1, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('side approach: dir 3', () => {
+      const result = getApproachAdvantage(3, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('side approach: dir 4', () => {
+      const result = getApproachAdvantage(4, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+    });
+  });
+
+  describe('with enemy facing direction 5', () => {
+    const enemyFacing = 5;
+
+    it('front approach: playerDir === (5+3)%6 = 2 (dir 2)', () => {
+      const result = getApproachAdvantage(2, enemyFacing);
+      expect(result.firstAttacker).toBe('enemy');
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('rear approach: playerDir === 5 (dir 5)', () => {
+      const result = getApproachAdvantage(5, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(1);
+    });
+
+    it('side approach: dir 0', () => {
+      const result = getApproachAdvantage(0, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('side approach: dir 1', () => {
+      const result = getApproachAdvantage(1, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('side approach: dir 3', () => {
+      const result = getApproachAdvantage(3, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('side approach: dir 4', () => {
+      const result = getApproachAdvantage(4, enemyFacing);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+    });
+  });
+
+  it('all 6 enemy facing directions have exactly 1 front, 1 rear, 4 side', () => {
+    for (let enemyFacing = 0; enemyFacing < 6; enemyFacing++) {
+      let front = 0, rear = 0, side = 0;
+      for (let playerDir = 0; playerDir < 6; playerDir++) {
+        const result = getApproachAdvantage(playerDir, enemyFacing);
+        if (result.firstAttacker === 'enemy') {
+          front++;
+          expect(result.bonusAttacks).toBe(0);
+        } else if (result.bonusAttacks === 1) {
+          rear++;
+        } else {
+          side++;
+          expect(result.bonusAttacks).toBe(0);
+        }
+      }
+      expect(front).toBe(1);
+      expect(rear).toBe(1);
+      expect(side).toBe(4);
+    }
   });
 });
