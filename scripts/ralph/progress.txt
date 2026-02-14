@@ -1,0 +1,24 @@
+# Ralph Progress Log
+Started: Thu Feb 13 20:24:00 CST 2026
+
+## Codebase Patterns
+- BoardObject class hierarchy: BoardObject → Obstacle/PowerUp (and new subclasses BlackHole, Enemy)
+- Subclasses override `this.type` and `this.id` in constructor after calling super()
+- `createBoardObject` factory uses a switch on type string to instantiate the correct class
+- Tests use `makeRng(seed)` (xorshift32) for deterministic randomness
+- The `ralph/board-objects` branch has all game code; `main` only has ralph scripts
+
+---
+
+## 2026-02-13 20:24 - US-022
+- Implemented BlackHole class extending Obstacle in src/lib/game/boardObjects.js
+- Constructor sets type='blackhole', id='blackhole:'+vertexId
+- onPlayerInteraction() returns { killed: true, cause: 'blackhole' }
+- Updated createBoardObject factory to handle 'blackhole' type
+- Added 7 unit tests for BlackHole (type, value, vertexId, onPlayerInteraction, instanceof, getAffectedVertices, factory)
+- Files changed: src/lib/game/boardObjects.js, src/lib/game/boardObjects.test.js
+- **Learnings for future iterations:**
+  - Branch ralph/board-objects is the parent branch with all game code, not main
+  - BlackHole inherits from Obstacle but overrides type and id after super() call
+  - BlackHoles should NOT be in obstacleSet (they don't block movement)
+---
