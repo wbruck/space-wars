@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BoardObject, Obstacle, PowerUp, createBoardObject, generateBoardObjects } from './boardObjects.js';
+import { BoardObject, Obstacle, BlackHole, PowerUp, createBoardObject, generateBoardObjects } from './boardObjects.js';
 import { generateGrid } from './hexGrid.js';
 
 describe('BoardObject', () => {
@@ -52,6 +52,42 @@ describe('Obstacle', () => {
   });
 });
 
+describe('BlackHole', () => {
+  it('extends Obstacle with type blackhole', () => {
+    const bh = new BlackHole('40,69.282', 5);
+    expect(bh).toBeInstanceOf(Obstacle);
+    expect(bh).toBeInstanceOf(BoardObject);
+    expect(bh.type).toBe('blackhole');
+    expect(bh.id).toBe('blackhole:40,69.282');
+  });
+
+  it('stores value', () => {
+    const bh = new BlackHole('40,69.282', 7);
+    expect(bh.value).toBe(7);
+  });
+
+  it('stores vertexId', () => {
+    const bh = new BlackHole('c:1,2', 3);
+    expect(bh.vertexId).toBe('c:1,2');
+  });
+
+  it('onPlayerInteraction returns killed with cause blackhole', () => {
+    const bh = new BlackHole('40,69.282', 5);
+    expect(bh.onPlayerInteraction({})).toEqual({ killed: true, cause: 'blackhole' });
+  });
+
+  it('is an instance of both BlackHole and Obstacle', () => {
+    const bh = new BlackHole('40,69.282', 5);
+    expect(bh).toBeInstanceOf(BlackHole);
+    expect(bh).toBeInstanceOf(Obstacle);
+  });
+
+  it('getAffectedVertices returns own vertex', () => {
+    const bh = new BlackHole('c:0,0', 4);
+    expect(bh.getAffectedVertices(new Map())).toEqual(['c:0,0']);
+  });
+});
+
 describe('PowerUp', () => {
   it('extends BoardObject with type powerup', () => {
     const pu = new PowerUp('40,69.282', 4);
@@ -91,6 +127,14 @@ describe('createBoardObject', () => {
     expect(obj.type).toBe('powerup');
     expect(obj.vertexId).toBe('c:0,0');
     expect(obj.value).toBe(3);
+  });
+
+  it('creates BlackHole for type blackhole', () => {
+    const obj = createBoardObject('blackhole', '40,69.282', 5);
+    expect(obj).toBeInstanceOf(BlackHole);
+    expect(obj.type).toBe('blackhole');
+    expect(obj.vertexId).toBe('40,69.282');
+    expect(obj.value).toBe(5);
   });
 
   it('throws for unknown type', () => {

@@ -65,6 +65,30 @@ export class Obstacle extends BoardObject {
 }
 
 /**
+ * Black hole that kills the player on contact but does not block movement.
+ */
+export class BlackHole extends Obstacle {
+  /**
+   * @param {string} vertexId - The vertex this black hole occupies
+   * @param {number} value - Black hole intensity (1-10)
+   */
+  constructor(vertexId, value) {
+    super(vertexId, value);
+    this.type = 'blackhole';
+    this.id = `blackhole:${vertexId}`;
+  }
+
+  /**
+   * Indicates this object kills the player on contact.
+   * @param {object} _gameState
+   * @returns {{ killed: boolean, cause: string }}
+   */
+  onPlayerInteraction(_gameState) {
+    return { killed: true, cause: 'blackhole' };
+  }
+}
+
+/**
  * Power-up that can be collected by the player.
  */
 export class PowerUp extends BoardObject {
@@ -149,6 +173,8 @@ export function createBoardObject(type, vertexId, value) {
   switch (type) {
     case 'obstacle':
       return new Obstacle(vertexId, value);
+    case 'blackhole':
+      return new BlackHole(vertexId, value);
     case 'powerup':
       return new PowerUp(vertexId, value);
     default:
