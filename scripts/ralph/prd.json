@@ -88,7 +88,7 @@
         "Commit with message starting with US-032"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -111,7 +111,7 @@
         "Commit with message starting with US-033"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -134,7 +134,7 @@
         "Commit with message starting with US-034"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

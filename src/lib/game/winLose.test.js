@@ -11,6 +11,7 @@ import {
   selectedDirection,
   previewPath,
   loseReason,
+  combatState,
   initGame,
   resetGame,
   rollDice,
@@ -18,6 +19,7 @@ import {
   executeMove,
 } from './gameState.js';
 import { getAvailableDirections, computePath, isTrapped } from './movement.js';
+import { Enemy } from './boardObjects.js';
 
 /**
  * Helper: execute a move and return a promise that resolves when animation completes.
@@ -424,7 +426,7 @@ describe('Hazard death: enemy kill zone', () => {
     resetGame();
   });
 
-  it('sets gamePhase to lost when player lands in enemy kill zone', async () => {
+  it('triggers combat when player lands in enemy kill zone (US-034)', async () => {
     const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
     const rays = boardData.rays;
@@ -436,12 +438,54 @@ describe('Hazard death: enemy kill zone', () => {
     const destRay = rays.get(pos).find((r) => r.direction === dir.direction);
     const destination = destRay.vertices[0];
 
-    // Inject the destination as an enemy kill zone vertex
+    // Create an enemy and inject the destination as an enemy kill zone vertex
+    const enemy = new Enemy('fake-enemy-vertex', 3, 2);
+    const newBoard = {
+      ...boardData,
+      blackholeSet: new Set(),
+      enemyZones: new Set([destination]),
+      enemyZoneMap: new Map([[destination, enemy.id]]),
+      enemies: [...boardData.enemies, enemy],
+    };
+    board.set(newBoard);
+
+    movementPool.set(10);
+    diceValue.set(1);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(dir.direction);
+    const path = get(previewPath);
+    expect(path.length).toBe(1);
+    expect(path[0]).toBe(destination);
+
+    await executeMoveAsync();
+
+    // Should trigger combat instead of instant death
+    expect(get(gamePhase)).toBe('combat');
+    expect(get(combatState)).not.toBeNull();
+    expect(get(combatState).enemyId).toBe(enemy.id);
+    expect(get(loseReason)).toBeNull();
+  });
+
+  it('sets gamePhase to lost when no enemyZoneMap (backward compat)', async () => {
+    const boardData = initGame(5, 4, 42);
+    const pos = boardData.startVertex;
+    const rays = boardData.rays;
+
+    const available = getAvailableDirections(rays, pos, boardData.obstacles);
+    expect(available.length).toBeGreaterThan(0);
+
+    const dir = available[0];
+    const destRay = rays.get(pos).find((r) => r.direction === dir.direction);
+    const destination = destRay.vertices[0];
+
+    // Inject the destination as an enemy kill zone without enemyZoneMap
     const newBoard = {
       ...boardData,
       blackholeSet: new Set(),
       enemyZones: new Set([destination]),
     };
+    delete newBoard.enemyZoneMap;
     board.set(newBoard);
 
     movementPool.set(10);

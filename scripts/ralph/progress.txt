@@ -3,6 +3,13 @@ Started: Fri Feb 13 21:26:55 CST 2026
 
 ## Codebase Patterns
 - Combat classes live in src/lib/game/combat.js, tests in src/lib/game/combat.test.js
+- Combat state management (startCombat, resolveCombat, combatState store) lives in gameState.js, tests in gameState.test.js
+- startCombat creates fresh PlayerShip/EnemyShip each combat — no persistent ship damage between encounters (unless enemy persists on board)
+- resolveCombat('playerWin') removes enemy from: obstacles, enemyZones, enemyZoneMap, enemies array, boardObjects array
+- resolveCombat('playerLose'/'enemyFled') deducts diceValue from movementPool — check pool exhaustion after deduction
+- resolveCombat('playerDestroyed') does NOT restore player position — sets loseReason='enemy', gamePhase='lost'
+- Enemy objects have .direction (facing direction 0-5) and .getAffectedVertices(null, rays) for kill zone vertices
+- When testing enemy removal, ensure enemy exists on the board — seed 42 at difficulty 5 may or may not produce enemies
 - ShipComponent(name, maxHp) — has `destroyed` getter and `takeDamage(amount)` returning `{ destroyed: boolean }`
 - Ship(name, components) — has `isDestroyed`, `getActiveComponents()`, `getComponent(name)`
 - PlayerShip extends Ship with default components: Weapons (2 HP), Engines (2 HP), Bridge (2 HP)
@@ -15,6 +22,12 @@ Started: Fri Feb 13 21:26:55 CST 2026
 - Auto-miss (Weapons destroyed) does NOT consume rng values — it short-circuits before rolling
 - Combat end priority: Bridge destroyed (playerWin) > playerDestroyed > enemyFled > maxTurns (playerLose)
 - bonusAttacks field controls extra player attacks before enemy's first turn (for rear approach advantage)
+- getApproachAdvantage(playerDir, enemyFacing) returns { firstAttacker, bonusAttacks } — front=(facing+3)%6, rear=facing, side=other
+- computePath returns `engageEnemy: { vertexIndex, enemyId } | null` when enemyZoneMap is provided
+- generateBoardObjects returns `enemyZoneMap: Map<string, string>` mapping zone vertex → enemy ID
+- boardData.enemyZoneMap is always present (initGame populates it); legacy code without it falls back to instant death
+- executeMove checks engagement BEFORE pool deduction — combat resolution handles pool changes
+- When testing engagement, create Enemy objects and add to both enemyZones Set AND enemyZoneMap Map
 
 ---
 
@@ -59,4 +72,55 @@ Started: Fri Feb 13 21:26:55 CST 2026
   - executeEnemyAttack consumes 2 rng values (target selection + attack roll) unless auto-miss
   - Turn counter advances after enemy attack (not player attack) — currentTurn increments in _advanceTurn when switching from enemy→player
   - Class ordering in combat.js: ShipComponent → Ship → PlayerShip → EnemyShip → CombatEngine
+---
+
+## 2026-02-13 21:37 - US-032
+- Created getApproachAdvantage(playerDirection, enemyFacingDirection) function in combat.js
+- Front approach: playerDir === (enemyFacing + 3) % 6 → { firstAttacker: 'enemy', bonusAttacks: 0 }
+- Rear approach: playerDir === enemyFacing → { firstAttacker: 'player', bonusAttacks: 1 }
+- Side approach: all other directions → { firstAttacker: 'player', bonusAttacks: 0 }
+- Added 19 unit tests (total 103 in combat.test.js) covering all 6 directions for enemy facing 0, 2, and 5, plus a comprehensive test verifying all 6 facings have exactly 1 front, 1 rear, 4 side
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
+- **Learnings for future iterations:**
+  - Direction math: 6 directions (0-5), opposite direction = (dir + 3) % 6
+  - Front (head-on) = player moving toward enemy's face = opposite of enemy facing
+  - Rear (from behind) = player moving same direction as enemy facing
+  - Class/function ordering in combat.js: ShipComponent → Ship → PlayerShip → EnemyShip → getApproachAdvantage → CombatEngine
+---
+
+## 2026-02-13 21:46 - US-033
+- Added 'combat' to valid gamePhase values in gameState.js
+- Added combatState writable store (null | { engine, enemyId, approachAdvantage, preCombatPlayerPos, preCombatPath, triggerVertexIndex })
+- Implemented startCombat(enemyId, approachAdvantage, preCombatPos, path, triggerIndex) — creates CombatEngine, sets combatState, transitions to 'combat'
+- Implemented resolveCombat(result) with four outcome paths:
+  - playerWin: removes enemy from obstacles/enemyZones/enemyZoneMap/enemies/boardObjects, restores player, phase → 'rolling'
+  - playerLose/enemyFled: keeps enemy, deducts dice from pool, restores player, phase → 'rolling' (or 'lost' if pool exhausted)
+  - playerDestroyed: loseReason → 'enemy', gamePhase → 'lost', does NOT restore player
+- combatState reset to null in resetGame()
+- Added 18 unit tests (total 54 in gameState.test.js) covering: phase transitions, state population, engine creation, first attacker, bonus attacks, enemy removal on win, enemy persists on lose/fled, pool deduction, pool exhaustion after retreat, player destroyed → game over, preview state cleanup, no-op when combatState null
+- Files changed: src/lib/game/gameState.js, src/lib/game/gameState.test.js
+- **Learnings for future iterations:**
+  - Import CombatEngine, PlayerShip, EnemyShip from combat.js into gameState.js
+  - When testing enemy removal, need to handle case where seed/difficulty doesn't produce enemies — manually add Enemy instance
+  - resolveCombat clears all preview/animation state (selectedDirection, previewPath, animatingPath, animationStep, diceValue) before returning to rolling
+  - Pool exhaustion check after dice deduction catches edge case where retreat costs exactly the remaining pool
+  - Enemy.getAffectedVertices(null, rays) returns [ownVertex, ...killZoneVertices] — skip index 0 when removing kill zones
+---
+
+## 2026-02-13 21:53 - US-034
+- Modified computePath in movement.js: added `enemyZoneMap` parameter; when a zone vertex is in enemyZoneMap, sets `engageEnemy: { vertexIndex, enemyId }` instead of `hitByEnemy`
+- Modified generateBoardObjects in boardObjects.js: returns additional `enemyZoneMap: Map<string, string>` mapping zone vertex IDs to enemy IDs
+- Updated gameState.js initGame: stores `enemyZoneMap` in boardData; passes it to computePath via selectDirection
+- Updated executeMove in gameState.js: engagement check happens BEFORE pool deduction. When player reaches enemy zone vertex with enemyZoneMap, calls startCombat with correct enemy ID, approach advantage, and pre-combat position. Legacy instant-death preserved when enemyZoneMap is absent.
+- Updated winLose.test.js: old enemy kill zone test now expects combat engagement; added backward-compat test for missing enemyZoneMap
+- Added 7 new tests in movement.test.js for engageEnemy in computePath
+- Added 4 new tests in boardObjects.test.js for enemyZoneMap
+- Added 8 new tests in gameState.test.js for engagement trigger
+- Files changed: src/lib/game/movement.js, src/lib/game/movement.test.js, src/lib/game/boardObjects.js, src/lib/game/boardObjects.test.js, src/lib/game/gameState.js, src/lib/game/gameState.test.js, src/lib/game/winLose.test.js
+- **Learnings for future iterations:**
+  - computePath `engageEnemy` is set only when BOTH enemyZones and enemyZoneMap have the vertex — this enables backward compatibility
+  - executeMove captures `moveDirection` and `preMovePos` at the start, before clearing preview state, for use in combat setup
+  - Engagement check must happen BEFORE pool deduction and position update — combat resolution handles those
+  - When manually injecting enemy zones in tests, must also add the Enemy object to boardData.enemies and the zone vertex to enemyZoneMap
+  - Legacy instant-death check uses `!boardData.enemyZoneMap` — so tests that want old behavior must `delete newBoard.enemyZoneMap`
 ---

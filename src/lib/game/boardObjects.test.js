@@ -489,4 +489,33 @@ describe('generateBoardObjects', () => {
       expect(enemy.type).toBe('enemy');
     }
   });
+
+  it('returns enemyZoneMap as a Map', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    expect(result.enemyZoneMap).toBeInstanceOf(Map);
+  });
+
+  it('enemyZoneMap maps kill zone vertices to enemy IDs', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    for (const [zoneVertex, enemyId] of result.enemyZoneMap) {
+      // zoneVertex should also be in enemyZones
+      expect(result.enemyZones.has(zoneVertex)).toBe(true);
+      // enemyId should match an enemy in the enemies array
+      const enemy = result.enemies.find(e => e.id === enemyId);
+      expect(enemy).toBeDefined();
+    }
+  });
+
+  it('enemyZoneMap covers all enemyZones vertices', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    for (const zoneVertex of result.enemyZones) {
+      expect(result.enemyZoneMap.has(zoneVertex)).toBe(true);
+    }
+  });
+
+  it('enemyZoneMap is empty when no rays provided', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42));
+    expect(result.enemyZoneMap).toBeInstanceOf(Map);
+    expect(result.enemyZoneMap.size).toBe(0);
+  });
 });

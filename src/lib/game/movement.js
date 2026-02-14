@@ -43,17 +43,19 @@ export function getAvailableDirections(rays, vertexId, obstacles) {
  * @param {string|null} targetVertex - Target vertex ID (for win detection)
  * @param {Set<string>} [blackholes] - Blackhole vertex IDs (optional)
  * @param {Set<string>} [enemyZones] - Enemy kill zone vertex IDs (optional)
- * @returns {{ path: string[], stoppedByObstacle: boolean, reachedTarget: boolean, hitBlackhole: boolean, hitByEnemy: boolean }}
+ * @param {Map<string, string>} [enemyZoneMap] - Map of zone vertex ID → enemy ID (optional)
+ * @returns {{ path: string[], stoppedByObstacle: boolean, reachedTarget: boolean, hitBlackhole: boolean, hitByEnemy: boolean, engageEnemy: { vertexIndex: number, enemyId: string } | null }}
  */
-export function computePath(rays, direction, steps, obstacles, targetVertex, blackholes, enemyZones) {
+export function computePath(rays, direction, steps, obstacles, targetVertex, blackholes, enemyZones, enemyZoneMap) {
   const ray = rays.find((r) => r.direction === direction);
-  if (!ray) return { path: [], stoppedByObstacle: false, reachedTarget: false, hitBlackhole: false, hitByEnemy: false };
+  if (!ray) return { path: [], stoppedByObstacle: false, reachedTarget: false, hitBlackhole: false, hitByEnemy: false, engageEnemy: null };
 
   const path = [];
   let stoppedByObstacle = false;
   let reachedTarget = false;
   let hitBlackhole = false;
   let hitByEnemy = false;
+  let engageEnemy = null;
 
   for (let i = 0; i < Math.min(steps, ray.vertices.length); i++) {
     const vid = ray.vertices[i];
@@ -74,7 +76,12 @@ export function computePath(rays, direction, steps, obstacles, targetVertex, bla
     // Check for enemy kill zone (include vertex, then stop)
     if (enemyZones?.has(vid)) {
       path.push(vid);
-      hitByEnemy = true;
+      // If enemyZoneMap is provided, set engageEnemy instead of hitByEnemy
+      if (enemyZoneMap && enemyZoneMap.has(vid)) {
+        engageEnemy = { vertexIndex: path.length - 1, enemyId: enemyZoneMap.get(vid) };
+      } else {
+        hitByEnemy = true;
+      }
       break;
     }
 
@@ -87,7 +94,7 @@ export function computePath(rays, direction, steps, obstacles, targetVertex, bla
     }
   }
 
-  return { path, stoppedByObstacle, reachedTarget, hitBlackhole, hitByEnemy };
+  return { path, stoppedByObstacle, reachedTarget, hitBlackhole, hitByEnemy, engageEnemy };
 }
 
 /**

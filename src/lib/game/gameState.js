@@ -2,7 +2,7 @@ import { writable, get } from 'svelte/store';
 import { generateGrid } from './hexGrid.js';
 import { computePath, isTrapped } from './movement.js';
 import { generateBoardObjects } from './boardObjects.js';
-import { CombatEngine, PlayerShip, EnemyShip } from './combat.js';
+import { CombatEngine, PlayerShip, EnemyShip, getApproachAdvantage } from './combat.js';
 
 // --- Svelte stores ---
 
@@ -146,6 +146,7 @@ export function initGame(cols, rows, seed, difficulty = 5) {
   let enemies = [];
   let blackholeSet = new Set();
   let enemyZones = new Set();
+  let enemyZoneMap = new Map();
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, difficulty, rng, grid.rays);
@@ -156,6 +157,7 @@ export function initGame(cols, rows, seed, difficulty = 5) {
     enemies = result.enemies;
     blackholeSet = result.blackholeSet;
     enemyZones = result.enemyZones;
+    enemyZoneMap = result.enemyZoneMap;
 
     if (hasValidPath(grid.adjacency, startVertex, targetVertex, obstacles)) {
       break;
@@ -168,6 +170,7 @@ export function initGame(cols, rows, seed, difficulty = 5) {
       enemies = [];
       blackholeSet = new Set();
       enemyZones = new Set();
+      enemyZoneMap = new Map();
     }
   }
 
@@ -186,6 +189,7 @@ export function initGame(cols, rows, seed, difficulty = 5) {
     enemies,
     blackholeSet,
     enemyZones,
+    enemyZoneMap,
     startVertex,
     targetVertex,
   };
@@ -254,7 +258,7 @@ export function selectDirection(direction) {
   const rays = boardData.rays.get(pos);
   if (!rays) return null;
 
-  const result = computePath(rays, direction, steps, boardData.obstacles, boardData.targetVertex, boardData.blackholeSet, boardData.enemyZones);
+  const result = computePath(rays, direction, steps, boardData.obstacles, boardData.targetVertex, boardData.blackholeSet, boardData.enemyZones, boardData.enemyZoneMap);
 
   selectedDirection.set(direction);
   previewPath.set(result.path);
@@ -280,6 +284,8 @@ export function executeMove(onAnimationComplete) {
   const boardData = get(board);
   const dice = get(diceValue);
   const pool = get(movementPool);
+  const moveDirection = get(selectedDirection);
+  const preMovePos = get(playerPos);
 
   gamePhase.set('moving');
   animatingPath.set(path);
@@ -293,6 +299,20 @@ export function executeMove(onAnimationComplete) {
       // Animation complete
       const finalPos = path[path.length - 1];
       const stepsUsed = path.length;
+
+      // Check engagement BEFORE other state changes — combat interrupts the move
+      if (boardData.enemyZoneMap && boardData.enemyZoneMap.has(finalPos)) {
+        const enemyId = boardData.enemyZoneMap.get(finalPos);
+        const enemyObj = boardData.enemies.find(e => e.id === enemyId);
+        const enemyFacing = enemyObj ? enemyObj.direction : 0;
+        const approachAdvantage = getApproachAdvantage(moveDirection, enemyFacing);
+        // Clear animation state before entering combat
+        animatingPath.set([]);
+        animationStep.set(-1);
+        startCombat(enemyId, approachAdvantage, preMovePos, path, path.length - 1);
+        if (onAnimationComplete) onAnimationComplete();
+        return;
+      }
 
       // Update player position
       playerPos.set(finalPos);
@@ -326,8 +346,8 @@ export function executeMove(onAnimationComplete) {
         return;
       }
 
-      // Check hazard death: enemy kill zone
-      if (boardData.enemyZones?.has(finalPos)) {
+      // Legacy: enemy kill zone instant-death (when enemyZoneMap is not available)
+      if (boardData.enemyZones?.has(finalPos) && !boardData.enemyZoneMap) {
         loseReason.set('enemy');
         gamePhase.set('lost');
         if (onAnimationComplete) onAnimationComplete();

@@ -168,7 +168,7 @@ export class PowerUp extends BoardObject {
  * @param {number} [difficulty=5] - Difficulty level 1-10
  * @param {() => number} rng - Random number generator returning 0-1
  * @param {Map<string, Array<{direction: number, vertices: string[]}>>} [rays] - Precomputed ray map for enemy kill zones
- * @returns {{ obstacles: Obstacle[], blackholes: BlackHole[], enemies: Enemy[], powerUps: PowerUp[], obstacleSet: Set<string>, blackholeSet: Set<string>, enemyZones: Set<string> }}
+ * @returns {{ obstacles: Obstacle[], blackholes: BlackHole[], enemies: Enemy[], powerUps: PowerUp[], obstacleSet: Set<string>, blackholeSet: Set<string>, enemyZones: Set<string>, enemyZoneMap: Map<string, string> }}
  */
 export function generateBoardObjects(vertices, startVertex, targetVertex, difficulty = 5, rng, rays) {
   const eligible = [...vertices.keys()].filter(
@@ -231,6 +231,7 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
   // Enemies — in obstacleSet (they block movement at their own vertex)
   const enemies = [];
   const enemyZones = new Set();
+  const enemyZoneMap = new Map();
   for (let i = 0; i < enemyCount; i++) {
     const vertexId = eligible[idx++];
     const value = obsMin + Math.floor(rng() * (obsMax - obsMin + 1));
@@ -245,6 +246,7 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
       // Skip the first element (enemy's own vertex) since that's in obstacleSet
       for (let j = 1; j < affected.length; j++) {
         enemyZones.add(affected[j]);
+        enemyZoneMap.set(affected[j], enemy.id);
       }
     }
   }
@@ -257,7 +259,7 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
     powerUps.push(new PowerUp(vertexId, value));
   }
 
-  return { obstacles, blackholes, enemies, powerUps, obstacleSet, blackholeSet, enemyZones };
+  return { obstacles, blackholes, enemies, powerUps, obstacleSet, blackholeSet, enemyZones, enemyZoneMap };
 }
 
 /**

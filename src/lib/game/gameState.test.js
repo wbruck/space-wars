@@ -19,6 +19,8 @@ import {
   hasValidPath,
   startCombat,
   resolveCombat,
+  selectDirection,
+  executeMove,
 } from './gameState.js';
 import { isCenterVertex } from './hexGrid.js';
 import { Enemy } from './boardObjects.js';
@@ -741,5 +743,200 @@ describe('combat state management', () => {
       expect(get(animationStep)).toBe(-1);
       expect(get(diceValue)).toBeNull();
     });
+  });
+});
+
+describe('engagement trigger in executeMove (US-034)', () => {
+  let boardData;
+
+  beforeEach(() => {
+    resetGame();
+    boardData = initGame(5, 4, 42, 5);
+  });
+
+  /**
+   * Helper: execute a move and return a promise that resolves when animation completes.
+   */
+  function executeMoveAsync() {
+    return new Promise((resolve) => {
+      executeMove(() => resolve());
+    });
+  }
+
+  /**
+   * Set up enemy and zone on a specific path vertex for testing engagement.
+   * Returns { enemy, zoneVertex, direction, path } of the set-up scenario.
+   */
+  function setupEnemyOnPath() {
+    const pos = get(playerPos);
+    const rays = boardData.rays.get(pos);
+    // Find a ray with at least 3 vertices so we can place an enemy zone at vertex 1
+    const longRay = rays.find((r) => {
+      if (r.vertices.length < 3) return false;
+      // First vertex must not be an obstacle
+      return !boardData.obstacles.has(r.vertices[0]) && !boardData.obstacles.has(r.vertices[1]);
+    });
+    if (!longRay) return null;
+
+    const zoneVertex = longRay.vertices[1];
+    const enemyVertex = 'fake-enemy-vertex';
+    const enemyDirection = 2;
+    const enemy = new Enemy(enemyVertex, 3, enemyDirection);
+
+    // Add the enemy to board data
+    boardData.enemies.push(enemy);
+    boardData.enemyZones.add(zoneVertex);
+    boardData.enemyZoneMap.set(zoneVertex, enemy.id);
+    board.set(boardData);
+
+    return { enemy, zoneVertex, direction: longRay.direction, enemyDirection };
+  }
+
+  it('triggers combat instead of instant death when path enters enemy zone', async () => {
+    const setup = setupEnemyOnPath();
+    if (!setup) return; // skip if no suitable ray
+
+    const poolBefore = get(movementPool);
+
+    // Set up for move
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+    const path = get(previewPath);
+    expect(path).toContain(setup.zoneVertex);
+
+    await executeMoveAsync();
+
+    // Should be in combat phase, not lost
+    expect(get(gamePhase)).toBe('combat');
+    expect(get(combatState)).not.toBeNull();
+    expect(get(loseReason)).toBeNull();
+  });
+
+  it('identifies the correct enemy in engagement', async () => {
+    const setup = setupEnemyOnPath();
+    if (!setup) return;
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+
+    await executeMoveAsync();
+
+    const state = get(combatState);
+    expect(state.enemyId).toBe(setup.enemy.id);
+  });
+
+  it('calculates approach advantage from movement direction and enemy facing', async () => {
+    const setup = setupEnemyOnPath();
+    if (!setup) return;
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+
+    await executeMoveAsync();
+
+    const state = get(combatState);
+    expect(state.approachAdvantage).toBeDefined();
+    expect(state.approachAdvantage).toHaveProperty('firstAttacker');
+    expect(state.approachAdvantage).toHaveProperty('bonusAttacks');
+  });
+
+  it('does not deduct movement pool on engagement (combat handles it)', async () => {
+    const setup = setupEnemyOnPath();
+    if (!setup) return;
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+    const poolBefore = get(movementPool);
+
+    await executeMoveAsync();
+
+    // Pool should NOT be deducted yet (combat resolution handles deduction)
+    expect(get(movementPool)).toBe(poolBefore);
+  });
+
+  it('stores preCombatPlayerPos as position before the move', async () => {
+    const setup = setupEnemyOnPath();
+    if (!setup) return;
+
+    const posBeforeMove = get(playerPos);
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(setup.direction);
+
+    await executeMoveAsync();
+
+    const state = get(combatState);
+    expect(state.preCombatPlayerPos).toBe(posBeforeMove);
+  });
+
+  it('backward compatible: instant death when enemyZoneMap is absent', async () => {
+    const pos = get(playerPos);
+    const rays = boardData.rays.get(pos);
+    const longRay = rays.find((r) => {
+      if (r.vertices.length < 3) return false;
+      return !boardData.obstacles.has(r.vertices[0]) && !boardData.obstacles.has(r.vertices[1]);
+    });
+    if (!longRay) return;
+
+    const zoneVertex = longRay.vertices[1];
+
+    // Add enemy zone without enemyZoneMap
+    boardData.enemyZones.add(zoneVertex);
+    delete boardData.enemyZoneMap;
+    board.set(boardData);
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(longRay.direction);
+
+    await executeMoveAsync();
+
+    // Should be instant death (old behavior)
+    expect(get(gamePhase)).toBe('lost');
+    expect(get(loseReason)).toBe('enemy');
+  });
+
+  it('existing tests without enemy zones still pass (no engagement)', async () => {
+    // Clear all enemy zones to simulate a board without enemies
+    boardData.enemyZones = new Set();
+    boardData.enemyZoneMap = new Map();
+    boardData.enemies = [];
+    board.set(boardData);
+
+    const pos = get(playerPos);
+    const rays = boardData.rays.get(pos);
+    const dir = rays.find((r) => {
+      if (r.vertices.length < 2) return false;
+      return !boardData.obstacles.has(r.vertices[0]);
+    });
+    if (!dir) return;
+
+    movementPool.set(20);
+    diceValue.set(2);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(dir.direction);
+
+    await executeMoveAsync();
+
+    // Should be in rolling phase (normal move, no combat)
+    expect(get(gamePhase)).toBe('rolling');
+    expect(get(combatState)).toBeNull();
   });
 });

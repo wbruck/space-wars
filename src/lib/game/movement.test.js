@@ -831,3 +831,124 @@ describe('center dot movement: full integration with game state', () => {
     expect(centersInPreview.length).toBeGreaterThan(0);
   });
 });
+
+describe('computePath engagement trigger (US-034)', () => {
+  let grid;
+
+  beforeEach(() => {
+    grid = generateGrid(5, 4, 40);
+  });
+
+  it('sets engageEnemy when enemyZoneMap is provided and zone is hit', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 3);
+    });
+    const rays = grid.rays.get(vid);
+    const longRay = rays.find((r) => r.vertices.length >= 3);
+
+    const enemyZones = new Set([longRay.vertices[1]]);
+    const enemyZoneMap = new Map([[longRay.vertices[1], 'enemy:A']]);
+    const result = computePath(rays, longRay.direction, 5, new Set(), null, new Set(), enemyZones, enemyZoneMap);
+
+    expect(result.engageEnemy).not.toBeNull();
+    expect(result.engageEnemy.vertexIndex).toBe(1);
+    expect(result.engageEnemy.enemyId).toBe('enemy:A');
+    expect(result.hitByEnemy).toBe(false);
+    expect(result.path.length).toBe(2);
+    expect(result.path[1]).toBe(longRay.vertices[1]);
+  });
+
+  it('sets hitByEnemy when enemyZones hit but no enemyZoneMap provided', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 3);
+    });
+    const rays = grid.rays.get(vid);
+    const longRay = rays.find((r) => r.vertices.length >= 3);
+
+    const enemyZones = new Set([longRay.vertices[1]]);
+    const result = computePath(rays, longRay.direction, 5, new Set(), null, new Set(), enemyZones);
+
+    expect(result.hitByEnemy).toBe(true);
+    expect(result.engageEnemy).toBeNull();
+  });
+
+  it('returns engageEnemy null when no enemy zones encountered', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 3);
+    });
+    const rays = grid.rays.get(vid);
+    const longRay = rays.find((r) => r.vertices.length >= 3);
+
+    const result = computePath(rays, longRay.direction, 3, new Set(), null, new Set(), new Set(), new Map());
+
+    expect(result.engageEnemy).toBeNull();
+    expect(result.hitByEnemy).toBe(false);
+  });
+
+  it('engagement vertex IS included in path', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 2);
+    });
+    const rays = grid.rays.get(vid);
+    const ray = rays.find((r) => r.vertices.length >= 2);
+
+    const zoneVertex = ray.vertices[0];
+    const enemyZones = new Set([zoneVertex]);
+    const enemyZoneMap = new Map([[zoneVertex, 'enemy:B']]);
+    const result = computePath(rays, ray.direction, 5, new Set(), null, new Set(), enemyZones, enemyZoneMap);
+
+    expect(result.path).toContain(zoneVertex);
+    expect(result.engageEnemy.vertexIndex).toBe(0);
+    expect(result.engageEnemy.enemyId).toBe('enemy:B');
+  });
+
+  it('engageEnemy null for invalid direction', () => {
+    const vid = [...grid.vertices.keys()][0];
+    const rays = grid.rays.get(vid);
+    const result = computePath(rays, 99, 3, new Set(), null, new Set(), new Set(), new Map());
+    expect(result.engageEnemy).toBeNull();
+  });
+
+  it('obstacle takes priority over engagement (stops before)', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 3);
+    });
+    const rays = grid.rays.get(vid);
+    const longRay = rays.find((r) => r.vertices.length >= 3);
+
+    // Same vertex is obstacle AND enemy zone — obstacle stops before
+    const vertex = longRay.vertices[1];
+    const obstacles = new Set([vertex]);
+    const enemyZones = new Set([vertex]);
+    const enemyZoneMap = new Map([[vertex, 'enemy:C']]);
+    const result = computePath(rays, longRay.direction, 5, obstacles, null, new Set(), enemyZones, enemyZoneMap);
+
+    expect(result.stoppedByObstacle).toBe(true);
+    expect(result.engageEnemy).toBeNull();
+    expect(result.path.length).toBe(1);
+  });
+
+  it('blackhole takes priority over engagement', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 3);
+    });
+    const rays = grid.rays.get(vid);
+    const longRay = rays.find((r) => r.vertices.length >= 3);
+
+    // Same vertex is blackhole AND enemy zone — blackhole takes priority
+    const vertex = longRay.vertices[1];
+    const blackholes = new Set([vertex]);
+    const enemyZones = new Set([vertex]);
+    const enemyZoneMap = new Map([[vertex, 'enemy:D']]);
+    const result = computePath(rays, longRay.direction, 5, new Set(), null, blackholes, enemyZones, enemyZoneMap);
+
+    expect(result.hitBlackhole).toBe(true);
+    expect(result.engageEnemy).toBeNull();
+  });
+});
