@@ -15,6 +15,10 @@ Started: Thu Feb 13 20:24:00 CST 2026
 - Hazard check order in computePath: obstacle (stop before, vertex NOT in path) > blackhole (include, stop) > enemy zone (include, stop) > target (include, stop)
 - `selectDirection` in gameState.js passes `boardData.blackholeSet` and `boardData.enemyZones` to computePath
 - `getAvailableDirections` is NOT changed for hazards — it only checks obstacleSet
+- `loseReason` store tracks cause of loss: 'blackhole', 'enemy', 'trapped', 'exhausted', or null
+- Hazard death checks in executeMove happen BEFORE win/lose checks (blackhole on target = death, not win)
+- Use optional chaining (`?.has()`) on `boardData.blackholeSet` and `boardData.enemyZones` for backward compat in executeMove
+- To test hazard deaths in winLose.test.js, inject hazard sets into boardData via `board.set({...boardData, blackholeSet: new Set([vertex])})`
 
 ---
 
@@ -76,4 +80,21 @@ Started: Thu Feb 13 20:24:00 CST 2026
   - computePath's new params are optional with `?.has()` — existing callers don't need changes
   - Key difference: obstacles stop BEFORE vertex (not included), blackholes/enemies stop ON vertex (included in path)
   - selectDirection is the integration point in gameState.js that bridges boardData hazard sets to computePath
+---
+
+## 2026-02-13 20:38 - US-026
+- Added `loseReason` writable store (default null) to gameState.js — tracks cause: 'blackhole', 'enemy', 'trapped', 'exhausted'
+- In executeMove, added blackhole and enemy zone death checks BEFORE existing win/lose checks
+- Blackhole on target = death (not win) — hazard checks take priority
+- Set loseReason to 'exhausted' when pool runs out, 'trapped' when trapped after move
+- In rollDice, set loseReason to 'trapped' when trapped at start of turn
+- loseReason reset to null in resetGame()
+- Uses optional chaining (?.) on blackholeSet/enemyZones for backward compat with tests that don't set these fields
+- Added 10 unit tests: blackhole death, blackhole-on-target death, enemy zone death, loseReason initial null, loseReason after initGame null, loseReason reset, loseReason exhausted, loseReason trapped (rollDice), loseReason trapped (after move), win path keeps loseReason null
+- Files changed: src/lib/game/gameState.js, src/lib/game/winLose.test.js
+- **Learnings for future iterations:**
+  - Hazard death order: blackhole > enemy zone > win > exhausted > trapped
+  - To test hazard deaths, inject blackholeSet/enemyZones into boardData via board.set({...boardData, blackholeSet: new Set([...])})
+  - loseReason must be set BEFORE gamePhase.set('lost') so subscribers see both updates consistently
+  - Optional chaining on boardData.blackholeSet?.has() lets existing tests (without blackholeSet) work without changes
 ---

@@ -38,6 +38,9 @@ export const animatingPath = writable([]);
 /** Index of current animation step (-1 = not animating) */
 export const animationStep = writable(-1);
 
+/** Reason for losing: 'blackhole' | 'enemy' | 'trapped' | 'exhausted' | null */
+export const loseReason = writable(null);
+
 // --- Helper functions ---
 
 /**
@@ -210,6 +213,7 @@ export function rollDice() {
   const boardData = get(board);
   const pos = get(playerPos);
   if (boardData && pos && isTrapped(boardData.rays, pos, boardData.obstacles)) {
+    loseReason.set('trapped');
     gamePhase.set('lost');
     return null;
   }
@@ -310,6 +314,22 @@ export function executeMove(onAnimationComplete) {
       animatingPath.set([]);
       animationStep.set(-1);
 
+      // Check hazard death: blackhole
+      if (boardData.blackholeSet?.has(finalPos)) {
+        loseReason.set('blackhole');
+        gamePhase.set('lost');
+        if (onAnimationComplete) onAnimationComplete();
+        return;
+      }
+
+      // Check hazard death: enemy kill zone
+      if (boardData.enemyZones?.has(finalPos)) {
+        loseReason.set('enemy');
+        gamePhase.set('lost');
+        if (onAnimationComplete) onAnimationComplete();
+        return;
+      }
+
       // Check win condition (target reached during path)
       if (finalPos === boardData.targetVertex) {
         gamePhase.set('won');
@@ -319,6 +339,7 @@ export function executeMove(onAnimationComplete) {
 
       // Check lose condition: out of movement points
       if (newPool <= 0) {
+        loseReason.set('exhausted');
         gamePhase.set('lost');
         if (onAnimationComplete) onAnimationComplete();
         return;
@@ -326,6 +347,7 @@ export function executeMove(onAnimationComplete) {
 
       // Check trapped condition
       if (isTrapped(boardData.rays, finalPos, boardData.obstacles)) {
+        loseReason.set('trapped');
         gamePhase.set('lost');
         if (onAnimationComplete) onAnimationComplete();
         return;
@@ -364,4 +386,5 @@ export function resetGame() {
   previewPath.set([]);
   animatingPath.set([]);
   animationStep.set(-1);
+  loseReason.set(null);
 }

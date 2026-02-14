@@ -10,6 +10,7 @@ import {
   movesMade,
   selectedDirection,
   previewPath,
+  loseReason,
   initGame,
   resetGame,
   rollDice,
@@ -327,5 +328,305 @@ describe('Win/lose detection runs after every move', () => {
       expect(get(movementPool)).toBe(99);
       expect(get(movesMade)).toBe(1);
     }
+  });
+});
+
+describe('Hazard death: blackhole', () => {
+  beforeEach(() => {
+    resetGame();
+  });
+
+  it('sets gamePhase to lost when player lands on a blackhole', async () => {
+    const boardData = initGame(5, 4, 42);
+    const pos = boardData.startVertex;
+    const rays = boardData.rays;
+
+    // Find a direction with at least 1 step that is not an obstacle
+    const available = getAvailableDirections(rays, pos, boardData.obstacles);
+    expect(available.length).toBeGreaterThan(0);
+
+    const dir = available[0];
+    const destRay = rays.get(pos).find((r) => r.direction === dir.direction);
+    const destination = destRay.vertices[0];
+
+    // Inject the destination as a blackhole vertex
+    const newBoard = {
+      ...boardData,
+      blackholeSet: new Set([destination]),
+      enemyZones: new Set(),
+    };
+    board.set(newBoard);
+
+    movementPool.set(10);
+    diceValue.set(1);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(dir.direction);
+    const path = get(previewPath);
+    expect(path.length).toBe(1);
+    expect(path[0]).toBe(destination);
+
+    await executeMoveAsync();
+
+    expect(get(gamePhase)).toBe('lost');
+    expect(get(loseReason)).toBe('blackhole');
+    expect(get(playerPos)).toBe(destination);
+  });
+
+  it('blackhole on target vertex causes death, not win', async () => {
+    const boardData = initGame(5, 4, 42);
+    const target = boardData.targetVertex;
+    const rays = boardData.rays;
+
+    // Find a vertex adjacent to the target
+    let adjacentVertex = null;
+    let directionToTarget = null;
+
+    for (const [vid, vertexRays] of rays) {
+      if (vid === target || boardData.obstacles.has(vid)) continue;
+      for (const ray of vertexRays) {
+        if (ray.vertices.length > 0 && ray.vertices[0] === target) {
+          adjacentVertex = vid;
+          directionToTarget = ray.direction;
+          break;
+        }
+      }
+      if (adjacentVertex) break;
+    }
+
+    expect(adjacentVertex).toBeTruthy();
+
+    // Make target a blackhole — should die, not win
+    const newBoard = {
+      ...boardData,
+      blackholeSet: new Set([target]),
+      enemyZones: new Set(),
+    };
+    board.set(newBoard);
+
+    playerPos.set(adjacentVertex);
+    movementPool.set(10);
+    diceValue.set(1);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(directionToTarget);
+    expect(get(previewPath)).toContain(target);
+
+    await executeMoveAsync();
+
+    expect(get(gamePhase)).toBe('lost');
+    expect(get(loseReason)).toBe('blackhole');
+  });
+});
+
+describe('Hazard death: enemy kill zone', () => {
+  beforeEach(() => {
+    resetGame();
+  });
+
+  it('sets gamePhase to lost when player lands in enemy kill zone', async () => {
+    const boardData = initGame(5, 4, 42);
+    const pos = boardData.startVertex;
+    const rays = boardData.rays;
+
+    const available = getAvailableDirections(rays, pos, boardData.obstacles);
+    expect(available.length).toBeGreaterThan(0);
+
+    const dir = available[0];
+    const destRay = rays.get(pos).find((r) => r.direction === dir.direction);
+    const destination = destRay.vertices[0];
+
+    // Inject the destination as an enemy kill zone vertex
+    const newBoard = {
+      ...boardData,
+      blackholeSet: new Set(),
+      enemyZones: new Set([destination]),
+    };
+    board.set(newBoard);
+
+    movementPool.set(10);
+    diceValue.set(1);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(dir.direction);
+    const path = get(previewPath);
+    expect(path.length).toBe(1);
+    expect(path[0]).toBe(destination);
+
+    await executeMoveAsync();
+
+    expect(get(gamePhase)).toBe('lost');
+    expect(get(loseReason)).toBe('enemy');
+    expect(get(playerPos)).toBe(destination);
+  });
+});
+
+describe('loseReason store', () => {
+  beforeEach(() => {
+    resetGame();
+  });
+
+  it('loseReason is null initially', () => {
+    expect(get(loseReason)).toBeNull();
+  });
+
+  it('loseReason is null after initGame', () => {
+    initGame(5, 4, 42);
+    expect(get(loseReason)).toBeNull();
+  });
+
+  it('loseReason is reset to null by resetGame', async () => {
+    const boardData = initGame(5, 4, 42);
+    const pos = boardData.startVertex;
+    const rays = boardData.rays;
+
+    const available = getAvailableDirections(rays, pos, boardData.obstacles);
+    const dir = available[0];
+    const destRay = rays.get(pos).find((r) => r.direction === dir.direction);
+    const destination = destRay.vertices[0];
+
+    // Trigger a blackhole death
+    const newBoard = {
+      ...boardData,
+      blackholeSet: new Set([destination]),
+      enemyZones: new Set(),
+    };
+    board.set(newBoard);
+
+    movementPool.set(10);
+    diceValue.set(1);
+    gamePhase.set('selectingDirection');
+    selectDirection(dir.direction);
+    await executeMoveAsync();
+
+    expect(get(loseReason)).toBe('blackhole');
+
+    resetGame();
+    expect(get(loseReason)).toBeNull();
+  });
+
+  it('loseReason set to exhausted when pool runs out', async () => {
+    const boardData = initGame(5, 4, 42);
+    const pos = boardData.startVertex;
+    const rays = boardData.rays;
+
+    const available = getAvailableDirections(rays, pos, boardData.obstacles);
+    const dir = available[0];
+
+    // Set pool to exactly 1 so it exhausts
+    movementPool.set(1);
+    diceValue.set(1);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(dir.direction);
+    const path = get(previewPath);
+    expect(path.length).toBe(1);
+
+    await executeMoveAsync();
+
+    if (get(playerPos) !== boardData.targetVertex) {
+      expect(get(gamePhase)).toBe('lost');
+      expect(get(loseReason)).toBe('exhausted');
+    }
+  });
+
+  it('loseReason set to trapped when rollDice detects trapped', () => {
+    const boardData = initGame(5, 4, 42);
+    const pos = boardData.startVertex;
+    const rays = boardData.rays;
+
+    // Block all directions from start
+    const augmentedObstacles = new Set(boardData.obstacles);
+    const allRays = rays.get(pos);
+    for (const ray of allRays) {
+      if (ray.vertices.length > 0) {
+        augmentedObstacles.add(ray.vertices[0]);
+      }
+    }
+
+    const newBoard = { ...boardData, obstacles: augmentedObstacles };
+    board.set(newBoard);
+
+    const result = rollDice();
+    expect(result).toBeNull();
+    expect(get(gamePhase)).toBe('lost');
+    expect(get(loseReason)).toBe('trapped');
+  });
+
+  it('loseReason set to trapped when trapped after move', async () => {
+    const boardData = initGame(5, 4, 42);
+    const pos = boardData.startVertex;
+    const rays = boardData.rays;
+
+    const available = getAvailableDirections(rays, pos, boardData.obstacles);
+    const dir = available[0];
+    const destRay = rays.get(pos).find((r) => r.direction === dir.direction);
+    const destination = destRay.vertices[0];
+    const destRays = rays.get(destination);
+
+    // Block all directions from destination to create a trap
+    const augmentedObstacles = new Set(boardData.obstacles);
+    for (const ray of destRays) {
+      if (ray.vertices.length > 0) {
+        augmentedObstacles.add(ray.vertices[0]);
+      }
+    }
+
+    const newBoard = { ...boardData, obstacles: augmentedObstacles };
+    board.set(newBoard);
+
+    movementPool.set(10);
+    diceValue.set(1);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(dir.direction);
+    const path = get(previewPath);
+
+    if (path.length === 0) return;
+
+    await executeMoveAsync();
+
+    const finalPos = get(playerPos);
+    if (finalPos !== boardData.targetVertex && get(movementPool) > 0) {
+      if (isTrapped(newBoard.rays, finalPos, augmentedObstacles)) {
+        expect(get(gamePhase)).toBe('lost');
+        expect(get(loseReason)).toBe('trapped');
+      }
+    }
+  });
+
+  it('existing win paths still work (loseReason stays null)', async () => {
+    const boardData = initGame(5, 4, 42);
+    const target = boardData.targetVertex;
+    const rays = boardData.rays;
+
+    let adjacentVertex = null;
+    let directionToTarget = null;
+
+    for (const [vid, vertexRays] of rays) {
+      if (vid === target || boardData.obstacles.has(vid)) continue;
+      for (const ray of vertexRays) {
+        if (ray.vertices.length > 0 && ray.vertices[0] === target) {
+          adjacentVertex = vid;
+          directionToTarget = ray.direction;
+          break;
+        }
+      }
+      if (adjacentVertex) break;
+    }
+
+    expect(adjacentVertex).toBeTruthy();
+
+    playerPos.set(adjacentVertex);
+    movementPool.set(10);
+    diceValue.set(1);
+    gamePhase.set('selectingDirection');
+
+    selectDirection(directionToTarget);
+
+    await executeMoveAsync();
+
+    expect(get(gamePhase)).toBe('won');
+    expect(get(loseReason)).toBeNull();
   });
 });
