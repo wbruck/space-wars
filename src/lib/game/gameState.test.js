@@ -8,11 +8,20 @@ import {
   gamePhase,
   visited,
   movesMade,
+  loseReason,
+  combatState,
+  selectedDirection,
+  previewPath,
+  animatingPath,
+  animationStep,
   initGame,
   resetGame,
   hasValidPath,
+  startCombat,
+  resolveCombat,
 } from './gameState.js';
 import { isCenterVertex } from './hexGrid.js';
+import { Enemy } from './boardObjects.js';
 
 describe('initGame', () => {
   beforeEach(() => {
@@ -374,5 +383,363 @@ describe('resetGame', () => {
     expect(get(gamePhase)).toBe('setup');
     expect(get(visited).size).toBe(0);
     expect(get(movesMade)).toBe(0);
+  });
+
+  it('resets combatState to null', () => {
+    initGame(5, 4, 42);
+    // Manually set combatState to simulate an active combat
+    combatState.set({ engine: {}, enemyId: 'test' });
+    resetGame();
+    expect(get(combatState)).toBeNull();
+  });
+});
+
+describe('combat state management', () => {
+  let boardData;
+
+  beforeEach(() => {
+    resetGame();
+    boardData = initGame(5, 4, 42, 5);
+  });
+
+  describe('startCombat', () => {
+    it('transitions gamePhase to combat', () => {
+      const preCombatPos = get(playerPos);
+      startCombat('enemy:v1', { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['v1', 'v2'], 1);
+
+      expect(get(gamePhase)).toBe('combat');
+    });
+
+    it('populates combatState with engine and metadata', () => {
+      const preCombatPos = get(playerPos);
+      const advantage = { firstAttacker: 'player', bonusAttacks: 0 };
+      const path = ['v1', 'v2', 'v3'];
+      startCombat('enemy:v2', advantage, preCombatPos, path, 2);
+
+      const state = get(combatState);
+      expect(state).not.toBeNull();
+      expect(state.engine).toBeDefined();
+      expect(state.enemyId).toBe('enemy:v2');
+      expect(state.approachAdvantage).toEqual(advantage);
+      expect(state.preCombatPlayerPos).toBe(preCombatPos);
+      expect(state.preCombatPath).toEqual(path);
+      expect(state.triggerVertexIndex).toBe(2);
+    });
+
+    it('creates a CombatEngine with PlayerShip and EnemyShip', () => {
+      const preCombatPos = get(playerPos);
+      startCombat('enemy:v1', { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, [], 0);
+
+      const state = get(combatState);
+      expect(state.engine.playerShip).toBeDefined();
+      expect(state.engine.enemyShip).toBeDefined();
+      expect(state.engine.playerShip.name).toBe('Player Ship');
+      expect(state.engine.enemyShip.name).toBe('Enemy Ship');
+    });
+
+    it('sets first attacker based on approach advantage', () => {
+      const preCombatPos = get(playerPos);
+      startCombat('enemy:v1', { firstAttacker: 'enemy', bonusAttacks: 0 }, preCombatPos, [], 0);
+
+      const state = get(combatState);
+      expect(state.engine.isPlayerTurn).toBe(false);
+    });
+
+    it('sets bonus attacks from rear approach', () => {
+      const preCombatPos = get(playerPos);
+      startCombat('enemy:v1', { firstAttacker: 'player', bonusAttacks: 1 }, preCombatPos, [], 0);
+
+      const state = get(combatState);
+      expect(state.engine.bonusAttacks).toBe(1);
+    });
+
+    it('stores preCombatPlayerPos for retreat', () => {
+      const originalPos = get(playerPos);
+      startCombat('enemy:v1', { firstAttacker: 'player', bonusAttacks: 0 }, originalPos, ['a', 'b'], 1);
+
+      const state = get(combatState);
+      expect(state.preCombatPlayerPos).toBe(originalPos);
+    });
+  });
+
+  describe('resolveCombat — playerWin (Bridge destroyed)', () => {
+    it('removes enemy from board and returns to rolling phase', () => {
+      // Set up a board with a known enemy
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) {
+        // No enemies on this seed/difficulty, manually add one
+        const vertexIds = [...boardData.vertices.keys()];
+        const enemyVertex = vertexIds.find(
+          id => id !== boardData.startVertex && id !== boardData.targetVertex && !boardData.obstacles.has(id)
+        );
+        const enemy = new Enemy(enemyVertex, 3, 0);
+        enemies.push(enemy);
+        boardData.obstacles.add(enemyVertex);
+        boardData.boardObjects.push(enemy);
+        board.set(boardData);
+      }
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+
+      // Start combat
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a', 'b'], 1);
+      expect(get(gamePhase)).toBe('combat');
+
+      // Resolve as playerWin
+      resolveCombat('playerWin');
+
+      expect(get(gamePhase)).toBe('rolling');
+      expect(get(combatState)).toBeNull();
+
+      // Enemy should be removed from board
+      const updatedBoard = get(board);
+      expect(updatedBoard.enemies.find(e => e.id === enemy.id)).toBeUndefined();
+      expect(updatedBoard.obstacles.has(enemy.vertexId)).toBe(false);
+    });
+
+    it('restores player to pre-combat position', () => {
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) return; // skip if no enemies
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+
+      // Simulate player moved somewhere during animation
+      playerPos.set('fake-moved-pos');
+
+      resolveCombat('playerWin');
+      expect(get(playerPos)).toBe(preCombatPos);
+    });
+  });
+
+  describe('resolveCombat — playerLose (timeout)', () => {
+    it('keeps enemy on board and returns to rolling', () => {
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) {
+        const vertexIds = [...boardData.vertices.keys()];
+        const enemyVertex = vertexIds.find(
+          id => id !== boardData.startVertex && id !== boardData.targetVertex && !boardData.obstacles.has(id)
+        );
+        const enemy = new Enemy(enemyVertex, 3, 0);
+        enemies.push(enemy);
+        boardData.obstacles.add(enemyVertex);
+        boardData.boardObjects.push(enemy);
+        board.set(boardData);
+      }
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      diceValue.set(3); // Simulate a dice roll of 3
+
+      resolveCombat('playerLose');
+
+      expect(get(gamePhase)).toBe('rolling');
+      expect(get(combatState)).toBeNull();
+
+      // Enemy should still be on board
+      const updatedBoard = get(board);
+      expect(updatedBoard.enemies.find(e => e.id === enemy.id)).toBeDefined();
+      expect(updatedBoard.obstacles.has(enemy.vertexId)).toBe(true);
+    });
+
+    it('deducts dice roll from movement pool', () => {
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) {
+        const vertexIds = [...boardData.vertices.keys()];
+        const enemyVertex = vertexIds.find(
+          id => id !== boardData.startVertex && id !== boardData.targetVertex && !boardData.obstacles.has(id)
+        );
+        const enemy = new Enemy(enemyVertex, 3, 0);
+        enemies.push(enemy);
+        boardData.obstacles.add(enemyVertex);
+        board.set(boardData);
+      }
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+      const poolBefore = get(movementPool);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      diceValue.set(4);
+
+      resolveCombat('playerLose');
+
+      expect(get(movementPool)).toBe(poolBefore - 4);
+    });
+
+    it('restores player to pre-combat position on retreat', () => {
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) {
+        const vertexIds = [...boardData.vertices.keys()];
+        const enemyVertex = vertexIds.find(
+          id => id !== boardData.startVertex && id !== boardData.targetVertex && !boardData.obstacles.has(id)
+        );
+        const enemy = new Enemy(enemyVertex, 3, 0);
+        enemies.push(enemy);
+        boardData.obstacles.add(enemyVertex);
+        board.set(boardData);
+      }
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      playerPos.set('some-other-pos');
+      diceValue.set(2);
+
+      resolveCombat('playerLose');
+
+      expect(get(playerPos)).toBe(preCombatPos);
+    });
+  });
+
+  describe('resolveCombat — enemyFled', () => {
+    it('keeps enemy on board with damaged state', () => {
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) {
+        const vertexIds = [...boardData.vertices.keys()];
+        const enemyVertex = vertexIds.find(
+          id => id !== boardData.startVertex && id !== boardData.targetVertex && !boardData.obstacles.has(id)
+        );
+        const enemy = new Enemy(enemyVertex, 3, 0);
+        enemies.push(enemy);
+        boardData.obstacles.add(enemyVertex);
+        boardData.boardObjects.push(enemy);
+        board.set(boardData);
+      }
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      diceValue.set(2);
+
+      resolveCombat('enemyFled');
+
+      expect(get(gamePhase)).toBe('rolling');
+      expect(get(combatState)).toBeNull();
+
+      // Enemy still on board
+      const updatedBoard = get(board);
+      expect(updatedBoard.enemies.find(e => e.id === enemy.id)).toBeDefined();
+    });
+
+    it('deducts dice roll from pool on flee', () => {
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) {
+        const vertexIds = [...boardData.vertices.keys()];
+        const enemyVertex = vertexIds.find(
+          id => id !== boardData.startVertex && id !== boardData.targetVertex && !boardData.obstacles.has(id)
+        );
+        const enemy = new Enemy(enemyVertex, 3, 0);
+        enemies.push(enemy);
+        boardData.obstacles.add(enemyVertex);
+        board.set(boardData);
+      }
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+      const poolBefore = get(movementPool);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      diceValue.set(5);
+
+      resolveCombat('enemyFled');
+
+      expect(get(movementPool)).toBe(poolBefore - 5);
+    });
+  });
+
+  describe('resolveCombat — playerDestroyed', () => {
+    it('transitions to lost phase with enemy loseReason', () => {
+      const preCombatPos = get(playerPos);
+      startCombat('enemy:v1', { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+
+      resolveCombat('playerDestroyed');
+
+      expect(get(gamePhase)).toBe('lost');
+      expect(get(loseReason)).toBe('enemy');
+      expect(get(combatState)).toBeNull();
+    });
+
+    it('does not restore player position (game over)', () => {
+      const preCombatPos = get(playerPos);
+      startCombat('enemy:v1', { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+
+      // Move player somewhere else during combat
+      playerPos.set('other-pos');
+
+      resolveCombat('playerDestroyed');
+
+      // Player stays where they were (not restored) since game is over
+      expect(get(playerPos)).toBe('other-pos');
+    });
+  });
+
+  describe('resolveCombat — pool exhaustion on retreat', () => {
+    it('triggers game over if pool runs out after deduction', () => {
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) {
+        const vertexIds = [...boardData.vertices.keys()];
+        const enemyVertex = vertexIds.find(
+          id => id !== boardData.startVertex && id !== boardData.targetVertex && !boardData.obstacles.has(id)
+        );
+        const enemy = new Enemy(enemyVertex, 3, 0);
+        enemies.push(enemy);
+        boardData.obstacles.add(enemyVertex);
+        board.set(boardData);
+      }
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+
+      // Set pool to exactly the dice value so deduction exhausts it
+      movementPool.set(3);
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      diceValue.set(3);
+
+      resolveCombat('playerLose');
+
+      expect(get(gamePhase)).toBe('lost');
+      expect(get(loseReason)).toBe('exhausted');
+    });
+  });
+
+  describe('resolveCombat with no active combat', () => {
+    it('does nothing when combatState is null', () => {
+      expect(get(combatState)).toBeNull();
+      expect(get(gamePhase)).toBe('rolling');
+
+      resolveCombat('playerWin');
+
+      // Should remain unchanged
+      expect(get(gamePhase)).toBe('rolling');
+    });
+  });
+
+  describe('combat phase clears preview state', () => {
+    it('clears selectedDirection, previewPath, animatingPath on resolve', () => {
+      const preCombatPos = get(playerPos);
+      startCombat('enemy:v1', { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+
+      // Simulate stale preview state
+      selectedDirection.set(2);
+      previewPath.set(['a', 'b']);
+      animatingPath.set(['a', 'b']);
+      animationStep.set(1);
+
+      resolveCombat('playerWin');
+
+      expect(get(selectedDirection)).toBeNull();
+      expect(get(previewPath)).toEqual([]);
+      expect(get(animatingPath)).toEqual([]);
+      expect(get(animationStep)).toBe(-1);
+      expect(get(diceValue)).toBeNull();
+    });
   });
 });

@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import { generateGrid } from './hexGrid.js';
 import { computePath, isTrapped } from './movement.js';
 import { generateBoardObjects } from './boardObjects.js';
+import { CombatEngine, PlayerShip, EnemyShip } from './combat.js';
 
 // --- Svelte stores ---
 
@@ -17,7 +18,7 @@ export const movementPool = writable(0);
 /** Current dice roll (1-6 or null) */
 export const diceValue = writable(null);
 
-/** Game phase: 'setup' | 'rolling' | 'selectingDirection' | 'moving' | 'won' | 'lost' */
+/** Game phase: 'setup' | 'rolling' | 'selectingDirection' | 'moving' | 'combat' | 'won' | 'lost' */
 export const gamePhase = writable('setup');
 
 /** Set of visited vertex IDs */
@@ -40,6 +41,9 @@ export const animationStep = writable(-1);
 
 /** Reason for losing: 'blackhole' | 'enemy' | 'trapped' | 'exhausted' | null */
 export const loseReason = writable(null);
+
+/** Combat state: null | { engine: CombatEngine, enemyId: string, approachAdvantage: object, preCombatPlayerPos: string, preCombatPath: string[], triggerVertexIndex: number } */
+export const combatState = writable(null);
 
 // --- Helper functions ---
 
@@ -372,6 +376,124 @@ export function executeMove(onAnimationComplete) {
 }
 
 /**
+ * Start a combat encounter.
+ * Creates a CombatEngine, populates combatState, and transitions to 'combat' phase.
+ *
+ * @param {string} enemyId - The enemy's board object ID
+ * @param {{ firstAttacker: 'player'|'enemy', bonusAttacks: number }} approachAdvantage - Approach advantage result
+ * @param {string} preCombatPos - Player's position before the move that triggered combat
+ * @param {string[]} path - The movement path that triggered combat
+ * @param {number} triggerIndex - Index in the path where combat was triggered
+ */
+export function startCombat(enemyId, approachAdvantage, preCombatPos, path, triggerIndex) {
+  const playerShip = new PlayerShip();
+  const enemyShip = new EnemyShip();
+  const engine = new CombatEngine({ playerShip, enemyShip });
+
+  engine.setFirstAttacker(approachAdvantage.firstAttacker);
+  engine.bonusAttacks = approachAdvantage.bonusAttacks;
+
+  combatState.set({
+    engine,
+    enemyId,
+    approachAdvantage,
+    preCombatPlayerPos: preCombatPos,
+    preCombatPath: path,
+    triggerVertexIndex: triggerIndex,
+  });
+
+  gamePhase.set('combat');
+}
+
+/**
+ * Resolve a combat encounter and return to the board game.
+ *
+ * @param {string} result - Combat result: 'playerWin' | 'playerLose' | 'playerDestroyed' | 'enemyFled'
+ */
+export function resolveCombat(result) {
+  const combat = get(combatState);
+  if (!combat) return;
+
+  const boardData = get(board);
+
+  if (result === 'playerDestroyed') {
+    // Game over — player ship destroyed
+    loseReason.set('enemy');
+    gamePhase.set('lost');
+    combatState.set(null);
+    return;
+  }
+
+  if (result === 'playerWin') {
+    // Remove the enemy from the board
+    if (boardData) {
+      // Find the enemy object to get its vertex
+      const enemyObj = boardData.enemies.find(e => e.id === combat.enemyId);
+      if (enemyObj) {
+        // Remove from obstacles set (enemy's own vertex)
+        boardData.obstacles.delete(enemyObj.vertexId);
+
+        // Remove kill zone vertices from enemyZones
+        const affected = enemyObj.getAffectedVertices(null, boardData.rays);
+        for (let i = 1; i < affected.length; i++) {
+          boardData.enemyZones.delete(affected[i]);
+        }
+
+        // Remove from enemyZoneMap if it exists
+        if (boardData.enemyZoneMap) {
+          for (const [zoneVertex, eid] of boardData.enemyZoneMap) {
+            if (eid === combat.enemyId) {
+              boardData.enemyZoneMap.delete(zoneVertex);
+            }
+          }
+        }
+
+        // Remove from enemies array
+        boardData.enemies = boardData.enemies.filter(e => e.id !== combat.enemyId);
+
+        // Remove from boardObjects array
+        boardData.boardObjects = boardData.boardObjects.filter(o => o.id !== combat.enemyId);
+
+        // Update the board store to trigger reactivity
+        board.set(boardData);
+      }
+    }
+  }
+
+  // For playerWin, playerLose, enemyFled: restore player to pre-combat position
+  playerPos.set(combat.preCombatPlayerPos);
+
+  // For playerLose/enemyFled: deduct dice roll from pool (move is wasted)
+  if (result === 'playerLose' || result === 'enemyFled') {
+    const dice = get(diceValue);
+    if (dice != null) {
+      const pool = get(movementPool);
+      const newPool = pool - dice;
+      movementPool.set(newPool);
+
+      // Check if pool exhausted after deduction
+      if (newPool <= 0) {
+        loseReason.set('exhausted');
+        gamePhase.set('lost');
+        combatState.set(null);
+        return;
+      }
+    }
+  }
+
+  // Clear animation/preview state
+  selectedDirection.set(null);
+  previewPath.set([]);
+  animatingPath.set([]);
+  animationStep.set(-1);
+  diceValue.set(null);
+
+  // Back to rolling
+  gamePhase.set('rolling');
+  combatState.set(null);
+}
+
+/**
  * Reset game to setup phase.
  */
 export function resetGame() {
@@ -387,4 +509,5 @@ export function resetGame() {
   animatingPath.set([]);
   animationStep.set(-1);
   loseReason.set(null);
+  combatState.set(null);
 }
