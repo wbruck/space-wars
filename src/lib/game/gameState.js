@@ -246,7 +246,7 @@ export function selectDirection(direction) {
   const rays = boardData.rays.get(pos);
   if (!rays) return null;
 
-  const result = computePath(rays, direction, steps, boardData.obstacles, boardData.targetVertex);
+  const result = computePath(rays, direction, steps, boardData.obstacles, boardData.targetVertex, boardData.blackholeSet, boardData.enemyZones);
 
   selectedDirection.set(direction);
   previewPath.set(result.path);

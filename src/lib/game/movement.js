@@ -31,29 +31,50 @@ export function getAvailableDirections(rays, vertexId, obstacles) {
 /**
  * Compute the path for moving in a given direction.
  * Walks along the ray for up to `steps` vertices, stopping early at
- * obstacles or board edges. Remaining steps after hitting an obstacle are lost.
+ * obstacles, hazards, or board edges. Remaining steps after hitting an obstacle are lost.
+ *
+ * Hazard check order per vertex: obstacle (stop before) > blackhole (include, then stop)
+ * > enemy zone (include, then stop) > target (include, then stop)
  *
  * @param {Array<{direction: number, vertices: string[]}>} rays - All rays for the vertex
  * @param {number} direction - Direction index (0-5)
  * @param {number} steps - Number of steps to take (min(diceValue, remainingPool))
  * @param {Set<string>} obstacles - Obstacle vertex IDs
  * @param {string|null} targetVertex - Target vertex ID (for win detection)
- * @returns {{ path: string[], stoppedByObstacle: boolean, reachedTarget: boolean }}
+ * @param {Set<string>} [blackholes] - Blackhole vertex IDs (optional)
+ * @param {Set<string>} [enemyZones] - Enemy kill zone vertex IDs (optional)
+ * @returns {{ path: string[], stoppedByObstacle: boolean, reachedTarget: boolean, hitBlackhole: boolean, hitByEnemy: boolean }}
  */
-export function computePath(rays, direction, steps, obstacles, targetVertex) {
+export function computePath(rays, direction, steps, obstacles, targetVertex, blackholes, enemyZones) {
   const ray = rays.find((r) => r.direction === direction);
-  if (!ray) return { path: [], stoppedByObstacle: false, reachedTarget: false };
+  if (!ray) return { path: [], stoppedByObstacle: false, reachedTarget: false, hitBlackhole: false, hitByEnemy: false };
 
   const path = [];
   let stoppedByObstacle = false;
   let reachedTarget = false;
+  let hitBlackhole = false;
+  let hitByEnemy = false;
 
   for (let i = 0; i < Math.min(steps, ray.vertices.length); i++) {
     const vid = ray.vertices[i];
 
-    // Check for obstacle
+    // Check for obstacle (stop BEFORE — vertex NOT in path)
     if (obstacles.has(vid)) {
       stoppedByObstacle = true;
+      break;
+    }
+
+    // Check for blackhole (include vertex, then stop)
+    if (blackholes?.has(vid)) {
+      path.push(vid);
+      hitBlackhole = true;
+      break;
+    }
+
+    // Check for enemy kill zone (include vertex, then stop)
+    if (enemyZones?.has(vid)) {
+      path.push(vid);
+      hitByEnemy = true;
       break;
     }
 
@@ -66,7 +87,7 @@ export function computePath(rays, direction, steps, obstacles, targetVertex) {
     }
   }
 
-  return { path, stoppedByObstacle, reachedTarget };
+  return { path, stoppedByObstacle, reachedTarget, hitBlackhole, hitByEnemy };
 }
 
 /**

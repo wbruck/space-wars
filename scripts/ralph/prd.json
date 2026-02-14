@@ -69,7 +69,7 @@
         "Commit with message starting with US-024"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -91,7 +91,7 @@
         "Commit with message starting with US-025"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

@@ -185,6 +185,194 @@ describe('computePath', () => {
   });
 });
 
+describe('computePath hazard detection (US-025)', () => {
+  let grid;
+
+  beforeEach(() => {
+    grid = generateGrid(5, 4, 40);
+  });
+
+  it('stops at blackhole vertex (vertex IS included in path), returns hitBlackhole', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 3);
+    });
+    const rays = grid.rays.get(vid);
+    const longRay = rays.find((r) => r.vertices.length >= 3);
+
+    // Place blackhole at the second vertex
+    const blackholes = new Set([longRay.vertices[1]]);
+    const result = computePath(rays, longRay.direction, 5, new Set(), null, blackholes);
+
+    // Path should include first vertex and blackhole vertex, then stop
+    expect(result.path.length).toBe(2);
+    expect(result.path[0]).toBe(longRay.vertices[0]);
+    expect(result.path[1]).toBe(longRay.vertices[1]);
+    expect(result.hitBlackhole).toBe(true);
+    expect(result.stoppedByObstacle).toBe(false);
+    expect(result.reachedTarget).toBe(false);
+    expect(result.hitByEnemy).toBe(false);
+  });
+
+  it('stops at enemy kill zone vertex (vertex IS included in path), returns hitByEnemy', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 3);
+    });
+    const rays = grid.rays.get(vid);
+    const longRay = rays.find((r) => r.vertices.length >= 3);
+
+    // Place enemy zone at the second vertex
+    const enemyZones = new Set([longRay.vertices[1]]);
+    const result = computePath(rays, longRay.direction, 5, new Set(), null, new Set(), enemyZones);
+
+    expect(result.path.length).toBe(2);
+    expect(result.path[0]).toBe(longRay.vertices[0]);
+    expect(result.path[1]).toBe(longRay.vertices[1]);
+    expect(result.hitByEnemy).toBe(true);
+    expect(result.stoppedByObstacle).toBe(false);
+    expect(result.reachedTarget).toBe(false);
+    expect(result.hitBlackhole).toBe(false);
+  });
+
+  it('path through clear zone is unchanged when blackholes/enemyZones are empty', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 3);
+    });
+    const rays = grid.rays.get(vid);
+    const longRay = rays.find((r) => r.vertices.length >= 3);
+
+    const result = computePath(rays, longRay.direction, 3, new Set(), null, new Set(), new Set());
+    expect(result.path.length).toBe(3);
+    expect(result.hitBlackhole).toBe(false);
+    expect(result.hitByEnemy).toBe(false);
+    expect(result.stoppedByObstacle).toBe(false);
+  });
+
+  it('backward compatible when blackholes and enemyZones params are omitted', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 3);
+    });
+    const rays = grid.rays.get(vid);
+    const longRay = rays.find((r) => r.vertices.length >= 3);
+
+    // Call without blackholes/enemyZones (old API)
+    const result = computePath(rays, longRay.direction, 3, new Set(), null);
+    expect(result.path.length).toBe(3);
+    expect(result.hitBlackhole).toBe(false);
+    expect(result.hitByEnemy).toBe(false);
+  });
+
+  it('hazard priority: obstacle stops before blackhole', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 3);
+    });
+    const rays = grid.rays.get(vid);
+    const longRay = rays.find((r) => r.vertices.length >= 3);
+
+    // Same vertex is both obstacle and blackhole — obstacle takes priority
+    const vertex = longRay.vertices[1];
+    const obstacles = new Set([vertex]);
+    const blackholes = new Set([vertex]);
+    const result = computePath(rays, longRay.direction, 5, obstacles, null, blackholes);
+
+    // Obstacle stops BEFORE the vertex (not included)
+    expect(result.path.length).toBe(1);
+    expect(result.stoppedByObstacle).toBe(true);
+    expect(result.hitBlackhole).toBe(false);
+  });
+
+  it('hazard priority: blackhole stops before enemy zone', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 3);
+    });
+    const rays = grid.rays.get(vid);
+    const longRay = rays.find((r) => r.vertices.length >= 3);
+
+    // Same vertex is both blackhole and enemy zone — blackhole takes priority
+    const vertex = longRay.vertices[1];
+    const blackholes = new Set([vertex]);
+    const enemyZones = new Set([vertex]);
+    const result = computePath(rays, longRay.direction, 5, new Set(), null, blackholes, enemyZones);
+
+    expect(result.path.length).toBe(2);
+    expect(result.hitBlackhole).toBe(true);
+    expect(result.hitByEnemy).toBe(false);
+  });
+
+  it('blackhole at first vertex stops immediately (vertex included)', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 2);
+    });
+    const rays = grid.rays.get(vid);
+    const ray = rays.find((r) => r.vertices.length >= 2);
+
+    const blackholes = new Set([ray.vertices[0]]);
+    const result = computePath(rays, ray.direction, 5, new Set(), null, blackholes);
+
+    expect(result.path.length).toBe(1);
+    expect(result.path[0]).toBe(ray.vertices[0]);
+    expect(result.hitBlackhole).toBe(true);
+  });
+
+  it('enemy zone at first vertex stops immediately (vertex included)', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 2);
+    });
+    const rays = grid.rays.get(vid);
+    const ray = rays.find((r) => r.vertices.length >= 2);
+
+    const enemyZones = new Set([ray.vertices[0]]);
+    const result = computePath(rays, ray.direction, 5, new Set(), null, new Set(), enemyZones);
+
+    expect(result.path.length).toBe(1);
+    expect(result.path[0]).toBe(ray.vertices[0]);
+    expect(result.hitByEnemy).toBe(true);
+  });
+
+  it('returns hitBlackhole/hitByEnemy as false for invalid direction', () => {
+    const vid = [...grid.vertices.keys()][0];
+    const rays = grid.rays.get(vid);
+    const result = computePath(rays, 99, 3, new Set(), null, new Set(), new Set());
+    expect(result.hitBlackhole).toBe(false);
+    expect(result.hitByEnemy).toBe(false);
+  });
+});
+
+describe('getAvailableDirections unchanged for hazards (US-025)', () => {
+  let grid;
+
+  beforeEach(() => {
+    grid = generateGrid(5, 4, 40);
+  });
+
+  it('directions through blackholes remain available (blackholes not in obstacleSet)', () => {
+    // Find a vertex with at least one non-empty ray
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 2);
+    });
+    const rays = grid.rays.get(vid);
+    const ray = rays.find((r) => r.vertices.length >= 2);
+
+    // Blackhole at the first vertex — should NOT block getAvailableDirections
+    // (blackholes are not in obstacleSet)
+    const available = getAvailableDirections(grid.rays, vid, new Set());
+    const dirAvailable = available.find((r) => r.direction === ray.direction);
+    expect(dirAvailable).toBeTruthy();
+
+    // Same result even if the vertex is a blackhole — getAvailableDirections only checks obstacles
+    const availableWithBlackhole = getAvailableDirections(grid.rays, vid, new Set());
+    expect(availableWithBlackhole.length).toBe(available.length);
+  });
+});
+
 describe('isTrapped', () => {
   let grid;
 
