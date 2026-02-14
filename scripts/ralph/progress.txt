@@ -19,6 +19,12 @@ Started: Thu Feb 13 20:24:00 CST 2026
 - Hazard death checks in executeMove happen BEFORE win/lose checks (blackhole on target = death, not win)
 - Use optional chaining (`?.has()`) on `boardData.blackholeSet` and `boardData.enemyZones` for backward compat in executeMove
 - To test hazard deaths in winLose.test.js, inject hazard sets into boardData via `board.set({...boardData, blackholeSet: new Set([vertex])})`
+- Board.svelte rendering: new object types need updates in `vertexColor()`, `isActiveVertex()`, SVG markers, CSS (light + dark mode), and the prop from App.svelte
+- `vertexColor()` priority order: target > start > enemy > blackhole > killZone > obstacle > animated > preview > visited > center > default
+- Board.svelte passes new Set props from App.svelte using `boardData.xxxSet ?? new Set()` for safety
+- Enemy render data is constructed in App.svelte from `boardData.enemies` using `getAffectedVertices(null, boardData.rays)` — Board.svelte receives precomputed `{ vertexId, direction, range, killZoneVertices }` objects
+- Board.svelte uses derived sets (`enemyVertexSet`, `killZoneSet`) for efficient vertex lookups in `vertexColor()` and `isActiveVertex()`
+- Enemy direction indicators use same angle math as direction arrows: `(Math.PI / 3) * direction`
 
 ---
 
@@ -97,4 +103,42 @@ Started: Thu Feb 13 20:24:00 CST 2026
   - To test hazard deaths, inject blackholeSet/enemyZones into boardData via board.set({...boardData, blackholeSet: new Set([...])})
   - loseReason must be set BEFORE gamePhase.set('lost') so subscribers see both updates consistently
   - Optional chaining on boardData.blackholeSet?.has() lets existing tests (without blackholeSet) work without changes
+---
+
+## 2026-02-13 20:41 - US-027
+- Added `blackholes` prop (Set<string>) to Board.svelte for blackhole vertex IDs
+- Blackholes rendered as dark purple (#1a0033) circles with concentric ring indicator (outer ring + inner core)
+- Blackhole vertices do NOT get the obstacle X marker — they have their own unique visual
+- Updated `vertexColor()` to check blackholes BEFORE obstacles (dark purple fill)
+- Updated `isActiveVertex()` to include blackholes (ensures center vertices fill correctly)
+- App.svelte passes `boardData.blackholeSet ?? new Set()` as blackholes prop
+- Added dark mode variants with lighter purple (#ce93d8) for visibility
+- CSS classes: `.vertex.blackhole`, `.blackhole-ring`, `.blackhole-core`
+- Files changed: src/lib/components/Board.svelte, src/App.svelte
+- **Learnings for future iterations:**
+  - Blackholes are NOT in obstacleSet, so the `{#if obstacles.has(v.id)}` X marker conditional naturally excludes them
+  - Use `?? new Set()` fallback when passing boardData sets as props for safety
+  - `isActiveVertex` controls whether center vertices render as filled or hollow rings — must include new object types
+  - Browser verification skipped (no Chrome extension connected) — manual check needed
+---
+
+## 2026-02-13 20:44 - US-028
+- Added `enemies` prop (array of `{ vertexId, direction, range, killZoneVertices }`) to Board.svelte
+- Derived sets: `enemyVertexSet` for enemy vertex IDs, `killZoneSet` for all kill zone vertex IDs
+- Enemy vertices rendered as red (#c62828) circles — visually distinct from regular obstacles and blackholes
+- Kill zone shown as semi-transparent red overlay circles (rgba(198,40,40,0.25)) rendered BEFORE vertices (behind them)
+- Enemy direction indicated with arrow line + polygon arrowhead from enemy position along facing angle
+- Updated X marker conditional to exclude enemy vertices: `{#if obstacles.has(v.id) && !enemyVertexSet.has(v.id)}`
+- Updated `vertexColor()` priority: enemy > blackhole > killZone > obstacle
+- Updated `isActiveVertex()` to include enemyVertexSet and killZoneSet
+- App.svelte constructs enemy render data using `enemy.getAffectedVertices(null, boardData.rays)` — slicing off own vertex for killZoneVertices
+- Dark mode variants: lighter red (#ef5350) for enemy stroke, direction arrow, and kill zone overlay
+- CSS classes: `.vertex.enemy`, `.vertex.kill-zone`, `.kill-zone-overlay`, `.enemy-direction`, `.enemy-arrow-head`
+- Files changed: src/lib/components/Board.svelte, src/App.svelte
+- **Learnings for future iterations:**
+  - Enemy render data should be precomputed in App.svelte, not in Board.svelte — keeps Board component free of game logic imports
+  - `getAffectedVertices` returns [ownVertex, ...killZone], so `affected.slice(1)` gives just the kill zone
+  - Kill zone overlay circles use r=VERTEX_R+3 to be slightly larger than the vertex, creating a visible halo effect
+  - Enemy X marker exclusion: enemies are in obstacleSet, so the X marker conditional needs `&& !enemyVertexSet.has(v.id)` to avoid double-rendering
+  - Browser verification skipped (no Chrome extension connected) — manual check needed
 ---

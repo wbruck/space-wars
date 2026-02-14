@@ -27,6 +27,7 @@
     targetVertex = null,
     obstacles = new Set(),
     blackholes = new Set(),
+    enemies = [],
     playerPos = null,
     visited = new Set(),
     gamePhase = 'setup',
@@ -105,6 +106,10 @@
   // All vertices as array
   let vertexList = $derived([...grid.vertices.values()]);
 
+  // Enemy-related derived sets
+  let enemyVertexSet = $derived(new Set(enemies.map(e => e.vertexId)));
+  let killZoneSet = $derived(new Set(enemies.flatMap(e => e.killZoneVertices)));
+
   // Preview path set for quick lookup
   let previewSet = $derived(new Set(previewPath));
 
@@ -153,6 +158,8 @@
   function isActiveVertex(v) {
     return v.id === targetVertex ||
       v.id === startVertex ||
+      enemyVertexSet.has(v.id) ||
+      killZoneSet.has(v.id) ||
       obstacles.has(v.id) ||
       blackholes.has(v.id) ||
       animatedSet.has(v.id) ||
@@ -165,7 +172,9 @@
   function vertexColor(v) {
     if (v.id === targetVertex) return '#e8a735';
     if (v.id === startVertex) return '#4caf50';
+    if (enemyVertexSet.has(v.id)) return '#c62828';
     if (blackholes.has(v.id)) return '#1a0033';
+    if (killZoneSet.has(v.id)) return 'rgba(198,40,40,0.25)';
     if (obstacles.has(v.id)) return '#444';
     if (animatedSet.has(v.id)) return '#90caf9';
     if (previewSet.has(v.id)) return '#64b5f6';
@@ -227,6 +236,21 @@
     {/each}
   {/if}
 
+  <!-- Enemy kill zone overlay (rendered before vertices so it appears behind) -->
+  {#each enemies as enemy}
+    {#each enemy.killZoneVertices as kzVid}
+      {@const kzv = grid.vertices.get(kzVid)}
+      {#if kzv}
+        <circle
+          cx={kzv.x}
+          cy={kzv.y}
+          r={VERTEX_R + 3}
+          class="kill-zone-overlay"
+        />
+      {/if}
+    {/each}
+  {/each}
+
   <!-- Vertices -->
   {#each vertexList as v}
     <circle
@@ -238,12 +262,14 @@
       class:center-vertex={v.type === 'center'}
       class:center-active={v.type === 'center' && isActiveVertex(v)}
       class:blackhole={blackholes.has(v.id)}
+      class:enemy={enemyVertexSet.has(v.id)}
+      class:kill-zone={killZoneSet.has(v.id)}
       class:obstacle={obstacles.has(v.id)}
       class:preview={previewSet.has(v.id)}
       class:animated={animatedSet.has(v.id)}
     />
-    <!-- X marker for obstacles (not blackholes) -->
-    {#if obstacles.has(v.id)}
+    <!-- X marker for obstacles (not blackholes or enemies) -->
+    {#if obstacles.has(v.id) && !enemyVertexSet.has(v.id)}
       <line
         x1={v.x - 5} y1={v.y - 5}
         x2={v.x + 5} y2={v.y + 5}
@@ -268,6 +294,27 @@
         cy={v.y}
         r={2}
         class="blackhole-core"
+      />
+    {/if}
+  {/each}
+
+  <!-- Enemy direction indicators -->
+  {#each enemies as enemy}
+    {@const ev = grid.vertices.get(enemy.vertexId)}
+    {#if ev}
+      {@const angle = (Math.PI / 3) * enemy.direction}
+      {@const arrowLen = VERTEX_R + 6}
+      {@const headLen = 6}
+      {@const tx = ev.x + arrowLen * Math.cos(angle)}
+      {@const ty = ev.y + arrowLen * Math.sin(angle)}
+      <line
+        x1={ev.x} y1={ev.y}
+        x2={tx} y2={ty}
+        class="enemy-direction"
+      />
+      <polygon
+        points="{tx},{ty} {tx - headLen * Math.cos(angle - 0.4)},{ty - headLen * Math.sin(angle - 0.4)} {tx - headLen * Math.cos(angle + 0.4)},{ty - headLen * Math.sin(angle + 0.4)}"
+        class="enemy-arrow-head"
       />
     {/if}
   {/each}
@@ -383,6 +430,35 @@
     pointer-events: none;
   }
 
+  .vertex.enemy {
+    stroke: #b71c1c;
+    stroke-width: 1.5;
+    cursor: default;
+  }
+
+  .vertex.kill-zone {
+    stroke: #c62828;
+    stroke-width: 1;
+  }
+
+  .kill-zone-overlay {
+    fill: rgba(198, 40, 40, 0.25);
+    stroke: none;
+    pointer-events: none;
+  }
+
+  .enemy-direction {
+    stroke: #c62828;
+    stroke-width: 2;
+    stroke-linecap: round;
+    pointer-events: none;
+  }
+
+  .enemy-arrow-head {
+    fill: #c62828;
+    pointer-events: none;
+  }
+
   .vertex.blackhole {
     stroke: #7b1fa2;
     stroke-width: 1.5;
@@ -482,6 +558,18 @@
     }
     .vertex.center-vertex {
       stroke: #777;
+    }
+    .vertex.enemy {
+      stroke: #ef5350;
+    }
+    .kill-zone-overlay {
+      fill: rgba(239, 83, 80, 0.3);
+    }
+    .enemy-direction {
+      stroke: #ef5350;
+    }
+    .enemy-arrow-head {
+      fill: #ef5350;
     }
     .vertex.blackhole {
       stroke: #ce93d8;

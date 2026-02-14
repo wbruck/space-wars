@@ -21,6 +21,22 @@
   let animPath = $derived($animatingPath);
   let animStep = $derived($animationStep);
 
+  // Construct enemy render data from boardData
+  let enemyRenderData = $derived.by(() => {
+    if (!boardData || !boardData.enemies) return [];
+    return boardData.enemies.map(enemy => {
+      const affected = enemy.getAffectedVertices(null, boardData.rays);
+      // Kill zone vertices are all affected vertices except the enemy's own vertex
+      const killZoneVertices = affected.slice(1);
+      return {
+        vertexId: enemy.vertexId,
+        direction: enemy.direction,
+        range: enemy.range,
+        killZoneVertices,
+      };
+    });
+  });
+
   // Compute available directions reactively
   let availableDirs = $derived.by(() => {
     if (phase !== 'selectingDirection' || !boardData || !pos) return null;
@@ -61,6 +77,7 @@
       targetVertex={boardData.targetVertex}
       obstacles={boardData.obstacles}
       blackholes={boardData.blackholeSet ?? new Set()}
+      enemies={enemyRenderData}
       playerPos={pos}
       visited={visitedSet}
       gamePhase={phase}
