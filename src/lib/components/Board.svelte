@@ -370,11 +370,16 @@
   {/if}
 </svg>
 
-{#if gamePhase === 'selectingDirection' && selectedDirection != null}
-  <button class="confirm-btn" onclick={onConfirmMove}>
+<div class="confirm-btn-slot">
+  <button
+    class="confirm-btn"
+    class:hidden={!(gamePhase === 'selectingDirection' && selectedDirection != null)}
+    onclick={onConfirmMove}
+    disabled={!(gamePhase === 'selectingDirection' && selectedDirection != null)}
+  >
     Confirm Move
   </button>
-{/if}
+</div>
 
 <style>
   .board-svg {
@@ -531,6 +536,13 @@
     stroke-width: 1.5;
   }
 
+  .confirm-btn-slot {
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .confirm-btn {
     display: block;
     margin: 0.5rem auto;
@@ -545,6 +557,10 @@
     min-width: 120px;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .confirm-btn.hidden {
+    visibility: hidden;
   }
 
   .confirm-btn:hover {
