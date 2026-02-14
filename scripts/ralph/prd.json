@@ -136,7 +136,7 @@
         "Commit with message starting with US-044"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

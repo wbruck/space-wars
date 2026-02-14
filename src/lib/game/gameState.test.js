@@ -878,7 +878,8 @@ describe('engagement trigger in executeMove (US-034)', () => {
       if (r.vertices.length < 3) return false;
       // First two vertices must not be an obstacle or existing enemy zone
       return !boardData.obstacles.has(r.vertices[0]) && !boardData.obstacles.has(r.vertices[1])
-        && !boardData.enemyZones.has(r.vertices[0]) && !boardData.enemyZones.has(r.vertices[1]);
+        && !boardData.enemyZones.has(r.vertices[0]) && !boardData.enemyZones.has(r.vertices[1])
+        && !boardData.enemyZoneMap.has(r.vertices[0]) && !boardData.enemyZoneMap.has(r.vertices[1]);
     });
     if (!longRay) return null;
 

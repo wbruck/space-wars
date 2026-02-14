@@ -17,6 +17,9 @@ Started: Sat Feb 14 13:42:44 CST 2026
 - New combat results follow the same code path in resolveCombat — 'escaped' falls through to the else branch (not playerDestroyed, not playerWin/enemyFled) naturally
 - PlayerShip.canAttack mirrors EnemyShip.canAttack: checks Weapons component destroyed state. CombatEngine.executePlayerAttack() has a defensive guard that no-ops (returns roll:0, isHit:false) when canAttack is false
 - When adding defensive guards to executePlayerAttack, update existing tests that rely on the player attacking after their weapons are destroyed (e.g., simulation tests with enemy destroying all components)
+- Enemy.visionRange (1-6) is decoupled from Enemy.value; `range` property now equals `visionRange` (not `value`). `getAffectedVertices()` uses `visionRange` for ray loop limit.
+- Enemy generation uses a budget system: `enemyBudget = enemySlots * 3`, each enemy costs its `visionRange`. This produces variable enemy counts — low-range enemies allow more placements, high-range fewer.
+- Adding new RNG calls in `generateBoardObjects` shifts all subsequent random draws, which can break tests that depend on specific seeded board layouts (e.g., engagement trigger tests). Filter zone vertices when setting up test scenarios.
 
 ---
 
@@ -95,4 +98,20 @@ Started: Sat Feb 14 13:42:44 CST 2026
   - Adding defensive guards to executePlayerAttack can break simulation tests that assume the player can always attack — restructure those tests to destroy Weapons last (or after other components)
   - The outcome-area in CombatScreen.svelte supports multiple conditional display states using `{#if}...{:else if}` chains — the weapons-offline message is the first condition (shown when canAttack is false, player's turn, no combat result showing)
   - The tick reactivity pattern is used for all derived state from the mutable combat engine: `let canAttack = $derived.by(() => { tick; return engine?.playerShip?.canAttack ?? true; })`
+---
+
+## 2026-02-14 - US-044
+- Added `visionRange` property (1-6) to `Enemy` class, decoupled from `value`. Constructor accepts optional 4th parameter; defaults to `Math.min(Math.max(value, 1), 6)` for backward compat.
+- `range` property now equals `visionRange` (not `value`); `getAffectedVertices()` uses `visionRange` for ray loop limit
+- Updated `generateBoardObjects()` to assign random visionRange (1-6) using seeded RNG via `1 + Math.floor(rng() * 6)`
+- Implemented budget-based enemy generation: `enemyBudget = enemySlots * 3`, each enemy costs its `visionRange`. Low-range enemies are cheap (more can be placed), high-range enemies are expensive (fewer placed).
+- Updated `createBoardObject` factory to accept optional `visionRange` parameter for enemy creation
+- Updated 6 existing tests to reflect new behavior (range != value, variable enemy count)
+- Added 7 new tests: Enemy visionRange constructor/default, getAffectedVertices uses visionRange, determinism, variance, budget constraint
+- Fixed 2 gameState engagement trigger tests that broke due to shifted RNG output — added `enemyZoneMap` check to `setupEnemyOnPath` ray filter
+- Files changed: `src/lib/game/boardObjects.js`, `src/lib/game/boardObjects.test.js`, `src/lib/game/gameState.test.js`, `scripts/ralph/prd.json`
+- **Learnings for future iterations:**
+  - Adding new `rng()` calls in `generateBoardObjects` shifts all subsequent random draws, breaking tests that depend on specific seeded board layouts. Always filter for existing zones when setting up test scenarios.
+  - Budget-based generation produces variable counts — tests should check range constraints and budget limits rather than exact counts
+  - The `Enemy` constructor backward compat (no visionRange → clamped value) preserves existing `createBoardObject('enemy', ...)` calls that don't pass visionRange
 ---
