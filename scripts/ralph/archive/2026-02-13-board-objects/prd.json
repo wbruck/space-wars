@@ -1,0 +1,160 @@
+{
+  "project": "New Obstacle Types — BlackHole & Enemy",
+  "branchName": "ralph/obstacle-types-blackhole-enemy",
+  "description": "Add two new obstacle subclasses — BlackHole (pass-through death) and Enemy (directional sentry with ray-based kill zone) — that extend the existing board object system and interact with the movement system to create new hazard types.",
+  "userStories": [
+    {
+      "id": "US-022",
+      "title": "Create BlackHole subclass",
+      "description": "As a developer, I want a BlackHole class extending Obstacle so that blackholes can be placed on the board as pass-through hazards that end the game on contact.",
+      "background": "The board object system has a class hierarchy: BoardObject → Obstacle → (subclasses). Obstacle class in src/lib/game/boardObjects.js calls super(vertexId, 'obstacle', value) and has onPlayerInteraction() returning { blocked: true }. Regular obstacles are added to obstacleSet (Set<string>) which movement.js checks to block movement. BlackHoles need a fundamentally different behavior: they do NOT block movement (not in obstacleSet), but kill the player on contact. The death-on-contact behavior is wired up in later stories (US-025, US-026).",
+      "implementation": "In src/lib/game/boardObjects.js: create BlackHole extending Obstacle. Constructor accepts (vertexId, value), calls super then overrides this.type = 'blackhole' and this.id = 'blackhole:' + vertexId. Override onPlayerInteraction() to return { killed: true, cause: 'blackhole' }. Update createBoardObject factory switch to handle 'blackhole' → new BlackHole(vertexId, value). Export BlackHole. FR-1: BlackHole extends Obstacle with type='blackhole', does NOT block movement (not in obstacleSet), kills on contact. Non-goals: no rendering changes, no movement system changes, no placement algorithm changes — those are separate stories.",
+      "acceptanceCriteria": [
+        "BlackHole extends Obstacle with type set to 'blackhole'",
+        "Constructor accepts (vertexId, value) and calls the Obstacle constructor",
+        "onPlayerInteraction() returns { killed: true, cause: 'blackhole' }",
+        "Blackholes are not added to obstacleSet (they don't block movement — the player passes through them)",
+        "Export BlackHole from boardObjects.js",
+        "Update createBoardObject factory to handle 'blackhole' type",
+        "Unit tests verify BlackHole type, value storage, onPlayerInteraction return, and that it is an instance of both BlackHole and Obstacle",
+        "All tests pass (npm test)",
+        "Commit with message starting with US-022"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Create Enemy subclass",
+      "description": "As a developer, I want an Enemy class extending Obstacle so that enemies can be placed on the board as directional sentries with ray-based kill zones.",
+      "background": "Enemies are stationary sentries that face one of the 6 hex directions (0-5) and have a kill zone extending along that direction. The kill zone range equals the enemy's value property (1-10, difficulty-correlated). Unlike BlackHoles, the enemy's own vertex IS added to obstacleSet (it blocks movement like a regular obstacle). The kill zone vertices are tracked separately in an enemyZones Set (computed in US-024). The board uses precomputed rays (Map<vertexId, [{direction, vertices}]>) — enemy kill zone computation leverages rays.get(vertexId) to find vertices along the facing direction.",
+      "implementation": "In src/lib/game/boardObjects.js: create Enemy extending Obstacle. Constructor accepts (vertexId, value, direction). Set this.direction = direction, this.range = this.value, override this.type = 'enemy', this.id = 'enemy:' + vertexId. Override onPlayerInteraction() to return { killed: true, cause: 'enemy' }. Override getAffectedVertices(adjacency, rays) — the base signature is getAffectedVertices(adjacency), add rays as optional second param. Implementation: get rays.get(this.vertexId), find ray matching this.direction, take first this.range vertex IDs from ray.vertices, return [this.vertexId, ...killZoneVertices]. Update createBoardObject factory for 'enemy' type with additional direction parameter. FR-2: Enemy blocks at own vertex (in obstacleSet), has direction (0-5) and range (= value). Non-goals: no rendering, no placement, no movement changes, no enemy movement/patrol behavior.",
+      "acceptanceCriteria": [
+        "Enemy extends Obstacle with type set to 'enemy'",
+        "Constructor accepts (vertexId, value, direction) where direction is 0-5 and value (1-10) doubles as kill zone range",
+        "Properties: direction (number 0-5), range (equals this.value)",
+        "onPlayerInteraction() returns { killed: true, cause: 'enemy' }",
+        "getAffectedVertices(adjacency, rays) returns the enemy's own vertex plus the kill zone vertices (first this.range vertices along facing direction ray)",
+        "Enemy's own vertex is added to obstacleSet (blocks movement like a regular obstacle)",
+        "Export Enemy from boardObjects.js",
+        "Update createBoardObject factory to handle 'enemy' type (accepts additional direction parameter)",
+        "Unit tests verify Enemy type, value/direction/range storage, onPlayerInteraction return, getAffectedVertices with mock rays, and instanceof checks",
+        "All tests pass (npm test)",
+        "Commit with message starting with US-023"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Update placement algorithm for new obstacle types",
+      "description": "As a developer, I want generateBoardObjects to place a mix of regular obstacles, blackholes, and enemies so that the board has varied hazards scaled by difficulty.",
+      "background": "generateBoardObjects in src/lib/game/boardObjects.js currently places Obstacle and PowerUp instances using difficulty-scaled percentages. It accepts (vertices, startVertex, targetVertex, difficulty, rng) and returns { obstacles, powerUps, obstacleSet }. The caller initGame in gameState.js passes grid.rays for ray data but generateBoardObjects doesn't currently receive it. Enemy kill zone computation needs rays.get(enemyVertexId) to find ray vertices along the enemy's facing direction. hasValidPath BFS in initGame uses obstacleSet for pathfinding — blackholes must NOT be in obstacleSet since they're passable.",
+      "implementation": "Update generateBoardObjects signature: add rays parameter at the end. Of total obstacle count (same formula), split: regularCount = Math.floor(total * 0.6), blackholeCount = Math.floor(total * 0.2), enemyCount = Math.floor(total * 0.2). At difficulty 1-2: enemyCount = 0, redistribute to regularCount (~80% regular, ~20% blackhole). Create BlackHole instances (not in obstacleSet), Enemy instances (in obstacleSet, random direction via Math.floor(rng() * 6)). Compute enemy kill zones: for each enemy, get rays.get(enemy.vertexId), find ray matching enemy.direction, take first enemy.range vertices. Collect all kill zone vertices into enemyZones Set<string>. Return additions: blackholes, enemies, blackholeSet, enemyZones. Update initGame to pass grid.rays, add new fields to boardData, clear on retry failure. FR-6: ~60/20/20 split, no enemies below difficulty 3. FR-7: kill zones from ray data. Non-goals: no movement changes, no rendering.",
+      "acceptanceCriteria": [
+        "generateBoardObjects return type gains: blackholes: BlackHole[], enemies: Enemy[], blackholeSet: Set<string>, enemyZones: Set<string>",
+        "Of the total obstacle count, ~20% blackholes, ~20% enemies, ~60% regular obstacles (use Math.floor)",
+        "At difficulty 1-2, no enemies are placed (enemies only appear at difficulty 3+). Blackholes can appear at any difficulty.",
+        "Each enemy gets a random facing direction (0-5) chosen via rng",
+        "Enemy range = enemy's value (already difficulty-correlated from existing value formula)",
+        "Enemy kill zone vertices computed using board's rays from enemy's vertex in facing direction, taking first range vertices",
+        "generateBoardObjects now accepts an additional parameter: rays (the board's precomputed ray map)",
+        "Kill zone vertices that overlap with start or target vertices are still included in the zone",
+        "Blackhole vertices NOT added to obstacleSet; enemy vertices ARE added to obstacleSet",
+        "hasValidPath BFS check uses obstacleSet (includes enemy positions but NOT blackholes)",
+        "Unit tests verify: type distribution ratios, blackholes not in obstacleSet, enemies in obstacleSet, enemy kill zone computation, no enemies at difficulty 1-2, kill zone set completeness",
+        "All tests pass (npm test)",
+        "Commit with message starting with US-024"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Update path computation for hazard detection",
+      "description": "As a developer, I want computePath to detect when a path passes through a blackhole or enemy kill zone so that the game can respond appropriately.",
+      "background": "computePath in src/lib/game/movement.js currently iterates ray vertices, checks obstacles.has(vid) to stop before obstacles, and checks targetVertex to stop on target. It returns { path, stoppedByObstacle, reachedTarget }. BlackHoles and enemy zones have different stop behavior: the vertex IS included in the path (player enters it), then stops — unlike obstacles where the vertex is NOT included. getAvailableDirections only checks obstacles.has(ray.vertices[0]) — since blackholes aren't in obstacleSet and kill zones aren't in obstacleSet, those directions remain selectable. Enemy positions ARE in obstacleSet so they correctly block as first vertex.",
+      "implementation": "In src/lib/game/movement.js: update computePath signature to add optional blackholes and enemyZones (Set<string> or undefined). In the ray traversal loop, for each vertex vid, check in order: (1) obstacles.has(vid) → stoppedByObstacle=true, break (existing, vertex NOT in path). (2) blackholes?.has(vid) → path.push(vid), hitBlackhole=true, break. (3) enemyZones?.has(vid) → path.push(vid), hitByEnemy=true, break. (4) normal: path.push(vid), check target (existing). Return adds hitBlackhole and hitByEnemy (default false). When blackholes/enemyZones are undefined/null, optional chaining means no change — full backward compat. In gameState.js: update selectDirection's computePath call to pass boardData.blackholeSet and boardData.enemyZones. getAvailableDirections is NOT changed. FR-3: detect and include hazard vertices, return flags. FR-4: getAvailableDirections unchanged.",
+      "acceptanceCriteria": [
+        "computePath accepts two new optional parameters: blackholes (Set<string>) and enemyZones (Set<string>)",
+        "When path encounters a blackhole vertex: vertex IS added to path, then path stops. Return flag hitBlackhole: true",
+        "When path passes through enemy kill zone vertex: vertex IS added to path, then path stops. Return flag hitByEnemy: true",
+        "Hazard check order per vertex: obstacle (stop before) > blackhole (include, then stop) > enemy zone (include, then stop) > target (include, then stop)",
+        "getAvailableDirections is NOT changed — directions through blackholes and enemy zones remain available",
+        "When blackholes and enemyZones are not provided, behavior is identical to current — full backward compatibility",
+        "Update selectDirection in gameState.js to pass blackholes and enemyZones from boardData to computePath",
+        "Unit tests verify: path stops at blackhole (vertex included), path stops at enemy zone (vertex included), path through clear zone unchanged, backward compat when params omitted, hazard priority ordering",
+        "All tests pass (npm test)",
+        "Commit with message starting with US-025"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Update game execution for hazard deaths",
+      "description": "As a developer, I want executeMove to end the game when the player moves into a blackhole or enemy kill zone so that the new obstacle types have real gameplay consequences.",
+      "background": "executeMove in src/lib/game/gameState.js animates the player along the path (150ms per step), then after animation: updates playerPos, deducts pool, checks win (target reached), checks lose (pool exhausted), checks lose (trapped). rollDice also checks trapped before rolling. The path preview from selectDirection (US-025) already shows the path stopping at hazards, so the player sees danger before confirming. boardData now includes blackholeSet and enemyZones (from US-024). Existing lose conditions need loseReason added for consistency.",
+      "implementation": "In src/lib/game/gameState.js: add new store export const loseReason = writable(null). In executeMove, after animation completes and finalPos is determined, BEFORE existing win/lose checks: (1) check boardData.blackholeSet?.has(finalPos) → loseReason.set('blackhole'), gamePhase.set('lost'), return. (2) check boardData.enemyZones?.has(finalPos) → loseReason.set('enemy'), gamePhase.set('lost'), return. Then existing checks: win (target), lose pool (set loseReason 'exhausted'), lose trapped (set loseReason 'trapped'). Also in rollDice trapped check: set loseReason 'trapped'. In resetGame: add loseReason.set(null). Use optional chaining (?.) on blackholeSet/enemyZones for backward compat with existing tests. FR-5: hazard deaths before win/lose checks, blackhole on target = death. FR-8: loseReason store. Non-goals: no GameOver screen changes, no sound effects.",
+      "acceptanceCriteria": [
+        "After animation completes in executeMove, check if final position is a blackhole → set gamePhase to 'lost'",
+        "After animation completes, check if final position is in enemy kill zone → set gamePhase to 'lost'",
+        "Hazard death check happens BEFORE existing win/lose checks (blackhole on target = death, not win)",
+        "Path preview from selectDirection already shows path stopping at hazard, so player sees danger before confirming",
+        "Add new store loseReason (writable, default null) set to 'blackhole', 'enemy', 'trapped', or 'exhausted' when game is lost",
+        "loseReason is reset to null in resetGame()",
+        "Unit tests verify: blackhole death triggers lost phase, enemy zone death triggers lost phase, loseReason set correctly for each cause, loseReason null on reset, existing win/lose paths still work",
+        "All tests pass (npm test)",
+        "Commit with message starting with US-026"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Render blackholes on the board",
+      "description": "As a player, I want to see blackholes on the board so I can avoid them when choosing my direction.",
+      "background": "Board.svelte in src/lib/components/Board.svelte renders the game board as SVG. Vertices are rendered with vertexColor(v) function that checks special states (target, start, obstacle, animated, preview, visited). Obstacles get an X marker via {#if obstacles.has(v.id)} conditional. Center vertices use isActiveVertex() to determine fill vs hollow ring. The blackholes prop (Set<string>) comes from boardData.blackholeSet populated in US-024. Blackholes are NOT in the obstacles Set, so they won't get the X marker automatically — they need their own visual.",
+      "implementation": "In Board.svelte: add prop blackholes = new Set() to $props() destructure. In vertexColor(v): add blackholes.has(v.id) check returning dark purple (#2d0040 or #1a0033) — place BEFORE the obstacle check. In isActiveVertex(v): add blackholes.has(v.id). After the vertex circle rendering, add blackhole-specific SVG: {#if blackholes.has(v.id)} render a concentric ring indicator (inner circle with stroke only, fill: none) to suggest a vortex. Add CSS classes .blackhole and .blackhole-ring with dark mode variants. In App.svelte: pass boardData.blackholeSet as blackholes prop. FR-9: dark purple/black with unique indicator (not X marker). FR-10: always visible. Non-goals: no GameOver screen changes, no gravity effects.",
+      "acceptanceCriteria": [
+        "Board.svelte accepts a new prop blackholes (Set<string>) for blackhole vertex IDs",
+        "Blackholes are rendered as dark purple/black circles with a spiral or concentric ring indicator (visually distinct from regular obstacles)",
+        "Blackhole vertices do NOT get the obstacle X marker — they get their own unique visual",
+        "Blackholes are always visible regardless of game phase",
+        "App.svelte passes boardData.blackholeSet (or equivalent) as the blackholes prop",
+        "Verify in browser using dev server that blackholes are visually distinct and clearly identifiable",
+        "All tests pass (npm test)",
+        "Commit with message starting with US-027"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "Render enemies with direction and range indicators",
+      "description": "As a player, I want to see enemies on the board with their facing direction and kill zone range so I can plan safe paths.",
+      "background": "Board.svelte renders direction arrows using SVG polygons calculated from angles ((Math.PI / 3) * direction) — the same math applies for enemy direction indicators. The enemies prop receives pre-computed render data (vertexId, direction, range, killZoneVertices) to avoid importing ray logic into the component. Kill zone vertex coordinates are looked up from grid.vertices. Enemy vertex IDs should be excluded from the obstacle X marker rendering. The existing directionArrows computed property shows how to render directional indicators in SVG.",
+      "implementation": "In Board.svelte: add prop enemies = [] to $props(). Compute derived sets: enemyVertexSet = $derived(new Set(enemies.map(e => e.vertexId))), killZoneSet = $derived(new Set(enemies.flatMap(e => e.killZoneVertices))). In vertexColor(v): add enemyVertexSet.has(v.id) returning red (#c62828) before obstacle check. Update X marker conditional to exclude enemy vertices: {#if obstacles.has(v.id) && !enemyVertexSet.has(v.id)}. Render kill zone overlay BEFORE vertex circles: for each enemy, for each killZoneVertices entry, render semi-transparent red circle (fill: rgba(198,40,40,0.25)). Render enemy direction indicator: SVG polygon arrowhead from enemy position along facing angle, similar to directionArrows. In App.svelte: construct enemy render data from boardData.enemies using getAffectedVertices or pre-computed data. Add CSS: .enemy-vertex, .kill-zone, .enemy-direction with dark mode variants. FR-9: red with directional indicator, kill zones as semi-transparent red. FR-10: always visible. Non-goals: no fog-of-war.",
+      "acceptanceCriteria": [
+        "Board.svelte accepts a new prop enemies (array of { vertexId, direction, range, killZoneVertices } objects)",
+        "Enemies rendered as red circles or triangles pointing in facing direction — visually distinct from regular obstacles and blackholes",
+        "Enemy kill zone shown as semi-transparent red overlay on affected vertices",
+        "Kill zone rendering uses precomputed killZoneVertices array from enemy data, not recomputed in component",
+        "Enemy direction visually indicated (arrow, triangle point, or similar)",
+        "App.svelte constructs enemy render data from boardData.enemies and passes as prop",
+        "Verify in browser using dev server that enemies and kill zones are clearly visible",
+        "All tests pass (npm test)",
+        "Commit with message starting with US-028"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
