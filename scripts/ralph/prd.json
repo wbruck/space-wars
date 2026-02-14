@@ -44,7 +44,7 @@
         "Commit with message starting with US-023"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

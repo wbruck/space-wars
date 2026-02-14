@@ -89,6 +89,55 @@ export class BlackHole extends Obstacle {
 }
 
 /**
+ * Enemy sentry that blocks movement at its own vertex and has a directional kill zone.
+ */
+export class Enemy extends Obstacle {
+  /**
+   * @param {string} vertexId - The vertex this enemy occupies
+   * @param {number} value - Enemy intensity (1-10), also used as kill zone range
+   * @param {number} direction - Facing direction (0-5)
+   */
+  constructor(vertexId, value, direction) {
+    super(vertexId, value);
+    this.type = 'enemy';
+    this.id = `enemy:${vertexId}`;
+    this.direction = direction;
+    this.range = this.value;
+  }
+
+  /**
+   * Indicates this object kills the player on contact.
+   * @param {object} _gameState
+   * @returns {{ killed: boolean, cause: string }}
+   */
+  onPlayerInteraction(_gameState) {
+    return { killed: true, cause: 'enemy' };
+  }
+
+  /**
+   * Returns the enemy's own vertex plus kill zone vertices along the facing direction.
+   * @param {Map<string, string[]>} _adjacency - Graph adjacency map
+   * @param {Map<string, Array<{direction: number, vertices: string[]}>>} [rays] - Precomputed ray map
+   * @returns {string[]}
+   */
+  getAffectedVertices(_adjacency, rays) {
+    const killZoneVertices = [];
+    if (rays) {
+      const vertexRays = rays.get(this.vertexId);
+      if (vertexRays) {
+        const facingRay = vertexRays.find(r => r.direction === this.direction);
+        if (facingRay) {
+          for (let i = 0; i < this.range && i < facingRay.vertices.length; i++) {
+            killZoneVertices.push(facingRay.vertices[i]);
+          }
+        }
+      }
+    }
+    return [this.vertexId, ...killZoneVertices];
+  }
+}
+
+/**
  * Power-up that can be collected by the player.
  */
 export class PowerUp extends BoardObject {
@@ -164,17 +213,20 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
 
 /**
  * Factory function to create board objects by type.
- * @param {string} type - 'obstacle' or 'powerup'
+ * @param {string} type - 'obstacle', 'blackhole', 'enemy', or 'powerup'
  * @param {string} vertexId - The vertex ID
  * @param {number} value - Object value (1-10)
+ * @param {number} [direction] - Facing direction (0-5), required for 'enemy' type
  * @returns {BoardObject}
  */
-export function createBoardObject(type, vertexId, value) {
+export function createBoardObject(type, vertexId, value, direction) {
   switch (type) {
     case 'obstacle':
       return new Obstacle(vertexId, value);
     case 'blackhole':
       return new BlackHole(vertexId, value);
+    case 'enemy':
+      return new Enemy(vertexId, value, direction);
     case 'powerup':
       return new PowerUp(vertexId, value);
     default:

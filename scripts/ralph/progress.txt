@@ -2,7 +2,8 @@
 Started: Thu Feb 13 20:24:00 CST 2026
 
 ## Codebase Patterns
-- BoardObject class hierarchy: BoardObject → Obstacle/PowerUp (and new subclasses BlackHole, Enemy)
+- BoardObject class hierarchy: BoardObject → Obstacle/PowerUp (and new subclasses BlackHole, Enemy). Enemy also extends Obstacle.
+- Enemy has `direction` (0-5) and `range` (= value) properties; getAffectedVertices takes optional `rays` as second param
 - Subclasses override `this.type` and `this.id` in constructor after calling super()
 - `createBoardObject` factory uses a switch on type string to instantiate the correct class
 - Tests use `makeRng(seed)` (xorshift32) for deterministic randomness
@@ -21,4 +22,19 @@ Started: Thu Feb 13 20:24:00 CST 2026
   - Branch ralph/board-objects is the parent branch with all game code, not main
   - BlackHole inherits from Obstacle but overrides type and id after super() call
   - BlackHoles should NOT be in obstacleSet (they don't block movement)
+---
+
+## 2026-02-13 20:26 - US-023
+- Implemented Enemy class extending Obstacle in src/lib/game/boardObjects.js
+- Constructor accepts (vertexId, value, direction), sets type='enemy', id='enemy:'+vertexId, range=value
+- onPlayerInteraction() returns { killed: true, cause: 'enemy' }
+- getAffectedVertices(adjacency, rays) returns own vertex + kill zone vertices from rays along facing direction
+- Updated createBoardObject factory to handle 'enemy' type with additional direction parameter
+- Added 11 unit tests for Enemy (type, value/direction/range storage, vertexId, onPlayerInteraction, instanceof, getAffectedVertices with mock rays including range limit, short ray, no matching direction)
+- Plus 1 factory test for createBoardObject('enemy', ...)
+- Files changed: src/lib/game/boardObjects.js, src/lib/game/boardObjects.test.js
+- **Learnings for future iterations:**
+  - Enemy's getAffectedVertices takes rays as optional 2nd param (base class signature only has adjacency)
+  - Enemy's own vertex IS in obstacleSet (blocks movement like regular obstacle), unlike BlackHole
+  - Kill zone computed from rays.get(vertexId) → find ray matching direction → take first `range` vertices
 ---

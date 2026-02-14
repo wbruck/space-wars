@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BoardObject, Obstacle, BlackHole, PowerUp, createBoardObject, generateBoardObjects } from './boardObjects.js';
+import { BoardObject, Obstacle, BlackHole, Enemy, PowerUp, createBoardObject, generateBoardObjects } from './boardObjects.js';
 import { generateGrid } from './hexGrid.js';
 
 describe('BoardObject', () => {
@@ -88,6 +88,91 @@ describe('BlackHole', () => {
   });
 });
 
+describe('Enemy', () => {
+  it('extends Obstacle with type enemy', () => {
+    const enemy = new Enemy('40,69.282', 5, 3);
+    expect(enemy).toBeInstanceOf(Obstacle);
+    expect(enemy).toBeInstanceOf(BoardObject);
+    expect(enemy.type).toBe('enemy');
+    expect(enemy.id).toBe('enemy:40,69.282');
+  });
+
+  it('stores value, direction, and range', () => {
+    const enemy = new Enemy('40,69.282', 7, 2);
+    expect(enemy.value).toBe(7);
+    expect(enemy.direction).toBe(2);
+    expect(enemy.range).toBe(7);
+  });
+
+  it('stores vertexId', () => {
+    const enemy = new Enemy('c:1,2', 3, 0);
+    expect(enemy.vertexId).toBe('c:1,2');
+  });
+
+  it('onPlayerInteraction returns killed with cause enemy', () => {
+    const enemy = new Enemy('40,69.282', 5, 1);
+    expect(enemy.onPlayerInteraction({})).toEqual({ killed: true, cause: 'enemy' });
+  });
+
+  it('is an instance of both Enemy and Obstacle', () => {
+    const enemy = new Enemy('40,69.282', 5, 4);
+    expect(enemy).toBeInstanceOf(Enemy);
+    expect(enemy).toBeInstanceOf(Obstacle);
+  });
+
+  it('getAffectedVertices returns own vertex when no rays provided', () => {
+    const enemy = new Enemy('40,69.282', 3, 1);
+    expect(enemy.getAffectedVertices(new Map())).toEqual(['40,69.282']);
+  });
+
+  it('getAffectedVertices returns own vertex plus kill zone from rays', () => {
+    const enemy = new Enemy('A', 3, 2);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D'] },
+        { direction: 2, vertices: ['E', 'F', 'G', 'H'] },
+        { direction: 4, vertices: ['I'] },
+      ]],
+    ]);
+    const result = enemy.getAffectedVertices(new Map(), mockRays);
+    expect(result).toEqual(['A', 'E', 'F', 'G']);
+  });
+
+  it('getAffectedVertices respects range limit', () => {
+    const enemy = new Enemy('A', 2, 0);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D', 'E'] },
+      ]],
+    ]);
+    const result = enemy.getAffectedVertices(new Map(), mockRays);
+    expect(result).toEqual(['A', 'B', 'C']);
+  });
+
+  it('getAffectedVertices handles ray shorter than range', () => {
+    const enemy = new Enemy('A', 5, 1);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 1, vertices: ['B', 'C'] },
+      ]],
+    ]);
+    const result = enemy.getAffectedVertices(new Map(), mockRays);
+    expect(result).toEqual(['A', 'B', 'C']);
+  });
+
+  it('getAffectedVertices handles no matching direction ray', () => {
+    const enemy = new Enemy('A', 3, 5);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C'] },
+        { direction: 2, vertices: ['D'] },
+      ]],
+    ]);
+    const result = enemy.getAffectedVertices(new Map(), mockRays);
+    expect(result).toEqual(['A']);
+  });
+});
+
 describe('PowerUp', () => {
   it('extends BoardObject with type powerup', () => {
     const pu = new PowerUp('40,69.282', 4);
@@ -135,6 +220,16 @@ describe('createBoardObject', () => {
     expect(obj.type).toBe('blackhole');
     expect(obj.vertexId).toBe('40,69.282');
     expect(obj.value).toBe(5);
+  });
+
+  it('creates Enemy for type enemy', () => {
+    const obj = createBoardObject('enemy', '40,69.282', 5, 3);
+    expect(obj).toBeInstanceOf(Enemy);
+    expect(obj.type).toBe('enemy');
+    expect(obj.vertexId).toBe('40,69.282');
+    expect(obj.value).toBe(5);
+    expect(obj.direction).toBe(3);
+    expect(obj.range).toBe(5);
   });
 
   it('throws for unknown type', () => {
