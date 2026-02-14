@@ -522,14 +522,11 @@ export function resolveCombat(result) {
     }
   }
 
-  // On enemyFled: reduce vision range and recompute zones
-  if (result === 'enemyFled' && boardData) {
+  // Check if a surviving enemy is disarmed (weapons destroyed) — remove vision zones, keep proximity only
+  if (result !== 'playerWin' && boardData) {
     const enemyObj = boardData.enemies.find(e => e.id === combat.enemyId);
-    if (enemyObj) {
-      // Reduce vision range to 1 (disarmed — can't shoot far)
-      enemyObj.range = 1;
-
-      // Remove all existing zones for this enemy
+    if (enemyObj && enemyObj.combatShip && !enemyObj.combatShip.canAttack) {
+      // Remove all zone vertices for this enemy
       if (boardData.enemyZoneMap) {
         for (const [zoneVertex, zoneInfo] of boardData.enemyZoneMap) {
           if (zoneInfo.enemyId === combat.enemyId) {
@@ -539,24 +536,7 @@ export function resolveCombat(result) {
         }
       }
 
-      // Recompute vision zone (range 1) from enemy's facing direction
-      if (boardData.rays) {
-        const vertexRays = boardData.rays.get(enemyObj.vertexId);
-        if (vertexRays) {
-          const facingRay = vertexRays.find(r => r.direction === enemyObj.direction);
-          if (facingRay && facingRay.vertices.length > 0) {
-            const visionVertex = facingRay.vertices[0];
-            if (!boardData.obstacles.has(visionVertex) &&
-                visionVertex !== boardData.startVertex &&
-                visionVertex !== boardData.targetVertex) {
-              boardData.enemyZones.add(visionVertex);
-              boardData.enemyZoneMap.set(visionVertex, { enemyId: enemyObj.id, zoneType: 'vision' });
-            }
-          }
-        }
-      }
-
-      // Recompute proximity zones via BFS (depth 2)
+      // Recompute proximity-only zones via BFS (depth <= 2) from enemy vertex
       if (boardData.adjacency) {
         const proxVisited = new Set();
         proxVisited.add(enemyObj.vertexId);
@@ -581,6 +561,7 @@ export function resolveCombat(result) {
         }
       }
 
+      // Trigger reactivity
       board.set({ ...boardData });
     }
   }

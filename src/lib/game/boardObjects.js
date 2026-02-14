@@ -123,6 +123,10 @@ export class Enemy extends Obstacle {
    * @returns {string[]}
    */
   getAffectedVertices(_adjacency, rays) {
+    // Disarmed enemies (weapons destroyed) have no vision ray
+    if (this.combatShip && !this.combatShip.canAttack) {
+      return [this.vertexId];
+    }
     const killZoneVertices = [];
     if (rays) {
       const vertexRays = rays.get(this.vertexId);

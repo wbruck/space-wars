@@ -181,7 +181,7 @@
         "Commit with message starting with US-045"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": ""
     }
   ]

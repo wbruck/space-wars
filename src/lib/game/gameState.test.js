@@ -1793,4 +1793,220 @@ describe('combat board integration (US-036)', () => {
       resolveCombat('playerLose');
     });
   });
+
+  describe('disarmed enemy vision ray removal (US-045)', () => {
+    /**
+     * Helper: add an enemy to the board with full zone setup (vision + proximity).
+     */
+    function addEnemyWithZones(vertexId, direction) {
+      const vId = vertexId || findFreeVertex();
+      const enemy = new Enemy(vId, 3, direction || 0, 3);
+      boardData.enemies.push(enemy);
+      boardData.obstacles.add(enemy.vertexId);
+      boardData.boardObjects.push(enemy);
+
+      // Compute vision zone from rays
+      const affected = enemy.getAffectedVertices(null, boardData.rays);
+      for (let i = 1; i < affected.length; i++) {
+        boardData.enemyZones.add(affected[i]);
+        boardData.enemyZoneMap.set(affected[i], { enemyId: enemy.id, zoneType: 'vision' });
+      }
+
+      // Compute proximity zone via BFS (depth <= 2)
+      const proxVisited = new Set();
+      proxVisited.add(enemy.vertexId);
+      let frontier = [enemy.vertexId];
+      for (let depth = 0; depth < 2; depth++) {
+        const nextFrontier = [];
+        for (const fv of frontier) {
+          const neighbors = boardData.adjacency.get(fv) || [];
+          for (const nv of neighbors) {
+            if (proxVisited.has(nv)) continue;
+            proxVisited.add(nv);
+            if (boardData.obstacles.has(nv)) continue;
+            if (nv === boardData.startVertex || nv === boardData.targetVertex) continue;
+            if (!boardData.enemyZones.has(nv)) {
+              boardData.enemyZones.add(nv);
+              boardData.enemyZoneMap.set(nv, { enemyId: enemy.id, zoneType: 'proximity' });
+            }
+            nextFrontier.push(nv);
+          }
+        }
+        frontier = nextFrontier;
+      }
+
+      board.set(boardData);
+      return enemy;
+    }
+
+    it('disarmed enemy has no vision zone after combat resolve', () => {
+      const enemy = addEnemyWithZones();
+      const preCombatPos = get(playerPos);
+
+      // Record vision zone vertices before combat
+      const visionZonesBefore = [];
+      for (const [zv, zoneInfo] of boardData.enemyZoneMap) {
+        if (zoneInfo.enemyId === enemy.id && zoneInfo.zoneType === 'vision') {
+          visionZonesBefore.push(zv);
+        }
+      }
+      expect(visionZonesBefore.length).toBeGreaterThan(0);
+
+      // Start combat and destroy enemy weapons
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      const state = get(combatState);
+      state.engine.enemyShip.getComponent('Weapons').takeDamage(1);
+
+      // Resolve as enemyFled (enemy flees when weapons destroyed + engines intact)
+      resolveCombat('enemyFled');
+
+      // Vision zones should be removed
+      const updatedBoard = get(board);
+      for (const zv of visionZonesBefore) {
+        const zoneInfo = updatedBoard.enemyZoneMap.get(zv);
+        if (zoneInfo && zoneInfo.enemyId === enemy.id) {
+          expect(zoneInfo.zoneType).not.toBe('vision');
+        }
+      }
+    });
+
+    it('disarmed enemy still has proximity zone after combat resolve', () => {
+      const enemy = addEnemyWithZones();
+      const preCombatPos = get(playerPos);
+
+      // Start combat and destroy enemy weapons
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      const state = get(combatState);
+      state.engine.enemyShip.getComponent('Weapons').takeDamage(1);
+
+      resolveCombat('enemyFled');
+
+      // Proximity zones should still exist for this enemy
+      const updatedBoard = get(board);
+      let proximityCount = 0;
+      for (const [, zoneInfo] of updatedBoard.enemyZoneMap) {
+        if (zoneInfo.enemyId === enemy.id && zoneInfo.zoneType === 'proximity') {
+          proximityCount++;
+        }
+      }
+      expect(proximityCount).toBeGreaterThan(0);
+    });
+
+    it('disarmed enemy remains on the board (not destroyed)', () => {
+      const enemy = addEnemyWithZones();
+      const preCombatPos = get(playerPos);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      const state = get(combatState);
+      state.engine.enemyShip.getComponent('Weapons').takeDamage(1);
+
+      resolveCombat('enemyFled');
+
+      const updatedBoard = get(board);
+      const enemyOnBoard = updatedBoard.enemies.find(e => e.id === enemy.id);
+      expect(enemyOnBoard).toBeDefined();
+      expect(enemyOnBoard.destroyed).toBeFalsy();
+      expect(updatedBoard.obstacles.has(enemy.vertexId)).toBe(true);
+    });
+
+    it('getAffectedVertices returns only own vertex for disarmed enemy (no vision ray for rendering)', () => {
+      const enemy = addEnemyWithZones();
+      const preCombatPos = get(playerPos);
+
+      // Confirm vision ray exists before disarming
+      const affectedBefore = enemy.getAffectedVertices(null, boardData.rays);
+      expect(affectedBefore.length).toBeGreaterThan(1);
+
+      // Start combat and destroy enemy weapons
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      const state = get(combatState);
+      state.engine.enemyShip.getComponent('Weapons').takeDamage(1);
+
+      resolveCombat('enemyFled');
+
+      // After disarming, getAffectedVertices should only return own vertex
+      const affectedAfter = enemy.getAffectedVertices(null, boardData.rays);
+      expect(affectedAfter).toEqual([enemy.vertexId]);
+    });
+
+    it('re-engagement with disarmed enemy works via proximity zone', () => {
+      const enemy = addEnemyWithZones();
+      const preCombatPos = get(playerPos);
+
+      // Disarm the enemy
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      const state1 = get(combatState);
+      state1.engine.enemyShip.getComponent('Weapons').takeDamage(1);
+      resolveCombat('enemyFled');
+
+      // Re-engage — start combat again with the same enemy
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, get(playerPos), ['b'], 0);
+      const state2 = get(combatState);
+
+      // Enemy should still have combatShip with destroyed weapons
+      expect(state2.engine.enemyShip.canAttack).toBe(false);
+      expect(state2.engine.enemyShip.getComponent('Weapons').destroyed).toBe(true);
+
+      diceValue.set(2);
+      resolveCombat('playerLose');
+    });
+
+    it('enemy with functional weapons retains vision zones after combat', () => {
+      const enemy = addEnemyWithZones();
+      const preCombatPos = get(playerPos);
+
+      // Record vision zones before
+      const visionZonesBefore = [];
+      for (const [zv, zoneInfo] of boardData.enemyZoneMap) {
+        if (zoneInfo.enemyId === enemy.id && zoneInfo.zoneType === 'vision') {
+          visionZonesBefore.push(zv);
+        }
+      }
+
+      // Start combat but do NOT destroy weapons — resolve as playerLose (timeout)
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+
+      resolveCombat('playerLose');
+
+      // Vision zones should still exist for this enemy
+      const updatedBoard = get(board);
+      for (const zv of visionZonesBefore) {
+        const zoneInfo = updatedBoard.enemyZoneMap.get(zv);
+        expect(zoneInfo).toBeDefined();
+        expect(zoneInfo.enemyId).toBe(enemy.id);
+        expect(zoneInfo.zoneType).toBe('vision');
+      }
+    });
+
+    it('escaped from disarmed enemy still removes vision zones', () => {
+      const enemy = addEnemyWithZones();
+      const preCombatPos = get(playerPos);
+
+      // Record vision zone count before
+      let visionCountBefore = 0;
+      for (const [, zoneInfo] of boardData.enemyZoneMap) {
+        if (zoneInfo.enemyId === enemy.id && zoneInfo.zoneType === 'vision') {
+          visionCountBefore++;
+        }
+      }
+      expect(visionCountBefore).toBeGreaterThan(0);
+
+      // Start combat, destroy weapons, then escape
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      const state = get(combatState);
+      state.engine.enemyShip.getComponent('Weapons').takeDamage(1);
+
+      resolveCombat('escaped');
+
+      // Vision zones should be removed
+      const updatedBoard = get(board);
+      let visionCountAfter = 0;
+      for (const [, zoneInfo] of updatedBoard.enemyZoneMap) {
+        if (zoneInfo.enemyId === enemy.id && zoneInfo.zoneType === 'vision') {
+          visionCountAfter++;
+        }
+      }
+      expect(visionCountAfter).toBe(0);
+    });
+  });
 });

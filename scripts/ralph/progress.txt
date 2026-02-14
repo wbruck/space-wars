@@ -22,6 +22,8 @@ Started: Sat Feb 14 13:42:44 CST 2026
 - Adding new RNG calls in `generateBoardObjects` shifts all subsequent random draws, which can break tests that depend on specific seeded board layouts (e.g., engagement trigger tests). Filter zone vertices when setting up test scenarios.
 - Proximity zones use `engagementChoice` game phase with `pendingEngagement` store; vision zones auto-start combat. The engagement flow stores pending data then hands off to `confirmEngagement()` or `declineEngagement()`.
 - Tests that set up trapped/win/lose scenarios after a move must clear `enemyZones` and `enemyZoneMap` on the board to prevent the new engagement choice from intercepting the expected game flow.
+- Disarmed enemies (weapons destroyed but alive): `Enemy.getAffectedVertices()` checks `this.combatShip?.canAttack === false` to skip vision ray. `resolveCombat()` removes vision zones and recomputes proximity-only zones via BFS for disarmed enemies.
+- The `enemyObj.combatShip` property is set by `startCombat()` and persists on the board object, so `getAffectedVertices()` can check it for rendering (App.svelte's `enemyRenderData` calls it).
 
 ---
 
@@ -134,4 +136,18 @@ Started: Sat Feb 14 13:42:44 CST 2026
   - Adding new game phases that intercept executeMove (like engagementChoice for proximity) can break tests that expect specific phases after a move. Those tests need to clear enemy zone data to avoid the new phase.
   - The engagement choice pattern uses a separate store (`pendingEngagement`) rather than overloading `combatState`, keeping the two flows independent until `confirmEngagement` bridges them.
   - `declineEngagement()` mirrors the post-move cleanup logic from `executeMove()` (mark visited, deduct pool, check lose conditions) — future changes to post-move logic should check both paths.
+---
+
+## 2026-02-14 - US-045
+- Updated `Enemy.getAffectedVertices()` in boardObjects.js to check `this.combatShip?.canAttack === false` — disarmed enemies return only their own vertex (no vision ray)
+- Updated `resolveCombat()` in gameState.js: after any non-playerDestroyed, non-playerWin combat result, checks if surviving enemy has destroyed weapons. If so, removes all vision zone vertices from `enemyZoneMap`/`enemyZones` and recomputes proximity-only zones via BFS (depth <= 2)
+- Board rendering automatically hides the ray for disarmed enemies since `enemyRenderData` in App.svelte calls `getAffectedVertices()` which now returns `[vertexId]` only
+- Enemy marker remains visible on the board (not destroyed, just disarmed); still blockable and re-engageable via proximity
+- Added 2 unit tests in boardObjects.test.js: disarmed combatShip returns only own vertex, functional combatShip returns full ray
+- Added 7 unit tests in gameState.test.js: disarmed enemy has no vision zone, has proximity zone, remains on board, getAffectedVertices returns only own vertex after disarming, re-engagement works, functional weapons retain vision, escaped from disarmed enemy removes vision
+- Files changed: `src/lib/game/boardObjects.js`, `src/lib/game/boardObjects.test.js`, `src/lib/game/gameState.js`, `src/lib/game/gameState.test.js`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - The `combatShip` property on enemy board objects serves dual purpose: damage persistence between combats AND as a flag for getAffectedVertices to know if enemy is disarmed. It's set by startCombat() and persists.
+  - Zone recomputation for disarmed enemies mirrors the BFS pattern from `generateBoardObjects()` — same depth-2 BFS, same obstacle/start/target exclusions, same vision-zone-takes-priority logic.
+  - No changes needed to App.svelte or Board.svelte — the rendering pipeline already calls `getAffectedVertices()` reactively via `enemyRenderData`, so disarming an enemy automatically hides its ray on the next render cycle.
 ---
