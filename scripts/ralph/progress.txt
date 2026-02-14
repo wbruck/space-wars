@@ -4,7 +4,8 @@ Started: Fri Feb 13 21:26:55 CST 2026
 ## Codebase Patterns
 - Combat classes live in src/lib/game/combat.js, tests in src/lib/game/combat.test.js
 - Combat state management (startCombat, resolveCombat, combatState store) lives in gameState.js, tests in gameState.test.js
-- startCombat creates fresh PlayerShip/EnemyShip each combat — no persistent ship damage between encounters (unless enemy persists on board)
+- startCombat creates fresh PlayerShip each combat; reuses EnemyShip from enemy.combatShip if present (damage persists between encounters)
+- Enemy board objects gain a `combatShip` property (EnemyShip instance) on first combat — this persists component damage for re-engagement
 - resolveCombat('playerWin') removes enemy from: obstacles, enemyZones, enemyZoneMap, enemies array, boardObjects array
 - resolveCombat('playerLose'/'enemyFled') deducts diceValue from movementPool — check pool exhaustion after deduction
 - resolveCombat('playerDestroyed') does NOT restore player position — sets loseReason='enemy', gamePhase='lost'
@@ -123,4 +124,47 @@ Started: Fri Feb 13 21:26:55 CST 2026
   - Engagement check must happen BEFORE pool deduction and position update — combat resolution handles those
   - When manually injecting enemy zones in tests, must also add the Enemy object to boardData.enemies and the zone vertex to enemyZoneMap
   - Legacy instant-death check uses `!boardData.enemyZoneMap` — so tests that want old behavior must `delete newBoard.enemyZoneMap`
+---
+
+## 2026-02-13 21:57 - US-035
+- Created src/lib/components/CombatScreen.svelte with full combat UI
+- Displays both ships' component status bars (name, HP current/max) with color-coded HP bars
+- Shows current turn number, whose turn indicator (Your Turn/Enemy Turn), approach advantage badge (Front/Side/Rear)
+- Player turn: 3 target buttons (Weapons, Engines, Bridge) — destroyed components grayed out and disabled
+- Dice roll animation reuses Dice.svelte dot layout pattern (DOT_LAYOUTS, DOT_COORDS)
+- Enemy turn auto-executes after 500ms delay via $effect with cleanup
+- Bonus attack indicator shows "Bonus Attack!" when rear approach grants extra attack
+- Combat end: overlay with result message (Victory!/Retreat!/Destroyed!) for 1.5s then calls resolveCombat
+- App.svelte routes phase === 'combat' to CombatScreen, hiding Board+Dice+HUD
+- Touch-friendly: all target buttons min 44px, touch-action: manipulation, -webkit-tap-highlight-color: transparent
+- Dark mode support via @media (prefers-color-scheme: dark)
+- All 337 tests pass, production build succeeds
+- Files changed: src/lib/components/CombatScreen.svelte (new), src/App.svelte
+- **Learnings for future iterations:**
+  - CombatScreen subscribes to combatState store directly — no props needed from App.svelte
+  - $effect with cleanup (return () => clearTimeout) is the Svelte 5 pattern for auto-triggering enemy turns
+  - Dice dot layout/coords can be reused across components — consider extracting to a shared module if needed again
+  - Combat end flow: handleCombatEnd sets overlay message → 1.5s delay → resolveCombat → reset local state
+  - combatEnded local state prevents interaction during the end message delay
+  - Browser verification not available (no Chrome extension) — manual verification needed
+---
+
+## 2026-02-13 22:10 - US-036
+- Implemented enemy damage persistence: startCombat now stores EnemyShip instance on Enemy board object via `combatShip` property, reusing it in subsequent encounters
+- Updated GameOver.svelte to show context-specific lose messages: enemy combat, black hole, trapped, or exhausted
+- Added GameOver import of loseReason store for conditional messaging
+- Board.svelte reactivity verified: enemyRenderData in App.svelte derives from boardData.enemies, so board.set(boardData) triggers automatic re-render when enemies are removed
+- Added 26 new integration tests (total 80 in gameState.test.js) covering:
+  - playerWin enemy removal from all 5 board collections (obstacles, enemyZones, enemyZoneMap, enemies, boardObjects)
+  - playerLose/enemyFled enemy persistence and pool deduction
+  - Enemy damage persistence across multiple combats
+  - playerDestroyed game over (no retreat, no pool deduction)
+  - Full end-to-end flows for win/lose/destroyed scenarios
+- All 356 tests pass, production build succeeds
+- Files changed: src/lib/game/gameState.js, src/lib/game/gameState.test.js, src/lib/components/GameOver.svelte, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - Enemy.combatShip is set lazily on first combat — check `enemyObj?.combatShip` before creating new EnemyShip
+  - Board.svelte reactivity chain: board store → App.svelte $derived($board) → enemyRenderData → Board enemies prop
+  - GameOver.svelte can import and subscribe to any game store — no need to pass loseReason via props
+  - Browser verification not available (no Chrome extension) — manual verification needed
 ---

@@ -407,7 +407,17 @@ export function executeMove(onAnimationComplete) {
  */
 export function startCombat(enemyId, approachAdvantage, preCombatPos, path, triggerIndex) {
   const playerShip = new PlayerShip();
-  const enemyShip = new EnemyShip();
+
+  // Reuse existing EnemyShip if enemy has one (damage persists between encounters)
+  const boardData = get(board);
+  const enemyObj = boardData?.enemies.find(e => e.id === enemyId);
+  const enemyShip = enemyObj?.combatShip || new EnemyShip();
+
+  // Store the EnemyShip on the enemy board object for damage persistence
+  if (enemyObj && !enemyObj.combatShip) {
+    enemyObj.combatShip = enemyShip;
+  }
+
   const engine = new CombatEngine({ playerShip, enemyShip });
 
   engine.setFirstAttacker(approachAdvantage.firstAttacker);

@@ -1,5 +1,5 @@
 <script>
-  import { gamePhase, movementPool, movesMade, board } from '../game/gameState.js';
+  import { gamePhase, movementPool, movesMade, board, loseReason } from '../game/gameState.js';
 
   let { onPlayAgain } = $props();
 
@@ -7,6 +7,7 @@
   let pool = $derived($movementPool);
   let moves = $derived($movesMade);
   let boardData = $derived($board);
+  let reason = $derived($loseReason);
 
   let isWin = $derived(phase === 'won');
 
@@ -25,9 +26,17 @@
   </h2>
 
   <p class="message">
-    {isWin
-      ? 'You reached the target vertex!'
-      : 'You ran out of moves or got trapped.'}
+    {#if isWin}
+      You reached the target vertex!
+    {:else if reason === 'enemy'}
+      Your ship was destroyed in combat!
+    {:else if reason === 'blackhole'}
+      You were consumed by a black hole!
+    {:else if reason === 'trapped'}
+      You got trapped with no valid moves!
+    {:else}
+      You ran out of movement points!
+    {/if}
   </p>
 
   <div class="stats">
