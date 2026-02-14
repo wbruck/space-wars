@@ -1,0 +1,17 @@
+- Game board moves after roll is slected due to text popping up.  Keep the spacing constant and insert the "confirm move" button so the screen doesnt move.
+- player health of their ship does not save after engaging in the enemy mini-game.  Ensure that the player health is persisted for each component by assigning a component health and persisting it.
+- combat mini-game screen moves when text is inserted inbetween player and enemy health gagest.  Display the outtcome text below so that the screen stops adjusting to the text size.
+- create an escape button on the battle mini-game.  if the player uses escape they will exit the battle and go back to their starting position before the roll of the movement, similarly to if the turns exprie for the battle.
+- after weapons are destroyed player can still attack the enemy and cause damange to the componenets. The player should no longer be able to attack after their wepons are destroyed.  Their only option at that point would be to use the escape button.
+- if the player bridge is destroyed the game is lost.  Show the loss screen.
+- Give the player the choice to engage an enemy if they only engage the proximity battle.  If they cross the "vision ray" then they must engage.
+- on the main movement board, enemy vision should be limited randomly.  It should never be more than 6 spaces, the shorter the enemy vision the less "powerful" the enemy and the less "difficulty points" they will contribute to the overall level difficulty
+- if an enemys weapon is destoryed remove their "vision ray" from the board.  The enemy can still be engaged but only via proximity engagement.
+- 
+
+
+Combat system:
+The 
+
+Player and Enemy base class:
+The base class should be similar for both the enemy and the player, maybe using mutile inheritence, to set up the components that are part of a ship.  Each ship, both enemy and player, can have a max number of components based on the "size_limit" of the ship.  Size limit is roughly analogus to weight limit.  So if a ship has a size limit of 5, then it can have 2 components of 2, and 1 component of 1.  A ship can have less than maximum size worth of components, but not more.  Each component has its own health, the health of a component is tracked between engagements of the battle mini-game.  Once a component has zero health it is no longer able to function.  There are 3 types of components, for now, weapon, engine, bridge.  
