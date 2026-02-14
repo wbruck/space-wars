@@ -11,6 +11,8 @@ Started: Sat Feb 14 13:42:44 CST 2026
 - CombatScreen.svelte uses a `tick` state counter incremented after engine mutations to force reactive updates for derived state from mutable combat engine
 - Player ship persistence uses a Svelte writable store (`playerShip`) in gameState.js, not a boardData property, because boardData is spread for reactivity and ship instances have mutable internal state
 - startCombat() reads the persistent player ship via `get(playerShip)`; enemy ship persistence uses `enemyObj.combatShip` on the board object (different pattern due to multiple enemies)
+- `_checkCombatEnd()` priority order: (1) enemy bridge destroyed → playerWin, (2) player bridge destroyed → playerDestroyed, (3) all player components destroyed → playerDestroyed, (4) enemy weapons destroyed + engines intact → enemyFled, (5) max turns → playerLose
+- RNG targeting in tests: `Math.floor(rng * componentCount)` determines target index; for idx 2 of 3, use roll 5 → rng=0.75 → floor(0.75*3)=2
 
 ---
 
@@ -48,4 +50,17 @@ Started: Sat Feb 14 13:42:44 CST 2026
   - The player ship store pattern mirrors enemy ship persistence but uses a Svelte store instead of a board object property, since there's only one player ship and it needs to survive boardData spreads
   - CombatEngine constructor already accepted a `playerShip` parameter, so no changes to combat.js were needed
   - Tests can directly mutate `engine.playerShip.getComponent('X').takeDamage(n)` to simulate combat damage without running full attack sequences
+---
+
+## 2026-02-14 - US-042
+- Added `isBridgeDestroyed` getter to `PlayerShip` class in combat.js, mirroring the existing `EnemyShip.isBridgeDestroyed` pattern
+- Added player bridge destruction check in `_checkCombatEnd()` between enemy bridge check (priority 1) and full destruction check (priority 3)
+- When player bridge is destroyed, combat ends immediately with result `playerDestroyed` — same result as full ship destruction, so existing `resolveCombat` and `GameOver` flows handle it with no changes needed
+- If both player and enemy bridges are destroyed on the same turn, enemy bridge is checked first so player wins (edge case per spec)
+- Added 8 unit tests: 4 for PlayerShip.isBridgeDestroyed getter, 4 for _checkCombatEnd() bridge destruction behavior
+- Files changed: `src/lib/game/combat.js`, `src/lib/game/combat.test.js`, `scripts/ralph/prd.json`
+- **Learnings for future iterations:**
+  - The `_checkCombatEnd()` check order determines priority for edge cases (e.g., both bridges destroyed same turn). New end conditions must be inserted at the correct position in the priority chain.
+  - `resolveCombat('playerDestroyed')` already handles the full game-over flow (sets loseReason='enemy', gamePhase='lost'), so no gameState.js changes were needed for this story
+  - RNG targeting in tests: for 3 active components, `Math.floor(rng * 3)` determines target index. Roll 5 gives rng=(5-0.5)/6=0.75 → floor(0.75*3)=2 (Bridge at index 2)
 ---

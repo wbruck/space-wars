@@ -73,7 +73,7 @@
         "Commit with message starting with US-042"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
