@@ -18,27 +18,36 @@
   // Track bonus attacks used
   let bonusUsed = $state(false);
 
-  let isPlayerTurn = $derived(engine?.isPlayerTurn ?? true);
-  let currentTurn = $derived(engine?.currentTurn ?? 1);
-  let combatOver = $derived(engine?.combatOver ?? false);
+  // Tick counter to force reactive updates after engine mutations
+  let tick = $state(0);
 
-  let playerComponents = $derived(engine?.playerShip?.components ?? []);
-  let enemyComponents = $derived(engine?.enemyShip?.components ?? []);
+  let isPlayerTurn = $derived.by(() => { tick; return engine?.isPlayerTurn ?? true; });
+  let currentTurn = $derived.by(() => { tick; return engine?.currentTurn ?? 1; });
+  let combatOver = $derived.by(() => { tick; return engine?.combatOver ?? false; });
 
-  let activeEnemyComponents = $derived(
-    enemyComponents.filter(c => c.currentHp > 0)
-  );
+  let playerComponents = $derived.by(() => { tick; return (engine?.playerShip?.components ?? []).map(c => ({ name: c.name, currentHp: c.currentHp, maxHp: c.maxHp, destroyed: c.destroyed })); });
+  let enemyComponents = $derived.by(() => { tick; return (engine?.enemyShip?.components ?? []).map(c => ({ name: c.name, currentHp: c.currentHp, maxHp: c.maxHp, destroyed: c.destroyed })); });
+
+  let activeEnemyComponents = $derived.by(() => {
+    tick;
+    return enemyComponents.filter(c => c.currentHp > 0);
+  });
 
   // Check if we have a bonus attack available
-  let hasBonusAttack = $derived(
-    engine && engine.bonusAttacks > 0 && engine._playerAttackCount === 0
-  );
+  let hasBonusAttack = $derived.by(() => {
+    tick;
+    return engine && engine.bonusAttacks > 0 && engine._playerAttackCount === 0;
+  });
 
   let approachLabel = $derived.by(() => {
     if (!advantage) return '';
-    if (advantage.bonusAttacks > 0) return 'Rear';
-    if (advantage.firstAttacker === 'enemy') return 'Front';
-    return 'Side';
+    if (advantage.rollBonus > 0) return 'Rear';
+    if (advantage.firstAttacker === 'enemy') return 'Vision';
+    return 'Proximity';
+  });
+
+  let hasRollBonus = $derived.by(() => {
+    return advantage && advantage.rollBonus > 0;
   });
 
   function animateDiceAndExecute(executeFn) {
@@ -53,6 +62,7 @@
       if (frames >= totalFrames) {
         clearInterval(interval);
         const result = executeFn();
+        tick++;  // Force reactive update after engine mutation
         displayRoll = result.roll;
         lastResult = result;
         showResult = true;
@@ -97,8 +107,10 @@
         endMessage = 'Destroyed!';
         break;
       case 'playerLose':
-      case 'enemyFled':
         endMessage = 'Retreat!';
+        break;
+      case 'enemyFled':
+        endMessage = 'Enemy Retreat!';
         break;
       default:
         endMessage = 'Combat Over';
@@ -146,13 +158,14 @@
         class:victory={endMessage === 'Victory!'}
         class:destroyed={endMessage === 'Destroyed!'}
         class:retreat={endMessage === 'Retreat!'}
+        class:enemy-retreat={endMessage === 'Enemy Retreat!'}
       >{endMessage}</div>
     </div>
   {/if}
 
   <div class="combat-header">
     <div class="turn-info">Turn {currentTurn}</div>
-    <div class="approach-badge" class:rear={approachLabel === 'Rear'} class:front={approachLabel === 'Front'} class:side={approachLabel === 'Side'}>
+    <div class="approach-badge" class:rear={approachLabel === 'Rear'} class:vision={approachLabel === 'Vision'} class:proximity={approachLabel === 'Proximity'}>
       {approachLabel} Approach
     </div>
     <div class="turn-indicator" class:player-turn={isPlayerTurn} class:enemy-turn={!isPlayerTurn}>
@@ -204,9 +217,9 @@
             {#if lastResult.roll === 0}
               Auto-Miss!
             {:else if lastResult.isHit}
-              Hit!{#if lastResult.destroyed} Destroyed!{/if}
+              Hit!{#if hasRollBonus} (+1){/if}{#if lastResult.destroyed} Destroyed!{/if}
             {:else}
-              Miss!
+              Miss!{#if hasRollBonus} (+1){/if}
             {/if}
           </div>
           {#if showResult && lastResult.targetComponent}
@@ -288,6 +301,7 @@
   .end-message.victory { color: #4caf50; }
   .end-message.destroyed { color: #f44336; }
   .end-message.retreat { color: #ff9800; }
+  .end-message.enemy-retreat { color: #ff9800; }
 
   .combat-header {
     display: flex;
@@ -313,8 +327,8 @@
   }
 
   .approach-badge.rear { background: #e8f5e9; color: #2e7d32; }
-  .approach-badge.front { background: #fce4ec; color: #c62828; }
-  .approach-badge.side { background: #e3f2fd; color: #1565c0; }
+  .approach-badge.vision { background: #fce4ec; color: #c62828; }
+  .approach-badge.proximity { background: #e3f2fd; color: #1565c0; }
 
   .turn-indicator {
     font-size: 0.95rem;
@@ -521,8 +535,8 @@
   @media (prefers-color-scheme: dark) {
     .turn-info { color: #bbb; }
     .approach-badge.rear { background: #1b5e20; color: #a5d6a7; }
-    .approach-badge.front { background: #b71c1c; color: #ef9a9a; }
-    .approach-badge.side { background: #0d47a1; color: #90caf9; }
+    .approach-badge.vision { background: #b71c1c; color: #ef9a9a; }
+    .approach-badge.proximity { background: #0d47a1; color: #90caf9; }
     .turn-indicator.player-turn { background: #0d47a1; color: #90caf9; }
     .turn-indicator.enemy-turn { background: #b71c1c; color: #ef9a9a; }
     .player-panel { border-color: #1565c0; background: #0d1b2a; }

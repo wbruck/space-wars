@@ -106,9 +106,10 @@
   // All vertices as array
   let vertexList = $derived([...grid.vertices.values()]);
 
-  // Enemy-related derived sets
-  let enemyVertexSet = $derived(new Set(enemies.map(e => e.vertexId)));
-  let killZoneSet = $derived(new Set(enemies.flatMap(e => e.killZoneVertices)));
+  // Enemy-related derived sets (only active enemies affect coloring/zones)
+  let enemyVertexSet = $derived(new Set(enemies.filter(e => !e.destroyed).map(e => e.vertexId)));
+  let destroyedEnemySet = $derived(new Set(enemies.filter(e => e.destroyed).map(e => e.vertexId)));
+  let killZoneSet = $derived(new Set(enemies.filter(e => !e.destroyed).flatMap(e => e.killZoneVertices)));
 
   // Preview path set for quick lookup
   let previewSet = $derived(new Set(previewPath));
@@ -159,6 +160,7 @@
     return v.id === targetVertex ||
       v.id === startVertex ||
       enemyVertexSet.has(v.id) ||
+      destroyedEnemySet.has(v.id) ||
       killZoneSet.has(v.id) ||
       obstacles.has(v.id) ||
       blackholes.has(v.id) ||
@@ -173,6 +175,7 @@
     if (v.id === targetVertex) return '#e8a735';
     if (v.id === startVertex) return '#4caf50';
     if (enemyVertexSet.has(v.id)) return '#c62828';
+    if (destroyedEnemySet.has(v.id)) return '#c62828';
     if (blackholes.has(v.id)) return '#1a0033';
     if (killZoneSet.has(v.id)) return 'rgba(198,40,40,0.25)';
     if (obstacles.has(v.id)) return '#444';
@@ -238,17 +241,19 @@
 
   <!-- Enemy kill zone overlay (rendered before vertices so it appears behind) -->
   {#each enemies as enemy}
-    {#each enemy.killZoneVertices as kzVid}
-      {@const kzv = grid.vertices.get(kzVid)}
-      {#if kzv}
-        <circle
-          cx={kzv.x}
-          cy={kzv.y}
-          r={VERTEX_R + 3}
-          class="kill-zone-overlay"
-        />
-      {/if}
-    {/each}
+    {#if !enemy.destroyed}
+      {#each enemy.killZoneVertices as kzVid}
+        {@const kzv = grid.vertices.get(kzVid)}
+        {#if kzv}
+          <circle
+            cx={kzv.x}
+            cy={kzv.y}
+            r={VERTEX_R + 3}
+            class="kill-zone-overlay"
+          />
+        {/if}
+      {/each}
+    {/if}
   {/each}
 
   <!-- Vertices -->
@@ -263,6 +268,7 @@
       class:center-active={v.type === 'center' && isActiveVertex(v)}
       class:blackhole={blackholes.has(v.id)}
       class:enemy={enemyVertexSet.has(v.id)}
+      class:destroyed-enemy={destroyedEnemySet.has(v.id)}
       class:kill-zone={killZoneSet.has(v.id)}
       class:obstacle={obstacles.has(v.id)}
       class:preview={previewSet.has(v.id)}
@@ -311,10 +317,12 @@
         x1={ev.x} y1={ev.y}
         x2={tx} y2={ty}
         class="enemy-direction"
+        class:destroyed-enemy={enemy.destroyed}
       />
       <polygon
         points="{tx},{ty} {tx - headLen * Math.cos(angle - 0.4)},{ty - headLen * Math.sin(angle - 0.4)} {tx - headLen * Math.cos(angle + 0.4)},{ty - headLen * Math.sin(angle + 0.4)}"
         class="enemy-arrow-head"
+        class:destroyed-enemy={enemy.destroyed}
       />
     {/if}
   {/each}
@@ -457,6 +465,10 @@
   .enemy-arrow-head {
     fill: #c62828;
     pointer-events: none;
+  }
+
+  .destroyed-enemy {
+    opacity: 0.1;
   }
 
   .vertex.blackhole {

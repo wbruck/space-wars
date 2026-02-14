@@ -132,6 +132,11 @@ describe('Lose condition: movement pool exhausted', () => {
     const pos = boardData.startVertex;
     const rays = boardData.rays;
 
+    // Clear enemy zones so movement isn't interrupted by combat
+    boardData.enemyZones = new Set();
+    boardData.enemyZoneMap = new Map();
+    board.set(boardData);
+
     // Find a direction with at least 1 step available
     const available = getAvailableDirections(rays, pos, boardData.obstacles);
     expect(available.length).toBeGreaterThan(0);
@@ -161,6 +166,11 @@ describe('Lose condition: movement pool exhausted', () => {
     const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
     const rays = boardData.rays;
+
+    // Clear enemy zones so movement isn't interrupted by combat
+    boardData.enemyZones = new Set();
+    boardData.enemyZoneMap = new Map();
+    board.set(boardData);
 
     const available = getAvailableDirections(rays, pos, boardData.obstacles);
     // Find a direction and compute actual path length to set pool exactly
@@ -311,6 +321,11 @@ describe('Win/lose detection runs after every move', () => {
     const pos = boardData.startVertex;
     const rays = boardData.rays;
 
+    // Clear enemy zones so movement isn't interrupted by combat
+    boardData.enemyZones = new Set();
+    boardData.enemyZoneMap = new Map();
+    board.set(boardData);
+
     const available = getAvailableDirections(rays, pos, boardData.obstacles);
     expect(available.length).toBeGreaterThan(0);
 
@@ -356,6 +371,7 @@ describe('Hazard death: blackhole', () => {
       ...boardData,
       blackholeSet: new Set([destination]),
       enemyZones: new Set(),
+      enemyZoneMap: new Map(),
     };
     board.set(newBoard);
 
@@ -403,6 +419,7 @@ describe('Hazard death: blackhole', () => {
       ...boardData,
       blackholeSet: new Set([target]),
       enemyZones: new Set(),
+      enemyZoneMap: new Map(),
     };
     board.set(newBoard);
 
@@ -444,7 +461,7 @@ describe('Hazard death: enemy kill zone', () => {
       ...boardData,
       blackholeSet: new Set(),
       enemyZones: new Set([destination]),
-      enemyZoneMap: new Map([[destination, enemy.id]]),
+      enemyZoneMap: new Map([[destination, { enemyId: enemy.id, zoneType: 'vision' }]]),
       enemies: [...boardData.enemies, enemy],
     };
     board.set(newBoard);
@@ -534,6 +551,7 @@ describe('loseReason store', () => {
       ...boardData,
       blackholeSet: new Set([destination]),
       enemyZones: new Set(),
+      enemyZoneMap: new Map(),
     };
     board.set(newBoard);
 
@@ -553,6 +571,11 @@ describe('loseReason store', () => {
     const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
     const rays = boardData.rays;
+
+    // Clear enemy zones so movement isn't interrupted by combat
+    boardData.enemyZones = new Set();
+    boardData.enemyZoneMap = new Map();
+    board.set(boardData);
 
     const available = getAvailableDirections(rays, pos, boardData.obstacles);
     const dir = available[0];

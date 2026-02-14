@@ -149,7 +149,7 @@ export function initGame(cols, rows, seed, difficulty = 5) {
   let enemyZoneMap = new Map();
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, difficulty, rng, grid.rays);
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, difficulty, rng, grid.rays, grid.adjacency);
     obstacles = result.obstacleSet;
     boardObjects = [...result.obstacles, ...result.blackholes, ...result.enemies, ...result.powerUps];
     powerUps = result.powerUps;
@@ -302,10 +302,11 @@ export function executeMove(onAnimationComplete) {
 
       // Check engagement BEFORE other state changes — combat interrupts the move
       if (boardData.enemyZoneMap && boardData.enemyZoneMap.has(finalPos)) {
-        const enemyId = boardData.enemyZoneMap.get(finalPos);
+        const zoneInfo = boardData.enemyZoneMap.get(finalPos);
+        const enemyId = zoneInfo.enemyId;
         const enemyObj = boardData.enemies.find(e => e.id === enemyId);
         const enemyFacing = enemyObj ? enemyObj.direction : 0;
-        const approachAdvantage = getApproachAdvantage(moveDirection, enemyFacing);
+        const approachAdvantage = getApproachAdvantage(zoneInfo.zoneType, moveDirection, enemyFacing);
         // Clear animation state before entering combat
         animatingPath.set([]);
         animationStep.set(-1);
@@ -422,6 +423,7 @@ export function startCombat(enemyId, approachAdvantage, preCombatPos, path, trig
 
   engine.setFirstAttacker(approachAdvantage.firstAttacker);
   engine.bonusAttacks = approachAdvantage.bonusAttacks;
+  engine.rollBonus = approachAdvantage.rollBonus || 0;
 
   combatState.set({
     engine,
@@ -463,52 +465,57 @@ export function resolveCombat(result) {
         // Remove from obstacles set (enemy's own vertex)
         boardData.obstacles.delete(enemyObj.vertexId);
 
-        // Remove kill zone vertices from enemyZones
-        const affected = enemyObj.getAffectedVertices(null, boardData.rays);
-        for (let i = 1; i < affected.length; i++) {
-          boardData.enemyZones.delete(affected[i]);
-        }
-
-        // Remove from enemyZoneMap if it exists
+        // Remove all zone vertices for this enemy (vision + proximity)
         if (boardData.enemyZoneMap) {
-          for (const [zoneVertex, eid] of boardData.enemyZoneMap) {
-            if (eid === combat.enemyId) {
+          for (const [zoneVertex, zoneInfo] of boardData.enemyZoneMap) {
+            if (zoneInfo.enemyId === combat.enemyId) {
               boardData.enemyZoneMap.delete(zoneVertex);
+              boardData.enemyZones.delete(zoneVertex);
             }
           }
         }
 
-        // Remove from enemies array
-        boardData.enemies = boardData.enemies.filter(e => e.id !== combat.enemyId);
+        // Mark enemy as destroyed (keep in array for visual rendering at reduced opacity)
+        enemyObj.destroyed = true;
 
         // Remove from boardObjects array
         boardData.boardObjects = boardData.boardObjects.filter(o => o.id !== combat.enemyId);
 
-        // Update the board store to trigger reactivity
-        board.set(boardData);
+        // Update the board store to trigger reactivity (spread to create new reference
+        // so Svelte 5's $derived detects the change)
+        board.set({ ...boardData });
       }
     }
   }
 
-  // For playerWin, playerLose, enemyFled: restore player to pre-combat position
-  playerPos.set(combat.preCombatPlayerPos);
+  // Position depends on outcome
+  if (result === 'playerWin' || result === 'enemyFled') {
+    // Player stays at combat position; mark path as visited
+    const combatVertex = combat.preCombatPath[combat.triggerVertexIndex];
+    playerPos.set(combatVertex);
 
-  // For playerLose/enemyFled: deduct dice roll from pool (move is wasted)
-  if (result === 'playerLose' || result === 'enemyFled') {
-    const dice = get(diceValue);
-    if (dice != null) {
-      const pool = get(movementPool);
-      const newPool = pool - dice;
-      movementPool.set(newPool);
-
-      // Check if pool exhausted after deduction
-      if (newPool <= 0) {
-        loseReason.set('exhausted');
-        gamePhase.set('lost');
-        combatState.set(null);
-        return;
-      }
+    const vis = get(visited);
+    const newVis = new Set(vis);
+    for (let i = 0; i <= combat.triggerVertexIndex; i++) {
+      newVis.add(combat.preCombatPath[i]);
     }
+    visited.set(newVis);
+  } else {
+    // playerLose: return to pre-combat position
+    playerPos.set(combat.preCombatPlayerPos);
+  }
+
+  // Deduct steps used for all non-destroyed outcomes
+  const stepsUsed = combat.triggerVertexIndex + 1;
+  const pool = get(movementPool);
+  const newPool = pool - stepsUsed;
+  movementPool.set(newPool);
+
+  if (newPool <= 0) {
+    loseReason.set('exhausted');
+    gamePhase.set('lost');
+    combatState.set(null);
+    return;
   }
 
   // Clear animation/preview state

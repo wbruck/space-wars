@@ -123,23 +123,23 @@ export class EnemyShip extends Ship {
 }
 
 /**
- * Determine first-attack advantage based on approach direction.
+ * Determine first-attack advantage based on zone type and approach direction.
+ * @param {string} zoneType - 'vision' or 'proximity'
  * @param {number} playerDirection - Player's movement direction (0-5)
  * @param {number} enemyFacingDirection - Enemy's facing direction (0-5)
- * @returns {{ firstAttacker: 'player'|'enemy', bonusAttacks: number }}
+ * @returns {{ firstAttacker: 'player'|'enemy', bonusAttacks: number, rollBonus: number }}
  */
-export function getApproachAdvantage(playerDirection, enemyFacingDirection) {
-  const front = (enemyFacingDirection + 3) % 6;
-  if (playerDirection === front) {
-    // Head-on: enemy attacks first
-    return { firstAttacker: 'enemy', bonusAttacks: 0 };
+export function getApproachAdvantage(zoneType, playerDirection, enemyFacingDirection) {
+  if (zoneType === 'vision') {
+    // Entered enemy's line of fire: enemy attacks first
+    return { firstAttacker: 'enemy', bonusAttacks: 0, rollBonus: 0 };
   }
+  // Proximity engagement: player attacks first
+  // Check if approaching from directly behind the enemy
   if (playerDirection === enemyFacingDirection) {
-    // Rear: player gets 2 attacks before enemy's first turn
-    return { firstAttacker: 'player', bonusAttacks: 1 };
+    return { firstAttacker: 'player', bonusAttacks: 0, rollBonus: 1 };
   }
-  // Side: player first, normal alternation
-  return { firstAttacker: 'player', bonusAttacks: 0 };
+  return { firstAttacker: 'player', bonusAttacks: 0, rollBonus: 0 };
 }
 
 /**
@@ -171,6 +171,8 @@ export class CombatEngine {
     this._enemyAttackCount = 0;
     /** @type {number} Bonus attacks granted (e.g., from rear approach) */
     this.bonusAttacks = 0;
+    /** @type {number} Roll bonus added to hit check (e.g., from rear proximity approach) */
+    this.rollBonus = 0;
   }
 
   /**
@@ -208,8 +210,8 @@ export class CombatEngine {
       this.result = 'playerDestroyed';
       return true;
     }
-    // Enemy Weapons AND Engines both destroyed → enemy fled
-    if (!this.enemyShip.canAttack && !this.enemyShip.canFlee) {
+    // Enemy Weapons destroyed but Engines intact → enemy flees
+    if (!this.enemyShip.canAttack && this.enemyShip.canFlee) {
       this.combatOver = true;
       this.result = 'enemyFled';
       return true;
@@ -256,7 +258,8 @@ export class CombatEngine {
       return { roll: 0, isHit: false, targetComponent: targetComponentName, destroyed: false, combatOver: true, result: this.result };
     }
 
-    const { roll, isHit } = this.rollAttack();
+    const { roll } = this.rollAttack();
+    const isHit = (roll + this.rollBonus) >= this.hitThreshold;
     let destroyed = false;
 
     if (isHit) {

@@ -170,7 +170,7 @@ export class PowerUp extends BoardObject {
  * @param {Map<string, Array<{direction: number, vertices: string[]}>>} [rays] - Precomputed ray map for enemy kill zones
  * @returns {{ obstacles: Obstacle[], blackholes: BlackHole[], enemies: Enemy[], powerUps: PowerUp[], obstacleSet: Set<string>, blackholeSet: Set<string>, enemyZones: Set<string>, enemyZoneMap: Map<string, string> }}
  */
-export function generateBoardObjects(vertices, startVertex, targetVertex, difficulty = 5, rng, rays) {
+export function generateBoardObjects(vertices, startVertex, targetVertex, difficulty = 5, rng, rays, adjacency) {
   const eligible = [...vertices.keys()].filter(
     id => id !== startVertex && id !== targetVertex
   );
@@ -246,7 +246,35 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
       // Skip the first element (enemy's own vertex) since that's in obstacleSet
       for (let j = 1; j < affected.length; j++) {
         enemyZones.add(affected[j]);
-        enemyZoneMap.set(affected[j], enemy.id);
+        enemyZoneMap.set(affected[j], { enemyId: enemy.id, zoneType: 'vision' });
+      }
+    }
+
+    // Compute proximity zone via BFS (depth <= 2)
+    if (adjacency) {
+      const proxVisited = new Set();
+      proxVisited.add(vertexId); // enemy's own vertex
+      let frontier = [vertexId];
+      for (let depth = 0; depth < 2; depth++) {
+        const nextFrontier = [];
+        for (const fv of frontier) {
+          const neighbors = adjacency.get(fv) || [];
+          for (const nv of neighbors) {
+            if (proxVisited.has(nv)) continue;
+            proxVisited.add(nv);
+            // Skip obstacles (except enemy's own vertex already handled)
+            if (obstacleSet.has(nv)) continue;
+            // Skip start/target vertices
+            if (nv === startVertex || nv === targetVertex) continue;
+            // Vision zones take priority — don't overwrite
+            if (!enemyZones.has(nv)) {
+              enemyZones.add(nv);
+              enemyZoneMap.set(nv, { enemyId: enemy.id, zoneType: 'proximity' });
+            }
+            nextFrontier.push(nv);
+          }
+        }
+        frontier = nextFrontier;
       }
     }
   }

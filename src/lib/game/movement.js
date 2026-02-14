@@ -78,7 +78,8 @@ export function computePath(rays, direction, steps, obstacles, targetVertex, bla
       path.push(vid);
       // If enemyZoneMap is provided, set engageEnemy instead of hitByEnemy
       if (enemyZoneMap && enemyZoneMap.has(vid)) {
-        engageEnemy = { vertexIndex: path.length - 1, enemyId: enemyZoneMap.get(vid) };
+        const zoneInfo = enemyZoneMap.get(vid);
+        engageEnemy = { vertexIndex: path.length - 1, enemyId: zoneInfo.enemyId, zoneType: zoneInfo.zoneType };
       } else {
         hitByEnemy = true;
       }

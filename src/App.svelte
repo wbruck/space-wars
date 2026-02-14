@@ -34,6 +34,7 @@
         direction: enemy.direction,
         range: enemy.range,
         killZoneVertices,
+        destroyed: !!enemy.destroyed,
       };
     });
   });

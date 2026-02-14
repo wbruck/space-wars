@@ -495,19 +495,23 @@ describe('generateBoardObjects', () => {
     expect(result.enemyZoneMap).toBeInstanceOf(Map);
   });
 
-  it('enemyZoneMap maps kill zone vertices to enemy IDs', () => {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
-    for (const [zoneVertex, enemyId] of result.enemyZoneMap) {
+  it('enemyZoneMap maps zone vertices to { enemyId, zoneType } objects', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays, grid.adjacency);
+    for (const [zoneVertex, zoneInfo] of result.enemyZoneMap) {
       // zoneVertex should also be in enemyZones
       expect(result.enemyZones.has(zoneVertex)).toBe(true);
+      // zoneInfo should be an object with enemyId and zoneType
+      expect(zoneInfo).toHaveProperty('enemyId');
+      expect(zoneInfo).toHaveProperty('zoneType');
+      expect(['vision', 'proximity']).toContain(zoneInfo.zoneType);
       // enemyId should match an enemy in the enemies array
-      const enemy = result.enemies.find(e => e.id === enemyId);
+      const enemy = result.enemies.find(e => e.id === zoneInfo.enemyId);
       expect(enemy).toBeDefined();
     }
   });
 
   it('enemyZoneMap covers all enemyZones vertices', () => {
-    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays, grid.adjacency);
     for (const zoneVertex of result.enemyZones) {
       expect(result.enemyZoneMap.has(zoneVertex)).toBe(true);
     }
@@ -517,5 +521,50 @@ describe('generateBoardObjects', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42));
     expect(result.enemyZoneMap).toBeInstanceOf(Map);
     expect(result.enemyZoneMap.size).toBe(0);
+  });
+
+  it('proximity zones computed when adjacency is provided', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays, grid.adjacency);
+    if (result.enemies.length === 0) return; // skip if no enemies
+    // Should have more zones than just vision (kill zone) vertices
+    const visionZones = [];
+    const proximityZones = [];
+    for (const [, zoneInfo] of result.enemyZoneMap) {
+      if (zoneInfo.zoneType === 'vision') visionZones.push(zoneInfo);
+      if (zoneInfo.zoneType === 'proximity') proximityZones.push(zoneInfo);
+    }
+    // With adjacency, proximity zones should exist
+    expect(proximityZones.length).toBeGreaterThan(0);
+  });
+
+  it('vision zones take priority over proximity zones', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays, grid.adjacency);
+    // For any enemy, check that kill zone vertices have 'vision' type even if they're within 2 hops
+    for (const enemy of result.enemies) {
+      const affected = enemy.getAffectedVertices(null, grid.rays);
+      for (let i = 1; i < affected.length; i++) {
+        const zoneInfo = result.enemyZoneMap.get(affected[i]);
+        if (zoneInfo) {
+          expect(zoneInfo.zoneType).toBe('vision');
+        }
+      }
+    }
+  });
+
+  it('proximity zones do not include start or target vertices', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays, grid.adjacency);
+    for (const [zoneVertex, zoneInfo] of result.enemyZoneMap) {
+      if (zoneInfo.zoneType === 'proximity') {
+        expect(zoneVertex).not.toBe(startVertex);
+        expect(zoneVertex).not.toBe(targetVertex);
+      }
+    }
+  });
+
+  it('no proximity zones when adjacency not provided', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    for (const [, zoneInfo] of result.enemyZoneMap) {
+      expect(zoneInfo.zoneType).toBe('vision');
+    }
   });
 });

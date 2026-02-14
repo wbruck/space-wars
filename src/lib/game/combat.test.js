@@ -618,50 +618,42 @@ describe('CombatEngine', () => {
     });
   });
 
-  describe('enemy Weapons + Engines destroyed → enemyFled', () => {
-    it('ends combat when both Weapons and Engines destroyed', () => {
-      // Two hits: destroy Weapons then Engines
-      const engine = makeEngine([4, 4]); // both hit
+  describe('enemyFled — Weapons destroyed, Engines intact', () => {
+    it('ends combat when Weapons destroyed but Engines still intact', () => {
+      // Destroying Weapons alone triggers flee (enemy can't attack but can still run)
+      const engine = new CombatEngine({
+        playerShip: new PlayerShip(),
+        enemyShip: new EnemyShip(),
+        rng: makeRng([4]),
+      });
 
-      const r1 = engine.executePlayerAttack('Weapons');
-      expect(r1.destroyed).toBe(true);
-      expect(r1.combatOver).toBe(false); // Only Weapons destroyed, Engines still active
-
-      // Need to get back to player turn — enemy attacks
-      // rng: target index (1), roll (1 = miss)
-      // But wait, after player attack, it's enemy's turn
-      // We need enemy to attack, then player attacks again
-      // rng state continues from index 2
-      engine.executeEnemyAttack(); // uses next rng values
-
-      const r2 = engine.executePlayerAttack('Engines');
-      // This may or may not hit depending on rng sequence
-      // Let me redesign with explicit rng values
+      const r = engine.executePlayerAttack('Weapons'); // rng[0]=4 → hit, destroys Weapons
+      expect(r.destroyed).toBe(true);
+      expect(engine.enemyShip.canAttack).toBe(false);
+      expect(engine.enemyShip.canFlee).toBe(true);
+      expect(r.combatOver).toBe(true);
+      expect(r.result).toBe('enemyFled');
     });
-  });
 
-  describe('enemyFled (redesigned)', () => {
-    it('ends combat when enemy Weapons and Engines both destroyed', () => {
-      // Precise rng sequence:
-      // 1. Player attacks Weapons: rng[0]=4 (hit) → Weapons destroyed
-      // 2. Enemy auto-misses (Weapons destroyed) — no rng consumed
-      // 3. Player attacks Engines: rng[1]=4 (hit) → Engines destroyed → enemyFled
+    it('does NOT trigger flee when Engines also destroyed', () => {
+      // If both Weapons and Engines are destroyed, enemy can't flee
       const engine = new CombatEngine({
         playerShip: new PlayerShip(),
         enemyShip: new EnemyShip(),
         rng: makeRng([4, 4]),
       });
 
-      engine.executePlayerAttack('Weapons'); // rng[0]=4 → hit, destroys Weapons
-      expect(engine.enemyShip.canAttack).toBe(false);
-      expect(engine.combatOver).toBe(false);
+      // Pre-destroy Engines
+      engine.enemyShip.getComponent('Engines').takeDamage(1);
+      expect(engine.enemyShip.canFlee).toBe(false);
 
-      engine.executeEnemyAttack(); // auto-miss (Weapons destroyed), no rng consumed
-
-      const r = engine.executePlayerAttack('Engines'); // rng[1]=4 → hit, destroys Engines
+      // Now destroy Weapons — enemy can't attack AND can't flee
+      const r = engine.executePlayerAttack('Weapons');
       expect(r.destroyed).toBe(true);
-      expect(r.combatOver).toBe(true);
-      expect(r.result).toBe('enemyFled');
+      expect(engine.enemyShip.canAttack).toBe(false);
+      expect(engine.enemyShip.canFlee).toBe(false);
+      // Should NOT end as enemyFled — enemy is stuck, combat continues
+      expect(r.combatOver).toBe(false);
     });
   });
 
@@ -809,22 +801,19 @@ describe('CombatEngine', () => {
       expect(result.result).toBe('playerLose');
     });
 
-    it('simulates combat where player destroys Weapons and Engines causing flee', () => {
-      // Player hits Weapons (roll 4), enemy auto-misses (no Weapons), player hits Engines (roll 4)
+    it('simulates combat where player destroys Weapons causing flee', () => {
+      // Destroying Weapons alone triggers flee (enemy can still move but can't fight)
       const engine = new CombatEngine({
         playerShip: new PlayerShip(),
         enemyShip: new EnemyShip(),
-        rng: makeRng([4, 4]), // player hits, then player hits again
+        rng: makeRng([4]),
       });
 
-      engine.executePlayerAttack('Weapons'); // hit, destroys Weapons
-      expect(engine.combatOver).toBe(false);
-
-      engine.executeEnemyAttack(); // auto-miss (no Weapons) — no rng consumed
-
-      const result = engine.executePlayerAttack('Engines'); // hit, destroys Engines
+      const result = engine.executePlayerAttack('Weapons'); // hit, destroys Weapons → flee
       expect(result.combatOver).toBe(true);
       expect(result.result).toBe('enemyFled');
+      expect(engine.enemyShip.canAttack).toBe(false);
+      expect(engine.enemyShip.canFlee).toBe(true);
     });
   });
 
@@ -872,144 +861,119 @@ describe('CombatEngine', () => {
 // --- getApproachAdvantage Tests ---
 
 describe('getApproachAdvantage', () => {
-  describe('with enemy facing direction 0', () => {
-    const enemyFacing = 0;
-
-    it('rear approach: playerDir === enemyFacing (dir 0)', () => {
-      const result = getApproachAdvantage(0, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(1);
-    });
-
-    it('side approach: dir 1', () => {
-      const result = getApproachAdvantage(1, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(0);
-    });
-
-    it('side approach: dir 2', () => {
-      const result = getApproachAdvantage(2, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(0);
-    });
-
-    it('front approach: playerDir === (0+3)%6 = 3 (dir 3)', () => {
-      const result = getApproachAdvantage(3, enemyFacing);
+  describe('vision zone — enemy attacks first', () => {
+    it('enemy attacks first when entering vision zone', () => {
+      const result = getApproachAdvantage('vision', 0, 0);
       expect(result.firstAttacker).toBe('enemy');
       expect(result.bonusAttacks).toBe(0);
+      expect(result.rollBonus).toBe(0);
     });
 
-    it('side approach: dir 4', () => {
-      const result = getApproachAdvantage(4, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(0);
-    });
-
-    it('side approach: dir 5', () => {
-      const result = getApproachAdvantage(5, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(0);
-    });
-  });
-
-  describe('with enemy facing direction 2', () => {
-    const enemyFacing = 2;
-
-    it('front approach: playerDir === (2+3)%6 = 5 (dir 5)', () => {
-      const result = getApproachAdvantage(5, enemyFacing);
+    it('enemy attacks first regardless of direction match in vision zone', () => {
+      // Even if player approaches from behind, vision zone = enemy first
+      const result = getApproachAdvantage('vision', 2, 2);
       expect(result.firstAttacker).toBe('enemy');
-      expect(result.bonusAttacks).toBe(0);
+      expect(result.rollBonus).toBe(0);
     });
 
-    it('rear approach: playerDir === 2 (dir 2)', () => {
-      const result = getApproachAdvantage(2, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(1);
-    });
-
-    it('side approach: dir 0', () => {
-      const result = getApproachAdvantage(0, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(0);
-    });
-
-    it('side approach: dir 1', () => {
-      const result = getApproachAdvantage(1, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(0);
-    });
-
-    it('side approach: dir 3', () => {
-      const result = getApproachAdvantage(3, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(0);
-    });
-
-    it('side approach: dir 4', () => {
-      const result = getApproachAdvantage(4, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(0);
-    });
-  });
-
-  describe('with enemy facing direction 5', () => {
-    const enemyFacing = 5;
-
-    it('front approach: playerDir === (5+3)%6 = 2 (dir 2)', () => {
-      const result = getApproachAdvantage(2, enemyFacing);
-      expect(result.firstAttacker).toBe('enemy');
-      expect(result.bonusAttacks).toBe(0);
-    });
-
-    it('rear approach: playerDir === 5 (dir 5)', () => {
-      const result = getApproachAdvantage(5, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(1);
-    });
-
-    it('side approach: dir 0', () => {
-      const result = getApproachAdvantage(0, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(0);
-    });
-
-    it('side approach: dir 1', () => {
-      const result = getApproachAdvantage(1, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(0);
-    });
-
-    it('side approach: dir 3', () => {
-      const result = getApproachAdvantage(3, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(0);
-    });
-
-    it('side approach: dir 4', () => {
-      const result = getApproachAdvantage(4, enemyFacing);
-      expect(result.firstAttacker).toBe('player');
-      expect(result.bonusAttacks).toBe(0);
-    });
-  });
-
-  it('all 6 enemy facing directions have exactly 1 front, 1 rear, 4 side', () => {
-    for (let enemyFacing = 0; enemyFacing < 6; enemyFacing++) {
-      let front = 0, rear = 0, side = 0;
+    it('enemy attacks first for all player directions in vision zone', () => {
       for (let playerDir = 0; playerDir < 6; playerDir++) {
-        const result = getApproachAdvantage(playerDir, enemyFacing);
-        if (result.firstAttacker === 'enemy') {
-          front++;
-          expect(result.bonusAttacks).toBe(0);
-        } else if (result.bonusAttacks === 1) {
-          rear++;
-        } else {
-          side++;
-          expect(result.bonusAttacks).toBe(0);
-        }
+        const result = getApproachAdvantage('vision', playerDir, 3);
+        expect(result.firstAttacker).toBe('enemy');
+        expect(result.rollBonus).toBe(0);
       }
-      expect(front).toBe(1);
-      expect(rear).toBe(1);
-      expect(side).toBe(4);
-    }
+    });
+  });
+
+  describe('proximity zone — player attacks first', () => {
+    it('player attacks first when entering proximity zone', () => {
+      const result = getApproachAdvantage('proximity', 1, 0);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.bonusAttacks).toBe(0);
+      expect(result.rollBonus).toBe(0);
+    });
+
+    it('rear approach in proximity grants rollBonus +1', () => {
+      // playerDir === enemyFacing = rear approach
+      const result = getApproachAdvantage('proximity', 0, 0);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.rollBonus).toBe(1);
+      expect(result.bonusAttacks).toBe(0);
+    });
+
+    it('non-rear proximity has no rollBonus', () => {
+      const result = getApproachAdvantage('proximity', 1, 0);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.rollBonus).toBe(0);
+    });
+
+    it('rear approach with enemy facing 2', () => {
+      const result = getApproachAdvantage('proximity', 2, 2);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.rollBonus).toBe(1);
+    });
+
+    it('rear approach with enemy facing 5', () => {
+      const result = getApproachAdvantage('proximity', 5, 5);
+      expect(result.firstAttacker).toBe('player');
+      expect(result.rollBonus).toBe(1);
+    });
+
+    it('non-rear directions with enemy facing 0', () => {
+      for (const dir of [1, 2, 3, 4, 5]) {
+        const result = getApproachAdvantage('proximity', dir, 0);
+        expect(result.firstAttacker).toBe('player');
+        expect(result.rollBonus).toBe(0);
+      }
+    });
+  });
+
+  describe('proximity zone — exactly 1 rear, 5 non-rear per facing', () => {
+    it('all 6 enemy facing directions have exactly 1 rear direction', () => {
+      for (let enemyFacing = 0; enemyFacing < 6; enemyFacing++) {
+        let rearCount = 0;
+        for (let playerDir = 0; playerDir < 6; playerDir++) {
+          const result = getApproachAdvantage('proximity', playerDir, enemyFacing);
+          expect(result.firstAttacker).toBe('player');
+          if (result.rollBonus > 0) rearCount++;
+        }
+        expect(rearCount).toBe(1);
+      }
+    });
+  });
+
+  describe('rollBonus in CombatEngine', () => {
+    it('rollBonus of 1 makes a roll of 3 hit with threshold 4', () => {
+      const engine = makeEngine([3]);
+      engine.rollBonus = 1;
+      const result = engine.executePlayerAttack('Bridge');
+      // roll=3, 3+1=4 >= 4, so hit
+      expect(result.roll).toBe(3);
+      expect(result.isHit).toBe(true);
+      expect(result.destroyed).toBe(true);
+    });
+
+    it('rollBonus of 0 keeps a roll of 3 as miss with threshold 4', () => {
+      const engine = makeEngine([3]);
+      engine.rollBonus = 0;
+      const result = engine.executePlayerAttack('Bridge');
+      expect(result.roll).toBe(3);
+      expect(result.isHit).toBe(false);
+    });
+
+    it('rollBonus does not affect enemy attacks', () => {
+      const engine = makeEngine([1, 3]); // target selection + roll 3
+      engine.rollBonus = 1;
+      engine.setFirstAttacker('enemy');
+      const result = engine.executeEnemyAttack();
+      // Enemy uses rollAttack() which doesn't use rollBonus
+      expect(result.roll).toBe(3);
+      expect(result.isHit).toBe(false); // 3 < 4, no bonus for enemy
+    });
+
+    it('rollBonus defaults to 0', () => {
+      const engine = makeEngine([4]);
+      expect(engine.rollBonus).toBe(0);
+    });
   });
 });

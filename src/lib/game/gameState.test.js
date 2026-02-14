@@ -494,13 +494,15 @@ describe('combat state management', () => {
       expect(get(gamePhase)).toBe('rolling');
       expect(get(combatState)).toBeNull();
 
-      // Enemy should be removed from board
+      // Enemy should be marked destroyed but still in array for rendering
       const updatedBoard = get(board);
-      expect(updatedBoard.enemies.find(e => e.id === enemy.id)).toBeUndefined();
+      const defeatedEnemy = updatedBoard.enemies.find(e => e.id === enemy.id);
+      expect(defeatedEnemy).toBeDefined();
+      expect(defeatedEnemy.destroyed).toBe(true);
       expect(updatedBoard.obstacles.has(enemy.vertexId)).toBe(false);
     });
 
-    it('restores player to pre-combat position', () => {
+    it('moves player to combat vertex on win', () => {
       const enemies = boardData.enemies;
       if (enemies.length === 0) return; // skip if no enemies
 
@@ -513,7 +515,7 @@ describe('combat state management', () => {
       playerPos.set('fake-moved-pos');
 
       resolveCombat('playerWin');
-      expect(get(playerPos)).toBe(preCombatPos);
+      expect(get(playerPos)).toBe('a');
     });
   });
 
@@ -549,7 +551,7 @@ describe('combat state management', () => {
       expect(updatedBoard.obstacles.has(enemy.vertexId)).toBe(true);
     });
 
-    it('deducts dice roll from movement pool', () => {
+    it('deducts steps used from movement pool', () => {
       const enemies = boardData.enemies;
       if (enemies.length === 0) {
         const vertexIds = [...boardData.vertices.keys()];
@@ -567,11 +569,11 @@ describe('combat state management', () => {
       const poolBefore = get(movementPool);
 
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
-      diceValue.set(4);
 
       resolveCombat('playerLose');
 
-      expect(get(movementPool)).toBe(poolBefore - 4);
+      // stepsUsed = triggerVertexIndex + 1 = 1
+      expect(get(movementPool)).toBe(poolBefore - 1);
     });
 
     it('restores player to pre-combat position on retreat', () => {
@@ -631,7 +633,7 @@ describe('combat state management', () => {
       expect(updatedBoard.enemies.find(e => e.id === enemy.id)).toBeDefined();
     });
 
-    it('deducts dice roll from pool on flee', () => {
+    it('deducts steps used from pool on flee', () => {
       const enemies = boardData.enemies;
       if (enemies.length === 0) {
         const vertexIds = [...boardData.vertices.keys()];
@@ -649,11 +651,11 @@ describe('combat state management', () => {
       const poolBefore = get(movementPool);
 
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
-      diceValue.set(5);
 
       resolveCombat('enemyFled');
 
-      expect(get(movementPool)).toBe(poolBefore - 5);
+      // stepsUsed = triggerVertexIndex + 1 = 1
+      expect(get(movementPool)).toBe(poolBefore - 1);
     });
   });
 
@@ -700,10 +702,9 @@ describe('combat state management', () => {
       const enemy = enemies[0];
       const preCombatPos = get(playerPos);
 
-      // Set pool to exactly the dice value so deduction exhausts it
-      movementPool.set(3);
+      // Set pool to exactly the steps used so deduction exhausts it
+      movementPool.set(1);
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
-      diceValue.set(3);
 
       resolveCombat('playerLose');
 
@@ -786,7 +787,7 @@ describe('engagement trigger in executeMove (US-034)', () => {
     // Add the enemy to board data
     boardData.enemies.push(enemy);
     boardData.enemyZones.add(zoneVertex);
-    boardData.enemyZoneMap.set(zoneVertex, enemy.id);
+    boardData.enemyZoneMap.set(zoneVertex, { enemyId: enemy.id, zoneType: 'vision' });
     board.set(boardData);
 
     return { enemy, zoneVertex, direction: longRay.direction, enemyDirection };
@@ -962,7 +963,7 @@ describe('combat board integration (US-036)', () => {
     const affected = enemy.getAffectedVertices(null, boardData.rays);
     for (let i = 1; i < affected.length; i++) {
       boardData.enemyZones.add(affected[i]);
-      boardData.enemyZoneMap.set(affected[i], enemy.id);
+      boardData.enemyZoneMap.set(affected[i], { enemyId: enemy.id, zoneType: 'vision' });
     }
 
     board.set(boardData);
@@ -1010,12 +1011,12 @@ describe('combat board integration (US-036)', () => {
       resolveCombat('playerWin');
 
       const updatedBoard = get(board);
-      for (const [, eid] of updatedBoard.enemyZoneMap) {
-        expect(eid).not.toBe(enemy.id);
+      for (const [, zoneInfo] of updatedBoard.enemyZoneMap) {
+        expect(zoneInfo.enemyId).not.toBe(enemy.id);
       }
     });
 
-    it('removes enemy from enemies array', () => {
+    it('marks enemy as destroyed in enemies array', () => {
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
@@ -1023,7 +1024,9 @@ describe('combat board integration (US-036)', () => {
       resolveCombat('playerWin');
 
       const updatedBoard = get(board);
-      expect(updatedBoard.enemies.find(e => e.id === enemy.id)).toBeUndefined();
+      const defeatedEnemy = updatedBoard.enemies.find(e => e.id === enemy.id);
+      expect(defeatedEnemy).toBeDefined();
+      expect(defeatedEnemy.destroyed).toBe(true);
     });
 
     it('removes enemy from boardObjects array', () => {
@@ -1037,14 +1040,15 @@ describe('combat board integration (US-036)', () => {
       expect(updatedBoard.boardObjects.find(o => o.id === enemy.id)).toBeUndefined();
     });
 
-    it('restores player to pre-combat position after win', () => {
+    it('moves player to combat vertex after win', () => {
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a', 'b'], 1);
       resolveCombat('playerWin');
 
-      expect(get(playerPos)).toBe(preCombatPos);
+      // Player stays at combat vertex (path[triggerVertexIndex] = 'b')
+      expect(get(playerPos)).toBe('b');
       expect(get(gamePhase)).toBe('rolling');
     });
 
@@ -1091,16 +1095,16 @@ describe('combat board integration (US-036)', () => {
       expect(updatedBoard.enemies.find(e => e.id === enemy.id)).toBeDefined();
     });
 
-    it('deducts dice roll from movement pool on retreat', () => {
+    it('deducts steps used from movement pool on retreat', () => {
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
       const poolBefore = get(movementPool);
 
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
-      diceValue.set(4);
       resolveCombat('playerLose');
 
-      expect(get(movementPool)).toBe(poolBefore - 4);
+      // stepsUsed = triggerVertexIndex + 1 = 1
+      expect(get(movementPool)).toBe(poolBefore - 1);
     });
 
     it('player does not move on retreat (stays at pre-combat pos)', () => {
@@ -1197,7 +1201,7 @@ describe('combat board integration (US-036)', () => {
   });
 
   describe('full combat flow end-to-end', () => {
-    it('win → enemy removed → player resumes at pre-combat pos in rolling phase', () => {
+    it('win → enemy removed → player stays at combat vertex in rolling phase', () => {
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
       const enemyId = enemy.id;
@@ -1216,24 +1220,25 @@ describe('combat board integration (US-036)', () => {
 
       // Verify full board cleanup
       const updatedBoard = get(board);
-      expect(updatedBoard.enemies.find(e => e.id === enemyId)).toBeUndefined();
+      const defeatedEnemy = updatedBoard.enemies.find(e => e.id === enemyId);
+      expect(defeatedEnemy).toBeDefined();
+      expect(defeatedEnemy.destroyed).toBe(true);
       expect(updatedBoard.obstacles.has(enemyVertexId)).toBe(false);
       expect(updatedBoard.boardObjects.find(o => o.id === enemyId)).toBeUndefined();
 
-      // Verify game state
+      // Verify game state — player at combat vertex (path[1] = 'v2')
       expect(get(gamePhase)).toBe('rolling');
-      expect(get(playerPos)).toBe(preCombatPos);
+      expect(get(playerPos)).toBe('v2');
       expect(get(combatState)).toBeNull();
       expect(get(diceValue)).toBeNull();
     });
 
-    it('lose → enemy stays → player retreats → turn wasted', () => {
+    it('lose → enemy stays → player retreats → steps deducted', () => {
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
       const poolBefore = get(movementPool);
 
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['v1'], 0);
-      diceValue.set(4);
 
       resolveCombat('playerLose');
 
@@ -1241,7 +1246,8 @@ describe('combat board integration (US-036)', () => {
       expect(updatedBoard.enemies.find(e => e.id === enemy.id)).toBeDefined();
       expect(get(gamePhase)).toBe('rolling');
       expect(get(playerPos)).toBe(preCombatPos);
-      expect(get(movementPool)).toBe(poolBefore - 4);
+      // stepsUsed = triggerVertexIndex + 1 = 1
+      expect(get(movementPool)).toBe(poolBefore - 1);
     });
 
     it('destroyed → game over with enemy reason', () => {

@@ -744,6 +744,11 @@ describe('center dot movement: full integration with game state', () => {
     const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
 
+    // Clear enemy zones so movement isn't interrupted by combat
+    boardData.enemyZones = new Set();
+    boardData.enemyZoneMap = new Map();
+    board.set(boardData);
+
     // Find a direction where the first step is a center vertex
     const available = getAvailableDirections(boardData.rays, pos, boardData.obstacles);
     const dirWithCenter = available.find((dir) => {
@@ -784,6 +789,11 @@ describe('center dot movement: full integration with game state', () => {
   it('animation steps through center dots during executeMove', async () => {
     const boardData = initGame(5, 4, 42);
     const pos = boardData.startVertex;
+
+    // Clear enemy zones so movement isn't interrupted by combat
+    boardData.enemyZones = new Set();
+    boardData.enemyZoneMap = new Map();
+    board.set(boardData);
 
     const available = getAvailableDirections(boardData.rays, pos, boardData.obstacles);
     expect(available.length).toBeGreaterThan(0);
@@ -848,12 +858,13 @@ describe('computePath engagement trigger (US-034)', () => {
     const longRay = rays.find((r) => r.vertices.length >= 3);
 
     const enemyZones = new Set([longRay.vertices[1]]);
-    const enemyZoneMap = new Map([[longRay.vertices[1], 'enemy:A']]);
+    const enemyZoneMap = new Map([[longRay.vertices[1], { enemyId: 'enemy:A', zoneType: 'vision' }]]);
     const result = computePath(rays, longRay.direction, 5, new Set(), null, new Set(), enemyZones, enemyZoneMap);
 
     expect(result.engageEnemy).not.toBeNull();
     expect(result.engageEnemy.vertexIndex).toBe(1);
     expect(result.engageEnemy.enemyId).toBe('enemy:A');
+    expect(result.engageEnemy.zoneType).toBe('vision');
     expect(result.hitByEnemy).toBe(false);
     expect(result.path.length).toBe(2);
     expect(result.path[1]).toBe(longRay.vertices[1]);
@@ -898,12 +909,13 @@ describe('computePath engagement trigger (US-034)', () => {
 
     const zoneVertex = ray.vertices[0];
     const enemyZones = new Set([zoneVertex]);
-    const enemyZoneMap = new Map([[zoneVertex, 'enemy:B']]);
+    const enemyZoneMap = new Map([[zoneVertex, { enemyId: 'enemy:B', zoneType: 'vision' }]]);
     const result = computePath(rays, ray.direction, 5, new Set(), null, new Set(), enemyZones, enemyZoneMap);
 
     expect(result.path).toContain(zoneVertex);
     expect(result.engageEnemy.vertexIndex).toBe(0);
     expect(result.engageEnemy.enemyId).toBe('enemy:B');
+    expect(result.engageEnemy.zoneType).toBe('vision');
   });
 
   it('engageEnemy null for invalid direction', () => {
@@ -925,7 +937,7 @@ describe('computePath engagement trigger (US-034)', () => {
     const vertex = longRay.vertices[1];
     const obstacles = new Set([vertex]);
     const enemyZones = new Set([vertex]);
-    const enemyZoneMap = new Map([[vertex, 'enemy:C']]);
+    const enemyZoneMap = new Map([[vertex, { enemyId: 'enemy:C', zoneType: 'vision' }]]);
     const result = computePath(rays, longRay.direction, 5, obstacles, null, new Set(), enemyZones, enemyZoneMap);
 
     expect(result.stoppedByObstacle).toBe(true);
@@ -945,7 +957,7 @@ describe('computePath engagement trigger (US-034)', () => {
     const vertex = longRay.vertices[1];
     const blackholes = new Set([vertex]);
     const enemyZones = new Set([vertex]);
-    const enemyZoneMap = new Map([[vertex, 'enemy:D']]);
+    const enemyZoneMap = new Map([[vertex, { enemyId: 'enemy:D', zoneType: 'vision' }]]);
     const result = computePath(rays, longRay.direction, 5, new Set(), null, blackholes, enemyZones, enemyZoneMap);
 
     expect(result.hitBlackhole).toBe(true);
