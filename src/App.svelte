@@ -4,6 +4,7 @@
   import HUD from './lib/components/HUD.svelte';
   import SetupScreen from './lib/components/SetupScreen.svelte';
   import GameOver from './lib/components/GameOver.svelte';
+  import CombatScreen from './lib/components/CombatScreen.svelte';
   import {
     board, playerPos, gamePhase, visited,
     selectedDirection, previewPath, animatingPath, animationStep,
@@ -68,6 +69,9 @@
 
   {:else if phase === 'won' || phase === 'lost'}
     <GameOver onPlayAgain={handlePlayAgain} />
+
+  {:else if phase === 'combat'}
+    <CombatScreen />
 
   {:else if boardData}
     <Board
