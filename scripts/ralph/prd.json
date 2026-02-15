@@ -79,7 +79,7 @@
         "Commit with message starting with 'US-053'"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

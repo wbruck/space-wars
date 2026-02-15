@@ -210,3 +210,21 @@ Started: Fri Feb 13 21:26:55 CST 2026
   - Mock localStorage pattern: `vi.stubGlobal('localStorage', { getItem, setItem, removeItem })`
   - STORAGE_KEY = 'galaxyProgress' — used consistently across save/load/clear
 ---
+
+## 2026-02-14 18:29 - US-053
+- Created `src/lib/components/GalaxySelection.svelte` with 3x3 CSS grid layout
+- Props-based data flow: receives `galaxy` and `onSelectBoard` callback (no direct store subscriptions)
+- Each cell shows size label, difficulty number, and status indicator
+- Status colors: green for 'won', red for 'lost', glowing blue border for 'unlocked', dimmed gray for 'locked'
+- Only unlocked boards are clickable (role="button", tabindex="0", onkeydown for a11y)
+- Won and lost boards are not clickable
+- Mobile-friendly: min 44px touch targets, touch-action: manipulation
+- Dark mode default styling with light mode override via @media (prefers-color-scheme: light)
+- All 384 tests pass, production build succeeds
+- Browser verification not available (no Chrome extension) — manual verification needed
+- Files changed: src/lib/components/GalaxySelection.svelte (new), scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - GalaxySelection follows Board.svelte pattern: props-only, no store subscriptions
+  - Use `class:selectable` and `status-{board.status}` for dynamic styling
+  - Dark-first styling approach since game has sci-fi aesthetic; light mode as override
+---
