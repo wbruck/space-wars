@@ -121,7 +121,7 @@
         "Commit with message starting with 'US-055'"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

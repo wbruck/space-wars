@@ -13,7 +13,7 @@
     initGame, resetGame, selectDirection, executeMove,
   } from './lib/game/gameState.js';
   import { getAvailableDirections } from './lib/game/movement.js';
-  import { generateGalaxy, loadGalaxy } from './lib/game/galaxy.js';
+  import { generateGalaxy, loadGalaxy, saveGalaxy, unlockAdjacentBoards, isGalaxyComplete } from './lib/game/galaxy.js';
   import { onMount } from 'svelte';
 
   // Subscribe to stores
@@ -78,7 +78,35 @@
     executeMove();
   }
 
-  function handlePlayAgain() {
+  function handleContinue() {
+    const boardPos = $currentBoardPos;
+    const currentPhase = $gamePhase;
+
+    if (boardPos && galaxy) {
+      const { row, col } = boardPos;
+      const updatedGalaxy = galaxy.map(r => r.map(b => ({ ...b })));
+
+      // Update board status based on win/loss
+      updatedGalaxy[row][col].status = currentPhase === 'won' ? 'won' : 'lost';
+
+      // If won, unlock adjacent boards
+      if (currentPhase === 'won') {
+        unlockAdjacentBoards(updatedGalaxy, row, col);
+      }
+
+      // Save and update store
+      saveGalaxy(updatedGalaxy);
+      galaxyState.set(updatedGalaxy);
+
+      // Check completion
+      if (isGalaxyComplete(updatedGalaxy)) {
+        currentBoardPos.set(null);
+        board.set(null);
+        gamePhase.set('galaxyComplete');
+        return;
+      }
+    }
+
     resetGame();
   }
 </script>
@@ -93,7 +121,7 @@
     <SetupScreen onStart={handleStart} />
 
   {:else if phase === 'won' || phase === 'lost'}
-    <GameOver onPlayAgain={handlePlayAgain} />
+    <GameOver onPlayAgain={handleContinue} />
 
   {:else if phase === 'combat'}
     <CombatScreen />
