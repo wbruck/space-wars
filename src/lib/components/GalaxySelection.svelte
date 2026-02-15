@@ -25,29 +25,33 @@
   <div class="grid">
     {#each galaxy as row, rowIdx}
       {#each row as board, colIdx}
-        {@const selectable = board.status === 'unlocked'}
-        <div
-          class="cell status-{board.status}"
-          class:selectable
-          role={selectable ? 'button' : undefined}
-          tabindex={selectable ? 0 : undefined}
-          onclick={() => handleSelect(rowIdx, colIdx)}
-          onkeydown={(e) => handleKeydown(e, rowIdx, colIdx)}
-        >
-          <span class="cell-size">{sizeLabel(board.size)}</span>
-          <span class="cell-difficulty">Diff {board.difficulty}</span>
-          <span class="cell-status">
-            {#if board.status === 'won'}
-              Won
-            {:else if board.status === 'lost'}
-              Lost
-            {:else if board.status === 'unlocked'}
-              Ready
-            {:else}
-              Locked
-            {/if}
-          </span>
-        </div>
+        {#if board.status === 'unlocked'}
+          <div
+            class="cell status-unlocked selectable"
+            role="button"
+            tabindex="0"
+            onclick={() => handleSelect(rowIdx, colIdx)}
+            onkeydown={(e) => handleKeydown(e, rowIdx, colIdx)}
+          >
+            <span class="cell-size">{sizeLabel(board.size)}</span>
+            <span class="cell-difficulty">Diff {board.difficulty}</span>
+            <span class="cell-status">Ready</span>
+          </div>
+        {:else}
+          <div class="cell status-{board.status}">
+            <span class="cell-size">{sizeLabel(board.size)}</span>
+            <span class="cell-difficulty">Diff {board.difficulty}</span>
+            <span class="cell-status">
+              {#if board.status === 'won'}
+                Won
+              {:else if board.status === 'lost'}
+                Lost
+              {:else}
+                Locked
+              {/if}
+            </span>
+          </div>
+        {/if}
       {/each}
     {/each}
   </div>
