@@ -507,6 +507,7 @@ export class CombatEngine {
 
   /**
    * Player targets a specific enemy component.
+   * Uses the first active weapon's accuracy and damage stats.
    * @param {string} targetComponentName
    * @returns {{ roll, isHit, targetComponent, destroyed, combatOver, result }}
    */
@@ -520,14 +521,19 @@ export class CombatEngine {
       return { roll: 0, isHit: false, targetComponent: targetComponentName, destroyed: false, combatOver: this.combatOver, result: this.result };
     }
 
+    // Get first active weapon for accuracy and damage
+    const weapon = this.playerShip.getComponentsByType('weapon').find(w => !w.destroyed);
+    const accuracy = weapon ? weapon.accuracy : this.hitThreshold;
+    const damage = weapon ? weapon.damage : 1;
+
     const { roll } = this.rollAttack();
-    const isHit = (roll + this.rollBonus) >= this.hitThreshold;
+    const isHit = (roll + this.rollBonus) >= accuracy;
     let destroyed = false;
 
     if (isHit) {
       const component = this.enemyShip.getComponent(targetComponentName);
       if (component && !component.destroyed) {
-        const dmgResult = component.takeDamage(1);
+        const dmgResult = component.takeDamage(damage);
         destroyed = dmgResult.destroyed;
       }
     }
@@ -578,16 +584,22 @@ export class CombatEngine {
       return { roll: 0, isHit: false, targetComponent: null, destroyed: false, combatOver: this.combatOver, result: this.result };
     }
 
+    // Get first active weapon for accuracy and damage
+    const weapon = this.enemyShip.getComponentsByType('weapon').find(w => !w.destroyed);
+    const accuracy = weapon ? weapon.accuracy : this.hitThreshold;
+    const damage = weapon ? weapon.damage : 1;
+
     // Pick random active player component
     const activeComponents = this.playerShip.getActiveComponents();
     const targetIndex = Math.floor(this.rng() * activeComponents.length);
     const target = activeComponents[targetIndex];
 
-    const { roll, isHit } = this.rollAttack();
+    const { roll } = this.rollAttack();
+    const isHit = roll >= accuracy;
     let destroyed = false;
 
     if (isHit) {
-      const dmgResult = target.takeDamage(1);
+      const dmgResult = target.takeDamage(damage);
       destroyed = dmgResult.destroyed;
     }
 

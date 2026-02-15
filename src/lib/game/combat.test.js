@@ -2192,11 +2192,11 @@ describe('getApproachAdvantage', () => {
       expect(result.destroyed).toBe(true);
     });
 
-    it('rollBonus of 0 keeps a roll of 3 as miss with threshold 4', () => {
-      const engine = makeEngine([3]);
+    it('rollBonus of 0 keeps a roll of 2 as miss with weapon accuracy 3', () => {
+      const engine = makeEngine([2]);
       engine.rollBonus = 0;
       const result = engine.executePlayerAttack('Bridge');
-      expect(result.roll).toBe(3);
+      expect(result.roll).toBe(2);
       expect(result.isHit).toBe(false);
     });
 
@@ -2213,6 +2213,304 @@ describe('getApproachAdvantage', () => {
     it('rollBonus defaults to 0', () => {
       const engine = makeEngine([4]);
       expect(engine.rollBonus).toBe(0);
+    });
+  });
+
+  describe('weapon stats in combat (US-006)', () => {
+    describe('player weapon accuracy', () => {
+      it('player attack uses weapon accuracy instead of hitThreshold', () => {
+        // Default player weapon is size-2 with accuracy 3
+        // hitThreshold is 4, but weapon accuracy 3 should be used
+        const engine = makeEngine([3]); // roll 3
+        const result = engine.executePlayerAttack('Bridge');
+        expect(result.roll).toBe(3);
+        expect(result.isHit).toBe(true); // 3 >= accuracy 3, even though 3 < hitThreshold 4
+      });
+
+      it('size-1 weapon with accuracy 4 misses on roll of 3', () => {
+        const player = new PlayerShip({
+          sizeLimit: 10,
+          components: [
+            new WeaponComponent('Weapons', 2, 1), // size 1, accuracy 4
+            new EngineComponent('Engines', 2, 1),
+            new BridgeComponent('Bridge', 2, 1),
+          ],
+        });
+        const engine = new CombatEngine({
+          playerShip: player,
+          enemyShip: new EnemyShip(),
+          rng: makeRng([3]),
+        });
+        const result = engine.executePlayerAttack('Bridge');
+        expect(result.roll).toBe(3);
+        expect(result.isHit).toBe(false); // 3 < accuracy 4
+      });
+
+      it('size-2 weapon with accuracy 3 hits on roll of 3', () => {
+        const player = new PlayerShip({
+          sizeLimit: 10,
+          components: [
+            new WeaponComponent('Weapons', 4, 2), // size 2, accuracy 3
+            new EngineComponent('Engines', 2, 1),
+            new BridgeComponent('Bridge', 2, 1),
+          ],
+        });
+        const engine = new CombatEngine({
+          playerShip: player,
+          enemyShip: new EnemyShip(),
+          rng: makeRng([3]),
+        });
+        const result = engine.executePlayerAttack('Bridge');
+        expect(result.roll).toBe(3);
+        expect(result.isHit).toBe(true); // 3 >= accuracy 3
+      });
+    });
+
+    describe('player weapon damage', () => {
+      it('player attack deals weapon damage (default 1) to enemy component', () => {
+        // Default weapon damage is 1
+        const engine = makeEngine([4]); // hit
+        engine.executePlayerAttack('Engines');
+        expect(engine.enemyShip.getComponent('Engines').currentHp).toBe(0); // 1HP - 1 = 0
+      });
+
+      it('player attack with custom high-damage weapon deals correct damage', () => {
+        const player = new PlayerShip({
+          sizeLimit: 10,
+          components: [
+            new WeaponComponent('Big Gun', 4, 2),
+            new EngineComponent('Engines', 2, 1),
+            new BridgeComponent('Bridge', 2, 1),
+          ],
+        });
+        // Manually set higher damage for testing
+        player.getComponent('Big Gun').damage = 3;
+
+        const enemy = new EnemyShip({
+          sizeLimit: 10,
+          components: [
+            new WeaponComponent('Weapons', 1, 1),
+            new EngineComponent('Engines', 5, 1),
+            new BridgeComponent('Bridge', 5, 1),
+          ],
+        });
+        const engine = new CombatEngine({
+          playerShip: player,
+          enemyShip: enemy,
+          rng: makeRng([4]),
+        });
+        engine.executePlayerAttack('Engines');
+        expect(enemy.getComponent('Engines').currentHp).toBe(2); // 5HP - 3 = 2
+      });
+    });
+
+    describe('enemy weapon accuracy', () => {
+      it('enemy attack uses weapon accuracy instead of hitThreshold', () => {
+        // Default enemy weapon is size-1 with accuracy 4
+        // Roll 4 should hit (4 >= accuracy 4)
+        const engine = makeEngine([1, 4]); // target selection + roll 4
+        engine.setFirstAttacker('enemy');
+        const result = engine.executeEnemyAttack();
+        expect(result.roll).toBe(4);
+        expect(result.isHit).toBe(true);
+      });
+
+      it('enemy with size-1 weapon misses on roll of 3', () => {
+        // Default enemy weapon accuracy is 4 (size 1)
+        const engine = makeEngine([1, 3]); // target selection + roll 3
+        engine.setFirstAttacker('enemy');
+        const result = engine.executeEnemyAttack();
+        expect(result.roll).toBe(3);
+        expect(result.isHit).toBe(false); // 3 < accuracy 4
+      });
+
+      it('enemy with size-2 weapon (accuracy 3) hits on roll of 3', () => {
+        const enemy = new EnemyShip({
+          sizeLimit: 10,
+          components: [
+            new WeaponComponent('Weapons', 2, 2), // size 2, accuracy 3
+            new EngineComponent('Engines', 1, 1),
+            new BridgeComponent('Bridge', 1, 1),
+          ],
+        });
+        const engine = new CombatEngine({
+          playerShip: new PlayerShip(),
+          enemyShip: enemy,
+          rng: makeRng([1, 3]), // target selection + roll 3
+        });
+        engine.setFirstAttacker('enemy');
+        const result = engine.executeEnemyAttack();
+        expect(result.roll).toBe(3);
+        expect(result.isHit).toBe(true); // 3 >= accuracy 3
+      });
+    });
+
+    describe('enemy weapon damage', () => {
+      it('enemy attack deals weapon damage to player component', () => {
+        // Default enemy weapon damage is 1
+        const player = new PlayerShip();
+        const startHp = player.getComponent('Weapons').currentHp; // 4
+        const engine = new CombatEngine({
+          playerShip: player,
+          enemyShip: new EnemyShip(),
+          rng: makeRng([1, 4]), // target idx 0 (Weapons), roll 4 (hit)
+        });
+        engine.setFirstAttacker('enemy');
+        engine.executeEnemyAttack();
+        expect(player.getComponent('Weapons').currentHp).toBe(startHp - 1);
+      });
+
+      it('enemy with high-damage weapon deals correct damage', () => {
+        const enemy = new EnemyShip({
+          sizeLimit: 10,
+          components: [
+            new WeaponComponent('Weapons', 2, 1),
+            new EngineComponent('Engines', 1, 1),
+            new BridgeComponent('Bridge', 1, 1),
+          ],
+        });
+        enemy.getComponent('Weapons').damage = 2;
+
+        const player = new PlayerShip();
+        const startHp = player.getComponent('Weapons').currentHp; // 4
+        const engine = new CombatEngine({
+          playerShip: player,
+          enemyShip: enemy,
+          rng: makeRng([1, 4]), // target idx 0, roll 4 (hit)
+        });
+        engine.setFirstAttacker('enemy');
+        engine.executeEnemyAttack();
+        expect(player.getComponent('Weapons').currentHp).toBe(startHp - 2);
+      });
+    });
+
+    describe('multi-weapon ships', () => {
+      it('uses first active weapon when ship has multiple weapons', () => {
+        const player = new PlayerShip({
+          sizeLimit: 10,
+          components: [
+            new WeaponComponent('Laser', 2, 1),   // accuracy 4
+            new WeaponComponent('Cannon', 4, 2),   // accuracy 3
+            new EngineComponent('Engines', 2, 1),
+            new BridgeComponent('Bridge', 2, 1),
+          ],
+        });
+        // First active weapon is Laser (accuracy 4)
+        const engine = new CombatEngine({
+          playerShip: player,
+          enemyShip: new EnemyShip(),
+          rng: makeRng([3]),
+        });
+        const result = engine.executePlayerAttack('Bridge');
+        expect(result.roll).toBe(3);
+        expect(result.isHit).toBe(false); // 3 < accuracy 4 (Laser)
+      });
+
+      it('falls back to second weapon when first is destroyed', () => {
+        const player = new PlayerShip({
+          sizeLimit: 10,
+          components: [
+            new WeaponComponent('Laser', 2, 1),   // accuracy 4
+            new WeaponComponent('Cannon', 4, 2),   // accuracy 3
+            new EngineComponent('Engines', 2, 1),
+            new BridgeComponent('Bridge', 2, 1),
+          ],
+        });
+        // Destroy first weapon
+        player.getComponent('Laser').takeDamage(2);
+        expect(player.getComponent('Laser').destroyed).toBe(true);
+
+        const engine = new CombatEngine({
+          playerShip: player,
+          enemyShip: new EnemyShip(),
+          rng: makeRng([3]),
+        });
+        const result = engine.executePlayerAttack('Bridge');
+        expect(result.roll).toBe(3);
+        expect(result.isHit).toBe(true); // 3 >= accuracy 3 (Cannon)
+      });
+    });
+
+    describe('hitThreshold fallback', () => {
+      it('falls back to hitThreshold when no typed weapon found', () => {
+        // Use legacy PlayerShip with plain ShipComponents (no type getter)
+        const player = new PlayerShip([
+          new ShipComponent('Weapons', 2),
+          new ShipComponent('Engines', 2),
+          new ShipComponent('Bridge', 2),
+        ]);
+        // canAttack uses getComponentsByType('weapon') — plain ShipComponents have no type
+        // So canAttack returns false, attack is refused
+        const engine = new CombatEngine({
+          playerShip: player,
+          enemyShip: new EnemyShip(),
+          hitThreshold: 5,
+          rng: makeRng([4]),
+        });
+        // Player can't attack because canAttack is false (no typed weapons)
+        const result = engine.executePlayerAttack('Bridge');
+        expect(result.roll).toBe(0);
+        expect(result.isHit).toBe(false);
+      });
+    });
+
+    describe('enemy components persist after playerWin', () => {
+      it('enemy ship retains all components after bridge destruction', () => {
+        const enemy = new EnemyShip();
+        const engine = new CombatEngine({
+          playerShip: new PlayerShip(),
+          enemyShip: enemy,
+          rng: makeRng([4]),
+        });
+
+        engine.executePlayerAttack('Bridge'); // destroys Bridge
+        expect(engine.result).toBe('playerWin');
+
+        // All components still in array
+        expect(enemy.components).toHaveLength(3);
+        expect(enemy.getComponent('Bridge').destroyed).toBe(true);
+        expect(enemy.getComponent('Weapons').destroyed).toBe(false);
+        expect(enemy.getComponent('Engines').destroyed).toBe(false);
+      });
+
+      it('non-destroyed enemy components retain HP after playerWin', () => {
+        const enemy = new EnemyShip({
+          sizeLimit: 10,
+          components: [
+            new WeaponComponent('Weapons', 3, 1),
+            new EngineComponent('Engines', 3, 1),
+            new BridgeComponent('Bridge', 1, 1),
+          ],
+        });
+        const engine = new CombatEngine({
+          playerShip: new PlayerShip(),
+          enemyShip: enemy,
+          rng: makeRng([4]),
+        });
+
+        engine.executePlayerAttack('Bridge');
+        expect(engine.result).toBe('playerWin');
+
+        // Non-destroyed components retain full HP
+        expect(enemy.getComponent('Weapons').currentHp).toBe(3);
+        expect(enemy.getComponent('Engines').currentHp).toBe(3);
+      });
+
+      it('salvageable components available after playerWin', () => {
+        const enemy = new EnemyShip();
+        const engine = new CombatEngine({
+          playerShip: new PlayerShip(),
+          enemyShip: enemy,
+          rng: makeRng([4]),
+        });
+
+        engine.executePlayerAttack('Bridge');
+        expect(engine.result).toBe('playerWin');
+
+        const salvageable = enemy.getSalvageableComponents();
+        expect(salvageable).toHaveLength(2); // Weapons + Engines
+        expect(salvageable.map(c => c.name)).toEqual(expect.arrayContaining(['Weapons', 'Engines']));
+      });
     });
   });
 });

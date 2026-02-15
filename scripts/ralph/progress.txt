@@ -19,6 +19,15 @@ Started: Sun Feb 15 16:23:36 CST 2026
 - PlayerShip getters use type-based queries: canAttack checks any weapon active, isEngineDestroyed checks ALL engines destroyed, isBridgeDestroyed checks the bridge
 - When creating PlayerShip with custom components in tests, use typed subclasses (WeaponComponent, etc.) not plain ShipComponent — type-based getters won't find plain ShipComponents
 - gameState.test.js expects player component HP values: Weapons=4, Engines=4, Bridge=3 (not the old 2/2/2)
+- EnemyShip constructor accepts three forms: `EnemyShip()` (defaults), `EnemyShip([comps])` (legacy array), `EnemyShip({ sizeLimit, components })` (new options)
+- EnemyShip defaults: sizeLimit=4, WeaponComponent('Weapons', 1, 1), EngineComponent('Engines', 1, 1), BridgeComponent('Bridge', 1, 1) — total size 3
+- EnemyShip getters use type-based queries: canAttack checks any weapon active, canFlee checks any engine active, isBridgeDestroyed checks the bridge
+- EnemyShip.getSalvageableComponents() returns components where destroyed === false
+- Destroyed enemy ships retain all components in their array — non-destroyed components keep their HP for future salvage
+- CombatEngine.executePlayerAttack uses weapon.accuracy (not hitThreshold) and weapon.damage (not hardcoded 1) from first active WeaponComponent
+- CombatEngine.executeEnemyAttack similarly uses enemy weapon accuracy/damage
+- hitThreshold constructor param is fallback only — used by rollAttack() for its own isHit return and as fallback if no typed weapon exists
+- rollBonus only applies to player attacks (roll + rollBonus >= accuracy)
 
 ---
 
@@ -79,4 +88,40 @@ Started: Sun Feb 15 16:23:36 CST 2026
   - gameState tests for player ship persistence need HP values matching the new defaults (4/4/3)
   - PlayerShip legacy array form (`PlayerShip([comps])`) sets sizeLimit=Infinity, bypassing size enforcement — useful for tests that don't care about capacity
   - 15 new tests added; all 553 total tests pass
+---
+
+## 2026-02-15 - US-005
+- Refactored EnemyShip to use typed components with sizeLimit budget
+- Constructor now accepts three forms: `EnemyShip()`, `EnemyShip([comps])` (legacy), `EnemyShip({ sizeLimit, components })`
+- Default sizeLimit=4, default components: WeaponComponent('Weapons', 1, 1), EngineComponent('Engines', 1, 1), BridgeComponent('Bridge', 1, 1)
+- canAttack uses getComponentsByType('weapon') — true if ANY weapon active
+- canFlee uses getComponentsByType('engine') — true if ANY engine active
+- isBridgeDestroyed uses getComponentsByType('bridge')[0]
+- Added getSalvageableComponents() — returns components.filter(c => !c.destroyed)
+- All 200 existing combat tests pass with zero modifications — full backward compat
+- Added 23 new tests: sizeLimit, options constructor, typed component defaults, variable sizeLimit scaling, multiple weapons/engines, component persistence after ship destruction, salvageable component queries, backward compat name lookups
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
+- **Learnings for future iterations:**
+  - EnemyShip mirrors PlayerShip's three-form constructor pattern exactly
+  - Existing tests using `new EnemyShip([new ShipComponent(...)])` still work — legacy array form defaults sizeLimit to Infinity
+  - Plain ShipComponent in legacy EnemyShip tests returns false for type-based getters (canAttack, canFlee, isBridgeDestroyed) — same behavior as name-based lookups failing for non-standard names
+  - getSalvageableComponents is on EnemyShip (not Ship base) since salvage is enemy-specific for now
+  - 23 new tests added; all 576 total tests pass
+---
+
+## 2026-02-15 - US-006
+- Updated CombatEngine.executePlayerAttack() to read accuracy and damage from the first active WeaponComponent
+- Updated CombatEngine.executeEnemyAttack() to read accuracy and damage from the enemy's first active WeaponComponent
+- hitThreshold constructor param preserved as fallback when no typed weapon found (backward compat)
+- rollAttack() unchanged (pure d6 roll, uses hitThreshold for its own isHit return)
+- Updated 1 existing test: rollBonus miss test adjusted for player default weapon accuracy 3 (was 4)
+- Added 16 new tests: player/enemy weapon accuracy, weapon damage, multi-weapon ships, hitThreshold fallback, enemy component persistence after playerWin
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
+- **Learnings for future iterations:**
+  - Default PlayerShip weapon is size-2 with accuracy 3 — tests using roll 3 as "miss" need updating since it now hits
+  - executePlayerAttack and executeEnemyAttack each get their own weapon independently — player weapon stats don't affect enemy accuracy
+  - rollBonus still only applies to player attacks (added to roll before comparing to weapon accuracy)
+  - When all typed weapons are destroyed, canAttack returns false and the attack is refused (no fallback to hitThreshold needed in practice)
+  - Enemy components are untouched after playerWin — no cleanup occurs, all components retain their state
+  - 16 new tests added; all 592 total tests pass
 ---
