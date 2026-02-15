@@ -5,9 +5,11 @@
 
   let approachLabel = $derived.by(() => {
     if (!pending?.approachAdvantage) return '';
-    if (pending.approachAdvantage.rollBonus > 0) return 'Rear Approach – You attack first with bonus';
-    if (pending.approachAdvantage.firstAttacker === 'player') return 'Proximity Approach – You attack first';
-    return 'Proximity Approach';
+    switch (pending.approachAdvantage.approachType) {
+      case 'rear_ambush': return 'Rear Ambush Approach – You attack first with bonus';
+      case 'simple': return 'Simple Approach – You attack first';
+      default: return '';
+    }
   });
 </script>
 
@@ -21,7 +23,7 @@
         <button class="engage-btn" onclick={confirmEngagement}>
           Engage Enemy
         </button>
-        <button class="avoid-btn" onclick={declineEngagement}>
+        <button class="avoid-btn" onclick={() => declineEngagement()}>
           Avoid
         </button>
       </div>

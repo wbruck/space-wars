@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShipComponent, Ship, PlayerShip, EnemyShip, CombatEngine, getApproachAdvantage } from './combat.js';
+import { ShipComponent, Ship, PlayerShip, EnemyShip, CombatEngine, getApproachAdvantage, getApproachPosition } from './combat.js';
 
 describe('ShipComponent', () => {
   it('constructs with correct properties', () => {
@@ -1130,6 +1130,60 @@ describe('CombatEngine', () => {
   });
 });
 
+// --- getApproachPosition Tests ---
+
+describe('getApproachPosition', () => {
+  it('returns positions 1-6 for enemy facing 0 (East)', () => {
+    // P=0 → behind (4), P=1 → back-left (5), P=2 → front-left (6),
+    // P=3 → front (1), P=4 → front-right (2), P=5 → back-right (3)
+    expect(getApproachPosition(0, 0)).toBe(4);
+    expect(getApproachPosition(1, 0)).toBe(5);
+    expect(getApproachPosition(2, 0)).toBe(6);
+    expect(getApproachPosition(3, 0)).toBe(1);
+    expect(getApproachPosition(4, 0)).toBe(2);
+    expect(getApproachPosition(5, 0)).toBe(3);
+  });
+
+  it('returns positions 1-6 for enemy facing 3 (West)', () => {
+    // P=3 → behind (4), P=0 → front (1)
+    expect(getApproachPosition(3, 3)).toBe(4);
+    expect(getApproachPosition(0, 3)).toBe(1);
+  });
+
+  it('every facing produces all 6 positions exactly once', () => {
+    for (let facing = 0; facing < 6; facing++) {
+      const positions = [];
+      for (let p = 0; p < 6; p++) {
+        positions.push(getApproachPosition(p, facing));
+      }
+      expect(positions.sort()).toEqual([1, 2, 3, 4, 5, 6]);
+    }
+  });
+
+  it('exactly one player direction yields position 4 (behind) per facing', () => {
+    for (let facing = 0; facing < 6; facing++) {
+      let behindCount = 0;
+      for (let p = 0; p < 6; p++) {
+        if (getApproachPosition(p, facing) === 4) behindCount++;
+      }
+      expect(behindCount).toBe(1);
+    }
+  });
+
+  it('position 4 occurs when playerDirection === enemyFacingDirection', () => {
+    for (let d = 0; d < 6; d++) {
+      expect(getApproachPosition(d, d)).toBe(4);
+    }
+  });
+
+  it('position 1 (front) occurs when player approaches from opposite of facing', () => {
+    for (let d = 0; d < 6; d++) {
+      const opposite = (d + 3) % 6;
+      expect(getApproachPosition(opposite, d)).toBe(1);
+    }
+  });
+});
+
 // --- getApproachAdvantage Tests ---
 
 describe('getApproachAdvantage', () => {
@@ -1139,6 +1193,7 @@ describe('getApproachAdvantage', () => {
       expect(result.firstAttacker).toBe('enemy');
       expect(result.bonusAttacks).toBe(0);
       expect(result.rollBonus).toBe(0);
+      expect(result.approachPosition).toBe(4);
     });
 
     it('enemy attacks first regardless of direction match in vision zone', () => {
@@ -1166,29 +1221,35 @@ describe('getApproachAdvantage', () => {
     });
 
     it('rear approach in proximity grants rollBonus +1', () => {
-      // playerDir === enemyFacing = rear approach
+      // playerDir === enemyFacing = rear approach (position 4)
       const result = getApproachAdvantage('proximity', 0, 0);
       expect(result.firstAttacker).toBe('player');
       expect(result.rollBonus).toBe(1);
       expect(result.bonusAttacks).toBe(0);
+      expect(result.approachPosition).toBe(4);
+      expect(result.approachType).toBe('rear_ambush');
     });
 
     it('non-rear proximity has no rollBonus', () => {
       const result = getApproachAdvantage('proximity', 1, 0);
       expect(result.firstAttacker).toBe('player');
       expect(result.rollBonus).toBe(0);
+      expect(result.approachPosition).toBe(5);
+      expect(result.approachType).toBe('simple');
     });
 
     it('rear approach with enemy facing 2', () => {
       const result = getApproachAdvantage('proximity', 2, 2);
       expect(result.firstAttacker).toBe('player');
       expect(result.rollBonus).toBe(1);
+      expect(result.approachPosition).toBe(4);
     });
 
     it('rear approach with enemy facing 5', () => {
       const result = getApproachAdvantage('proximity', 5, 5);
       expect(result.firstAttacker).toBe('player');
       expect(result.rollBonus).toBe(1);
+      expect(result.approachPosition).toBe(4);
     });
 
     it('non-rear directions with enemy facing 0', () => {

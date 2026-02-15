@@ -1,9 +1,12 @@
 <script>
-  import { movementPool, diceValue, gamePhase } from '../game/gameState.js';
+  import { movementPool, diceValue, gamePhase, playerShip, stealthDive } from '../game/gameState.js';
 
   let pool = $derived($movementPool);
   let dice = $derived($diceValue);
   let phase = $derived($gamePhase);
+  let ship = $derived($playerShip);
+  let isDiving = $derived($stealthDive);
+  let engineDamaged = $derived(ship?.isEngineDestroyed ?? false);
 
   let phaseLabel = $derived.by(() => {
     switch (phase) {
@@ -33,6 +36,18 @@
   <div class="hud-item phase-item" class:end-phase={isEndPhase}>
     <span class="phase-text">{phaseLabel}</span>
   </div>
+
+  {#if engineDamaged}
+    <div class="hud-item">
+      <span class="status-badge engine-damaged">Engine Damaged</span>
+    </div>
+  {/if}
+
+  {#if isDiving}
+    <div class="hud-item">
+      <span class="status-badge stealth-dive">Stealth Drive, -1 movement</span>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -89,6 +104,28 @@
     color: #c62828;
   }
 
+  .status-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .engine-damaged {
+    background: #fff3e0;
+    color: #e65100;
+    border: 1px solid #ffcc80;
+  }
+
+  .stealth-dive {
+    background: #e8eaf6;
+    color: #283593;
+    border: 1px solid #9fa8da;
+    text-transform: none;
+  }
+
   @media (prefers-color-scheme: dark) {
     .hud-label {
       color: #999;
@@ -104,6 +141,16 @@
     }
     .lost .end-phase .phase-text {
       color: #ef5350;
+    }
+    .engine-damaged {
+      background: #3e2723;
+      color: #ffab40;
+      border-color: #6d4c41;
+    }
+    .stealth-dive {
+      background: #1a237e;
+      color: #82b1ff;
+      border-color: #3949ab;
     }
   }
 

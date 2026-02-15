@@ -1,0 +1,188 @@
+{
+  "project": "Combat & Board Bug Fixes and Enhancements",
+  "branchName": "ralph/combat-fixes",
+  "description": "Fix bugs, UI layout issues, and missing gameplay features in the combat mini-game system to deliver a polished, playable combat experience.",
+  "userStories": [
+    {
+      "id": "US-037",
+      "title": "Fix board layout shift when dice roll result is displayed",
+      "description": "As a player, I want the game board to remain stable after rolling the dice so that the screen doesn't jump around when directional text and the confirm button appear.",
+      "background": "The direction selection UI and confirm move button are currently conditionally rendered in App.svelte, causing layout reflow when they appear during the rolling → selectingDirection phase transition. The board SVG uses viewBox + preserveAspectRatio='xMidYMid meet' for responsive scaling, so surrounding elements pushing it causes visible jumps. The UI below the dice/direction area must have constant height across both the rolling and selectingDirection phases.",
+      "implementation": "In App.svelte and/or Board.svelte: use CSS min-height or visibility: hidden (not display: none) to reserve fixed vertical space for the direction selection area. The confirm move button slot should always be present in the DOM with a fixed height, toggling visibility rather than existence. Ensure the board SVG and surrounding layout elements maintain constant positioning when transitioning between rolling and selectingDirection phases. FR-1 applies. Non-goals: no changes to game logic, only CSS/layout fixes.",
+      "acceptanceCriteria": [
+        "Reserve fixed vertical space for the direction selection UI and confirm move button so they don't push the board down when they appear",
+        "The board SVG and surrounding layout elements do not shift position when transitioning from rolling to selectingDirection phase",
+        "The confirm move button slot is always present in the layout (visible or hidden) rather than conditionally rendered",
+        "Verify in browser using dev-browser skill: roll dice, confirm no layout shift when direction options and confirm button appear",
+        "Commit with message starting with US-037"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-038",
+      "title": "Fix combat screen layout shift from outcome text",
+      "description": "As a player, I want the combat screen to stay stable when attack results (hit/miss/destroyed) are displayed so that the health gauges don't jump around.",
+      "background": "The combat screen (CombatScreen.svelte) currently renders outcome text (hit/miss/destroyed) between the player and enemy health gauge panels, causing vertical layout shifts. The ships container is a flex row with player panel, dice area, and enemy panel. Local state variables lastResult and showResult control when outcome text is displayed. HP bar containers use 8px height with 0.3s width transitions and must remain positionally stable.",
+      "implementation": "In CombatScreen.svelte: move the attack outcome text to a new fixed-height area below the target buttons section (after the .target-buttons div), not within the ships container flex row. The outcome text area should use a fixed min-height (e.g., 2rem) so appearing/disappearing text does not shift elements above it. Player health panel, dice display, and enemy health panel must remain in stable positions throughout combat. FR-2 applies. Non-goals: no changes to combat logic, only layout restructuring.",
+      "acceptanceCriteria": [
+        "Move the attack outcome text (hit/miss/destroyed messages) to a fixed-height area below the ship health panels and target buttons, not between the player and enemy health gauges",
+        "The outcome text area has a reserved fixed height so appearing/disappearing text doesn't shift the layout",
+        "Player health panel, dice display, and enemy health panel remain in stable positions throughout combat",
+        "Verify in browser using dev-browser skill: play through a combat encounter and confirm health gauges do not shift when result text appears",
+        "Commit with message starting with US-038"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-039",
+      "title": "Persist player ship health across combat encounters",
+      "description": "As a player, I want my ship's damage to carry over between combat encounters so that each fight has lasting consequences and I must manage my ship's health strategically.",
+      "background": "Currently startCombat() in gameState.js (line ~413) creates a new PlayerShip() instance every time combat begins, discarding any previous damage. Enemy ships already persist via enemyObj.combatShip on the board object — the player ship needs equivalent persistence. PlayerShip defaults: Weapons (2 HP), Engines (2 HP), Bridge (2 HP). CombatEngine constructor accepts a playerShip parameter so no engine changes are needed. No healing mechanic: damage persists for the entire game session.",
+      "implementation": "In gameState.js: create a persistent PlayerShip Svelte writable store (preferred over boardData property since boardData is spread for reactivity and ship instances have mutable internal state). Initialize once in initGame() with default components. startCombat() must read from the persistent store instead of new PlayerShip(). resetGame() and initGame() must create a fresh PlayerShip. FR-3 applies. Tests: use seeded RNG via initGame(cols, rows, seed) and get() from svelte/store. Test scenario: init game → enter combat → take damage → resolve combat → enter second combat → verify reduced HP → init new game → verify full HP. Non-goals: no healing, no ship upgrades.",
+      "acceptanceCriteria": [
+        "Create a persistent PlayerShip instance stored in game state (e.g., a playerShip Svelte store or property on board data) that is initialized once in initGame() with default components (Weapons 2 HP, Engines 2 HP, Bridge 2 HP)",
+        "startCombat() reuses the persistent PlayerShip instance instead of creating a new one each time",
+        "Player ship component damage persists between combat encounters for the entire game session (no healing between combats)",
+        "When resetGame() or initGame() is called, a fresh PlayerShip is created",
+        "Unit tests verify: player takes damage in combat, enters second combat with reduced HP, fresh game resets HP",
+        "All tests pass (npm test)",
+        "Commit with message starting with US-039"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-042",
+      "title": "Player bridge destruction ends the game as a loss",
+      "description": "As a player, if my ship's bridge is destroyed during combat, the game should immediately end with a loss, since the bridge is the command center.",
+      "background": "EnemyShip already has an isBridgeDestroyed getter. PlayerShip needs an equivalent. The _checkCombatEnd() method in combat.js (lines 200-226) checks end conditions in priority order. resolveCombat already handles 'playerDestroyed' result: sets loseReason = 'enemy' and gamePhase = 'lost'. The GameOver component already displays for gamePhase === 'lost'. If both player and enemy bridges are destroyed on the same turn (edge case), the player should win since enemy bridge is checked first.",
+      "implementation": "In combat.js: add isBridgeDestroyed getter to PlayerShip: get isBridgeDestroyed() { return this.getComponent('Bridge').destroyed; }. In _checkCombatEnd(): add a check for playerShip.isBridgeDestroyed after the enemy bridge check but before playerShip.isDestroyed. Updated priority order: (1) enemy bridge destroyed → playerWin, (2) player bridge destroyed → playerDestroyed, (3) all player components destroyed → playerDestroyed, (4) enemy weapons destroyed + engines intact → enemyFled, (5) max turns → playerLose. FR-6 applies. No changes needed to resolveCombat or GameOver — existing loss flow handles it. Non-goals: no special bridge-destruction animation or unique loss message.",
+      "acceptanceCriteria": [
+        "Add a isBridgeDestroyed getter to PlayerShip that returns true when the Bridge component is destroyed",
+        "In _checkCombatEnd(), add a check: if playerShip.isBridgeDestroyed is true, set result = 'playerDestroyed' (same as full destruction)",
+        "This check should have priority over other end conditions except enemy bridge destruction (if both bridges destroyed same turn, player wins)",
+        "resolveCombat with 'playerDestroyed' already transitions to the loss screen with loseReason = 'enemy'",
+        "The loss screen (GameOver component) displays appropriately for bridge destruction",
+        "Unit tests verify: destroying player bridge ends combat as player loss, game phase transitions to 'lost'",
+        "All tests pass (npm test)",
+        "Commit with message starting with US-042"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-040",
+      "title": "Add escape button to combat mini-game",
+      "description": "As a player, I want an escape button during combat so that I can retreat from a fight I'm losing, returning to my pre-move position at the cost of the movement steps used.",
+      "background": "The combat engine currently supports four results: playerWin, playerDestroyed, playerLose, enemyFled. A new 'escaped' result type is needed. The preCombatPlayerPos, preCombatPath, and triggerVertexIndex are already stored in combatState. resolveCombat already handles playerLose/enemyFled by returning the player to preCombatPlayerPos and deducting movement pool — the escaped result should follow this same pattern. Escape is always available on the player's turn including the very first turn, regardless of component state.",
+      "implementation": "In combat.js: add escape() method to CombatEngine that sets combatOver = true and result = 'escaped'. In gameState.js: add 'escaped' to the resolveCombat handler, identical to playerLose/enemyFled behavior (return to preCombatPlayerPos, deduct movement pool by steps taken). In CombatScreen.svelte: add an 'Escape' button in the target buttons area or as a separate row below. Button disabled when: !isPlayerTurn, rolling, or combatOver. Style with warning/caution color (yellow/amber, e.g., #f9a825) to distinguish from blue attack buttons. Min 44px touch target, touch-action: manipulation. On click: call engine.escape(), increment tick, trigger end combat handler. FR-4 applies. Non-goals: no escape penalty beyond movement pool deduction for steps used.",
+      "acceptanceCriteria": [
+        "Add an 'Escape' button visible on the combat screen during the player's turn",
+        "Clicking Escape ends combat immediately with a new result type 'escaped'",
+        "The escape button is always available on the player's turn regardless of component state",
+        "resolveCombat handles 'escaped' result: player returns to preCombatPlayerPos and movement pool is deducted by the number of steps taken to reach the engagement zone (same as playerLose/enemyFled behavior)",
+        "The escape button is disabled during the enemy's turn and while dice are rolling",
+        "Escape button has min 44px touch target and clear visual styling (e.g., yellow/warning color)",
+        "Unit tests verify: escape result returns player to pre-combat position, movement pool deducted correctly",
+        "All tests pass (npm test)",
+        "Verify in browser using dev-browser skill",
+        "Commit with message starting with US-040"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-041",
+      "title": "Disable player attack when weapons are destroyed",
+      "description": "As a player, when my ship's weapons are destroyed I should not be able to attack enemies, leaving escape as my only option.",
+      "background": "EnemyShip already has a canAttack getter that returns false when Weapons are destroyed — this pattern should be mirrored on PlayerShip. The combat engine's executePlayerAttack() should check playerShip.canAttack as a defensive guard. This story depends on US-040 (escape button) being implemented so the player has an alternative action when weapons are destroyed. CombatScreen.svelte uses the tick reactivity pattern for derived states from the mutable engine.",
+      "implementation": "In combat.js: add canAttack getter to PlayerShip: get canAttack() { return !this.getComponent('Weapons').destroyed; }. Add a defensive check in executePlayerAttack() that refuses to execute if playerShip.canAttack is false. In CombatScreen.svelte: derive canAttack state from engine.playerShip.canAttack with the tick reactivity pattern. When playerShip.canAttack is false: disable all target buttons (.target-buttons button), display a contextual message (e.g., 'Weapons destroyed - Escape to retreat!') in the outcome text area. The escape button (from US-040) must remain enabled. FR-5 applies. Non-goals: no auto-escape when weapons destroyed — player must manually choose to escape.",
+      "acceptanceCriteria": [
+        "Add a canAttack getter to PlayerShip that returns false when the Weapons component is destroyed (mirror the existing EnemyShip.canAttack pattern)",
+        "When playerShip.canAttack is false, all target buttons in the combat screen are disabled",
+        "Display a message indicating weapons are offline (e.g., 'Weapons destroyed - Escape to retreat!')",
+        "The escape button remains enabled when weapons are destroyed",
+        "If the player's weapons are destroyed and they have no escape button, the combat auto-resolves (but with the escape button from US-040, the player must manually choose to escape)",
+        "Unit tests verify: destroying player weapons disables attack capability",
+        "All tests pass (npm test)",
+        "Verify in browser using dev-browser skill",
+        "Commit with message starting with US-041"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-044",
+      "title": "Randomize enemy vision range and scale difficulty contribution",
+      "description": "As a developer, I want enemy vision range to be randomly assigned (1-6) so that enemies vary in threat level, with longer vision indicating a more powerful enemy.",
+      "background": "The Enemy class in boardObjects.js currently sets this.range = this.value (line ~99), where value comes from difficulty scaling (1-10). The getAffectedVertices() method uses this.range as the ray loop limit. Zone computation in initGame() (gameState.js lines 243-279) builds enemyZoneMap using enemy.getAffectedVertices() — this will automatically reflect a new visionRange since it reads from the enemy object. Enemy component HP remains at 1 HP each regardless of vision range (no HP scaling). All random values must use the seeded RNG for deterministic test reproducibility.",
+      "implementation": "In boardObjects.js: introduce a new visionRange property (1-6 inclusive) on the Enemy class, assigned using the seeded RNG during construction or in generateBoardObjects(). Decouple visionRange from value: visionRange determines ray length only, value continues to represent difficulty contribution. Update getAffectedVertices() to use this.visionRange instead of this.range for the ray loop limit. Update the difficulty budget calculation in generateBoardObjects() to account for visionRange (e.g., difficulty cost = visionRange so range-1 enemies are cheap and range-6 are expensive). FR-8 applies. Non-goals: no HP scaling with vision range, no visual indicator of enemy power beyond ray length.",
+      "acceptanceCriteria": [
+        "Modify the Enemy class constructor or generateBoardObjects to assign a random visionRange property between 1 and 6 (inclusive) using the seeded RNG",
+        "The visionRange property replaces the current range (which equals value) for computing vision zone length via getAffectedVertices()",
+        "Enemy combat ship component HP remains at 1 HP each regardless of vision range (no HP scaling with vision range)",
+        "Enemies with shorter vision range contribute fewer difficulty points to the overall level (update difficulty budget calculation in generateBoardObjects if applicable)",
+        "The vision range is visually reflected on the board by the length of the kill zone ray overlay",
+        "Unit tests verify: vision range is always 1-6, seeded RNG produces deterministic ranges",
+        "All tests pass (npm test)",
+        "Commit with message starting with US-044"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-043",
+      "title": "Give player choice to engage proximity zone enemies",
+      "description": "As a player, when I land on a proximity engagement zone I want the choice to engage or avoid the enemy, while vision zone encounters remain mandatory.",
+      "background": "Currently executeMove() in gameState.js (lines 303-316) checks boardData.enemyZoneMap at the final position and immediately calls startCombat() for both vision and proximity zones. The enemyZoneMap structure already includes zoneType per vertex: Map<vertexId, { enemyId, zoneType: 'vision'|'proximity' }>. The game uses a phase-based state machine for screen routing (setup → rolling → selectingDirection → moving → combat → rolling). Choosing 'Avoid' has no extra cost beyond normal movement pool deduction for steps taken.",
+      "implementation": "In gameState.js: for proximity zones (zoneType === 'proximity'), instead of calling startCombat(), store the pending engagement info and set a new game phase 'engagementChoice'. For vision zones (zoneType === 'vision'), continue auto-starting combat. Store pending engagement data: { enemyId, approachAdvantage, preCombatPos, path, triggerIndex, zoneType } in a new store or existing combatState. Add two new exported functions: confirmEngagement() (proceeds to startCombat()) and declineEngagement() (skips combat, deducts steps, returns to rolling phase). declineEngagement(): player stays at current position, movement pool deducted for steps taken, game continues to 'rolling' phase. In App.svelte or a new modal component: show a modal dialog overlay when gamePhase === 'engagementChoice'. Modal content: enemy info, approach advantage description, 'Engage Enemy' button (combat blue #1565c0) and 'Avoid' button (neutral/gray). Both buttons min 44px touch targets. Modal has semi-transparent backdrop. FR-7 applies. Non-goals: no avoid cost beyond normal step deduction.",
+      "acceptanceCriteria": [
+        "When movement ends on a proximity zone vertex, show a modal dialog before combat starts with two buttons: 'Engage Enemy' and 'Avoid'",
+        "The modal displays the enemy's name/info and the approach advantage (e.g., 'Proximity Approach - You attack first')",
+        "Choosing 'Engage Enemy' starts combat normally via startCombat()",
+        "Choosing 'Avoid' skips combat entirely: player stays at their current position, movement pool is deducted for steps taken, and the game continues to the next turn",
+        "When movement ends on a vision zone vertex, combat starts automatically with no choice (mandatory engagement)",
+        "Add a new game phase 'engagementChoice' or handle via a modal state so the choice is properly integrated into the game flow",
+        "The modal has min 44px touch targets and is styled consistently with the game UI",
+        "Unit tests verify: proximity zone triggers choice, vision zone auto-engages, avoid skips combat",
+        "All tests pass (npm test)",
+        "Verify in browser using dev-browser skill",
+        "Commit with message starting with US-043"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-045",
+      "title": "Remove disarmed enemy vision ray from the board",
+      "description": "As a player, when I destroy an enemy's weapons in combat, their vision ray should be removed from the board since they can no longer threaten at range, but I can still engage them by landing on their proximity zone.",
+      "background": "resolveCombat() in gameState.js already handles enemy destruction by removing zone vertices from enemyZoneMap and enemyZones (lines 459-489). This logic needs to be extended for disarmed (weapons destroyed) but surviving enemies. enemyRenderData in App.svelte calls enemy.getAffectedVertices(null, boardData.rays) to build killZoneVertices for Board.svelte rendering. Board.svelte renders kill zone overlay circles from killZoneVertices — an empty array means no overlay and no visible ray. Disarmed enemies can still be engaged via proximity (landing on or adjacent to their vertex). When re-engaged, enemyObj.combatShip is reused (damage persists) and canAttack remains false, so the enemy auto-misses all attacks.",
+      "implementation": "In gameState.js resolveCombat(): after any combat outcome except 'playerDestroyed', check enemyObj.combatShip.canAttack. If canAttack === false: remove all vision zone vertices from enemyZoneMap for that enemy, keep only proximity zone vertices. Recompute proximity-only zones for the disarmed enemy: run BFS from enemy vertex (depth <= 2), add to enemyZoneMap with zoneType: 'proximity'. In boardObjects.js: update getAffectedVertices() to check if this.combatShip?.canAttack === false; if so, return only [this.vertexId] (no vision ray). This ensures Board.svelte automatically hides the ray for disarmed enemies since enemyRenderData calls getAffectedVertices(). The enemy marker itself remains visible on the board (not destroyed, just disarmed). FR-9 applies. Non-goals: no visual indicator of disarmed state beyond missing ray, no re-arming enemies.",
+      "acceptanceCriteria": [
+        "After combat resolves (any outcome except playerDestroyed), check if the surviving enemy's weapons are destroyed",
+        "If enemy weapons are destroyed: remove all vision zone vertices from enemyZoneMap and the kill zone overlay for that enemy, keep only proximity zone vertices",
+        "Update getAffectedVertices() or the zone computation to skip vision ray for enemies with destroyed weapons (return only the enemy's own vertex)",
+        "The enemy remains on the board (not destroyed) and can still be engaged via proximity (landing on or adjacent to their vertex)",
+        "The board visually reflects the removal: no more red/colored ray extending from the disarmed enemy",
+        "If the enemy later re-engages (proximity), they still cannot attack (existing canAttack logic handles this)",
+        "Unit tests verify: disarmed enemy has no vision zone, proximity zone still exists, re-engagement works",
+        "All tests pass (npm test)",
+        "Verify in browser using dev-browser skill",
+        "Commit with message starting with US-045"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

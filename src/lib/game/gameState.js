@@ -54,8 +54,11 @@ export const currentBoardPos = writable(null);
 /** Persistent player ship — damage carries across combats within a board */
 export const playerShipStore = writable(null);
 
-/** Pending engagement choice: null | { enemyId, approachAdvantage, preCombatPos, path, triggerIndex, zoneType } */
+/** Pending engagement choice: null | { enemyId, approachAdvantage, preCombatPos, path, triggerIndex, zoneType, direction, originalDice } */
 export const pendingEngagement = writable(null);
+
+/** Whether the player is performing a stealth dive (avoided enemy, continuing movement) */
+export const stealthDive = writable(false);
 
 // --- Helper functions ---
 
@@ -96,6 +99,34 @@ export function hasValidPath(adjacency, start, target, obstacles) {
     }
   }
   return false;
+}
+
+/**
+ * Check if a position triggers an engagement with an enemy.
+ * Called after every move to determine if combat or engagement choice is needed.
+ * Designed for extensibility — future obstacle types can be added here.
+ *
+ * @param {string} position - Vertex ID to check
+ * @param {number} moveDirection - Player's movement direction (0-5)
+ * @param {object} boardData - Board data from store
+ * @returns {null | { enemyId: string, zoneType: string, approachType: string, approachAdvantage: object, enemyObj: object }}
+ */
+export function checkEngagement(position, moveDirection, boardData) {
+  if (!boardData?.enemyZoneMap?.has(position)) return null;
+
+  const zoneInfo = boardData.enemyZoneMap.get(position);
+  const enemyObj = boardData.enemies.find(e => e.id === zoneInfo.enemyId);
+  const enemyFacing = enemyObj ? enemyObj.direction : 0;
+  const approachAdvantage = getApproachAdvantage(zoneInfo.zoneType, moveDirection, enemyFacing);
+
+  return {
+    enemyId: zoneInfo.enemyId,
+    zoneType: zoneInfo.zoneType,
+    approachType: approachAdvantage.approachType,
+    approachPosition: approachAdvantage.approachPosition,
+    approachAdvantage,
+    enemyObj,
+  };
 }
 
 /**
@@ -239,9 +270,16 @@ export function rollDice() {
     return null;
   }
 
+  // Reset stealth dive indicator at start of new turn
+  stealthDive.set(false);
+
   const raw = Math.floor(Math.random() * 6) + 1;
   const pool = get(movementPool);
-  const effective = Math.min(raw, pool);
+
+  // Engine damage caps movement: roll 1-3 → 1 step, roll 4-6 → 2 steps
+  const ship = get(playerShip);
+  const engineCapped = (ship && ship.isEngineDestroyed) ? (raw <= 3 ? 1 : 2) : raw;
+  const effective = Math.min(engineCapped, pool);
 
   diceValue.set(effective);
   gamePhase.set('selectingDirection');
@@ -314,32 +352,30 @@ export function executeMove(onAnimationComplete) {
       const stepsUsed = path.length;
 
       // Check engagement BEFORE other state changes — combat interrupts the move
-      if (boardData.enemyZoneMap && boardData.enemyZoneMap.has(finalPos)) {
-        const zoneInfo = boardData.enemyZoneMap.get(finalPos);
-        const enemyId = zoneInfo.enemyId;
-        const enemyObj = boardData.enemies.find(e => e.id === enemyId);
-        const enemyFacing = enemyObj ? enemyObj.direction : 0;
-        const approachAdvantage = getApproachAdvantage(zoneInfo.zoneType, moveDirection, enemyFacing);
+      const engagement = checkEngagement(finalPos, moveDirection, boardData);
+      if (engagement) {
         // Clear animation state before entering combat/choice
         animatingPath.set([]);
         animationStep.set(-1);
 
-        if (zoneInfo.zoneType === 'proximity') {
+        if (engagement.zoneType === 'proximity') {
           // Proximity zones give the player a choice to engage or avoid
           pendingEngagement.set({
-            enemyId,
-            approachAdvantage,
+            enemyId: engagement.enemyId,
+            approachAdvantage: engagement.approachAdvantage,
             preCombatPos: preMovePos,
             path,
             triggerIndex: path.length - 1,
-            zoneType: zoneInfo.zoneType,
+            zoneType: engagement.zoneType,
+            direction: moveDirection,
+            originalDice: dice,
           });
           // Update player position to the final spot (they landed there)
           playerPos.set(finalPos);
           gamePhase.set('engagementChoice');
         } else {
           // Vision zones are mandatory — auto-start combat
-          startCombat(enemyId, approachAdvantage, preMovePos, path, path.length - 1);
+          startCombat(engagement.enemyId, engagement.approachAdvantage, preMovePos, path, path.length - 1);
         }
         if (onAnimationComplete) onAnimationComplete();
         return;
@@ -622,30 +658,179 @@ export function confirmEngagement() {
 
 /**
  * Decline engagement: player chooses to avoid the proximity enemy.
- * Player stays at current position, movement pool is deducted, game continues.
+ * Player performs a "stealth dive" — continues moving in the same direction
+ * with effective movement = originalDice - 1, bypassing the avoided enemy's zones.
+ * Remaining steps = max(0, (originalDice - 1) - stepsAlreadyTaken).
+ *
+ * @param {function} [onAnimationComplete] - Callback after animation finishes
  */
-export function declineEngagement() {
+export function declineEngagement(onAnimationComplete) {
+  // Guard: if called directly as an onclick handler, the Event object is passed — ignore it
+  if (onAnimationComplete && typeof onAnimationComplete !== 'function') onAnimationComplete = undefined;
+
   const pending = get(pendingEngagement);
   if (!pending) return;
 
   const boardData = get(board);
+  const pool = get(movementPool);
+  const initialSteps = pending.triggerIndex + 1;
 
-  // Player stays at current position (already set during executeMove)
-  // Mark path as visited
+  // Mark stealth dive active
+  stealthDive.set(true);
+
+  // Calculate remaining steps for stealth continuation
+  const effectiveDice = pending.originalDice - 1;
+  const remainingSteps = Math.max(0, effectiveDice - initialSteps);
+
+  // Current position is where the player landed (set during executeMove)
+  const currentPos = get(playerPos);
+
+  if (remainingSteps > 0 && boardData && pending.direction != null) {
+    // Get rays from current position and compute continuation path
+    const rays = boardData.rays.get(currentPos);
+    if (rays) {
+      const continuationResult = computePath(
+        rays, pending.direction, remainingSteps,
+        boardData.obstacles, boardData.targetVertex,
+        boardData.blackholeSet, boardData.enemyZones,
+        boardData.enemyZoneMap, pending.enemyId
+      );
+
+      if (continuationResult.path.length > 0) {
+        // Animate the continuation path
+        const contPath = continuationResult.path;
+        gamePhase.set('moving');
+        animatingPath.set(contPath);
+        animationStep.set(0);
+
+        const stepDelay = 150;
+        let step = 0;
+
+        function advanceDiveStep() {
+          if (step >= contPath.length) {
+            // Animation complete — finalize
+            const finalPos = contPath[contPath.length - 1];
+            const totalSteps = initialSteps + contPath.length;
+
+            // Update player position
+            playerPos.set(finalPos);
+
+            // Mark all path vertices as visited (initial + continuation)
+            const vis = get(visited);
+            const newVis = new Set(vis);
+            for (const vid of pending.path) newVis.add(vid);
+            for (const vid of contPath) newVis.add(vid);
+            visited.set(newVis);
+
+            // Deduct total steps from pool
+            const newPool = pool - totalSteps;
+            movementPool.set(newPool);
+
+            // Increment moves made
+            movesMade.update((n) => n + 1);
+
+            // Clear state
+            pendingEngagement.set(null);
+            selectedDirection.set(null);
+            previewPath.set([]);
+            animatingPath.set([]);
+            animationStep.set(-1);
+            diceValue.set(null);
+
+            // Check engagement with a NEW enemy zone (continuation may hit another enemy)
+            if (continuationResult.engageEnemy) {
+              const newEngagement = checkEngagement(finalPos, pending.direction, boardData);
+              if (newEngagement) {
+                if (newEngagement.zoneType === 'proximity') {
+                  pendingEngagement.set({
+                    enemyId: newEngagement.enemyId,
+                    approachAdvantage: newEngagement.approachAdvantage,
+                    preCombatPos: currentPos,
+                    path: contPath,
+                    triggerIndex: contPath.length - 1,
+                    zoneType: newEngagement.zoneType,
+                    direction: pending.direction,
+                    originalDice: effectiveDice,
+                  });
+                  gamePhase.set('engagementChoice');
+                  if (onAnimationComplete) onAnimationComplete();
+                  return;
+                } else {
+                  // Vision zone — mandatory combat
+                  startCombat(newEngagement.enemyId, newEngagement.approachAdvantage, currentPos, contPath, contPath.length - 1);
+                  if (onAnimationComplete) onAnimationComplete();
+                  return;
+                }
+              }
+            }
+
+            // Check hazard: blackhole
+            if (boardData.blackholeSet?.has(finalPos)) {
+              loseReason.set('blackhole');
+              gamePhase.set('lost');
+              if (onAnimationComplete) onAnimationComplete();
+              return;
+            }
+
+            // Check hazard: legacy enemy zones
+            if (boardData.enemyZones?.has(finalPos) && !boardData.enemyZoneMap) {
+              loseReason.set('enemy');
+              gamePhase.set('lost');
+              if (onAnimationComplete) onAnimationComplete();
+              return;
+            }
+
+            // Check win condition
+            if (finalPos === boardData.targetVertex) {
+              gamePhase.set('won');
+              if (onAnimationComplete) onAnimationComplete();
+              return;
+            }
+
+            // Check lose condition: out of movement points
+            if (newPool <= 0) {
+              loseReason.set('exhausted');
+              gamePhase.set('lost');
+              if (onAnimationComplete) onAnimationComplete();
+              return;
+            }
+
+            // Check trapped condition
+            if (isTrapped(boardData.rays, finalPos, boardData.obstacles)) {
+              loseReason.set('trapped');
+              gamePhase.set('lost');
+              if (onAnimationComplete) onAnimationComplete();
+              return;
+            }
+
+            // Back to rolling
+            diceValue.set(null);
+            gamePhase.set('rolling');
+            if (onAnimationComplete) onAnimationComplete();
+            return;
+          }
+
+          // Advance animation step
+          animationStep.set(step);
+          step++;
+          setTimeout(advanceDiveStep, stepDelay);
+        }
+
+        // Start the continuation animation
+        advanceDiveStep();
+        return;
+      }
+    }
+  }
+
+  // Fallback: no remaining steps or no valid ray — player stays put, deduct initial steps only
   const vis = get(visited);
   const newVis = new Set(vis);
-  for (const vid of pending.path) {
-    newVis.add(vid);
-  }
+  for (const vid of pending.path) newVis.add(vid);
   visited.set(newVis);
 
-  // Deduct movement pool by steps taken
-  const stepsUsed = pending.triggerIndex + 1;
-  const pool = get(movementPool);
-  const newPool = pool - stepsUsed;
+  const newPool = pool - initialSteps;
   movementPool.set(newPool);
-
-  // Increment moves made
   movesMade.update((n) => n + 1);
 
   // Clear state
@@ -695,4 +880,5 @@ export function resetGame() {
   playerShipStore.set(null);
   currentBoardPos.set(null);
   pendingEngagement.set(null);
+  stealthDive.set(false);
 }
