@@ -2,6 +2,10 @@
 Started: Fri Feb 13 21:26:55 CST 2026
 
 ## Codebase Patterns
+- Galaxy state module: src/lib/game/galaxy.js — self-contained, no gameState imports
+- Galaxy state is a plain 2D array (galaxy[row][col]) — serializable to JSON, no Maps/Sets
+- Mock localStorage in tests with `vi.stubGlobal('localStorage', {...})`
+- Size mappings: Small=5x4, Medium=7x6, Large=9x8; galaxy difficulty range 7-20
 - Combat classes live in src/lib/game/combat.js, tests in src/lib/game/combat.test.js
 - Combat state management (startCombat, resolveCombat, combatState store) lives in gameState.js, tests in gameState.test.js
 - startCombat creates fresh PlayerShip each combat; reuses EnemyShip from enemy.combatShip if present (damage persists between encounters)
@@ -167,4 +171,18 @@ Started: Fri Feb 13 21:26:55 CST 2026
   - Board.svelte reactivity chain: board store → App.svelte $derived($board) → enemyRenderData → Board enemies prop
   - GameOver.svelte can import and subscribe to any game store — no need to pass loseReason via props
   - Browser verification not available (no Chrome extension) — manual verification needed
+---
+
+## 2026-02-14 18:23 - US-050
+- Created `src/lib/game/galaxy.js` with `generateGalaxy(seed?)` function
+- Galaxy is a 3x3 grid with randomized size, difficulty (7-20), and deterministic seeds
+- Board (0,0) starts unlocked; all others start locked
+- Also implemented: getAdjacentBoards, unlockAdjacentBoards, isGalaxyComplete, saveGalaxy, loadGalaxy, clearGalaxy
+- Created 21 unit tests in `src/lib/game/galaxy.test.js`
+- Files changed: `src/lib/game/galaxy.js` (new), `src/lib/game/galaxy.test.js` (new)
+- **Learnings for future iterations:**
+  - Galaxy module is self-contained — has its own makeRng, doesn't import from gameState.js
+  - Galaxy state is a plain 2D array (galaxy[row][col]) — no Maps or Sets, JSON-serializable
+  - Difficulty range for galaxy boards is 7-20, wider than the original 1-10 game difficulty
+  - All 376 tests pass including 21 new galaxy tests
 ---
