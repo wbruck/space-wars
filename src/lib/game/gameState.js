@@ -102,31 +102,73 @@ export function hasValidPath(adjacency, start, target, obstacles) {
 }
 
 /**
- * Check if a position triggers an engagement with an enemy.
- * Called after every move to determine if combat or engagement choice is needed.
- * Designed for extensibility — future obstacle types can be added here.
+ * Pure function that determines the outcome of a move based on path computation results
+ * and board state. Separates "what should happen" from side effects (animation, store updates).
  *
- * @param {string} position - Vertex ID to check
- * @param {number} moveDirection - Player's movement direction (0-5)
- * @param {object} boardData - Board data from store
- * @returns {null | { enemyId: string, zoneType: string, approachType: string, approachAdvantage: object, enemyObj: object }}
+ * @param {string[]} path - The computed path vertices
+ * @param {{ vertexIndex: number, enemyId: string, zoneType: string }|null} engageEnemy - Engagement info from computePath
+ * @param {boolean} reachedTarget - Whether the path reaches the target
+ * @param {boolean} hitBlackhole - Whether the path hits a black hole
+ * @param {boolean} stoppedByObstacle - Whether movement was stopped by an obstacle
+ * @param {number} currentPool - Current movement pool before this move
+ * @param {string} targetVertex - The target vertex ID
+ * @param {Map<string, Array>} rays - Ray map for trapped check
+ * @param {Set<string>} obstacles - Obstacle set for trapped check
+ * @param {number} moveDirection - Direction of movement (0-5)
+ * @param {object} boardData - Board data for engagement lookups
+ * @returns {{ finalPos: string, stepsConsumed: number, outcome: string, engageEnemy: object|null, engagement: object|null }}
  */
-export function checkEngagement(position, moveDirection, boardData) {
-  if (!boardData?.enemyZoneMap?.has(position)) return null;
+export function resolveMovePath(path, engageEnemy, reachedTarget, hitBlackhole, stoppedByObstacle, currentPool, targetVertex, rays, obstacles, moveDirection, boardData) {
+  if (path.length === 0) {
+    return { finalPos: null, stepsConsumed: 0, outcome: 'noMove', engageEnemy: null, engagement: null };
+  }
 
-  const zoneInfo = boardData.enemyZoneMap.get(position);
-  const enemyObj = boardData.enemies.find(e => e.id === zoneInfo.enemyId);
-  const enemyFacing = enemyObj ? enemyObj.direction : 0;
-  const approachAdvantage = getApproachAdvantage(zoneInfo.zoneType, moveDirection, enemyFacing);
+  const finalPos = path[path.length - 1];
+  const stepsConsumed = path.length;
 
-  return {
-    enemyId: zoneInfo.enemyId,
-    zoneType: zoneInfo.zoneType,
-    approachType: approachAdvantage.approachType,
-    approachPosition: approachAdvantage.approachPosition,
-    approachAdvantage,
-    enemyObj,
-  };
+  // Engagement takes priority (detected during path computation)
+  if (engageEnemy) {
+    const enemyObj = boardData?.enemies?.find(e => e.id === engageEnemy.enemyId);
+    const enemyFacing = enemyObj ? enemyObj.direction : 0;
+    const approachAdvantage = getApproachAdvantage(engageEnemy.zoneType, moveDirection, enemyFacing);
+
+    const engagement = {
+      enemyId: engageEnemy.enemyId,
+      zoneType: engageEnemy.zoneType,
+      approachAdvantage,
+      enemyObj,
+    };
+
+    if (engageEnemy.zoneType === 'proximity') {
+      return { finalPos, stepsConsumed, outcome: 'engageProximity', engageEnemy, engagement };
+    } else {
+      return { finalPos, stepsConsumed, outcome: 'engageVision', engageEnemy, engagement };
+    }
+  }
+
+  // Black hole — instant death
+  if (hitBlackhole) {
+    return { finalPos, stepsConsumed, outcome: 'blackhole', engageEnemy: null, engagement: null };
+  }
+
+  // Win condition — target reached
+  if (reachedTarget || finalPos === targetVertex) {
+    return { finalPos, stepsConsumed, outcome: 'win', engageEnemy: null, engagement: null };
+  }
+
+  // Pool exhaustion
+  const newPool = currentPool - stepsConsumed;
+  if (newPool <= 0) {
+    return { finalPos, stepsConsumed, outcome: 'poolExhausted', engageEnemy: null, engagement: null };
+  }
+
+  // Trapped check
+  if (isTrapped(rays, finalPos, obstacles)) {
+    return { finalPos, stepsConsumed, outcome: 'trapped', engageEnemy: null, engagement: null };
+  }
+
+  // Normal move
+  return { finalPos, stepsConsumed, outcome: 'move', engageEnemy: null, engagement: null };
 }
 
 /**
@@ -318,8 +360,120 @@ export function selectDirection(direction) {
 }
 
 /**
+ * Apply the resolved outcome after animation completes.
+ * Shared by executeMove() and declineEngagement() to avoid duplication.
+ *
+ * @param {object} resolved - Result from resolveMovePath()
+ * @param {string[]} path - The movement path
+ * @param {number} pool - Movement pool before this move
+ * @param {string} preMovePos - Player position before the move
+ * @param {number} moveDirection - Direction of movement (0-5)
+ * @param {number} dice - Original dice value
+ * @param {object} boardData - Board data
+ * @param {function} [onAnimationComplete] - Callback
+ */
+function applyMoveOutcome(resolved, path, pool, preMovePos, moveDirection, dice, boardData, onAnimationComplete) {
+  const { finalPos, stepsConsumed, outcome, engagement } = resolved;
+
+  if (outcome === 'engageProximity') {
+    // Clear animation state before entering choice
+    animatingPath.set([]);
+    animationStep.set(-1);
+
+    pendingEngagement.set({
+      enemyId: engagement.enemyId,
+      approachAdvantage: engagement.approachAdvantage,
+      preCombatPos: preMovePos,
+      path,
+      triggerIndex: path.length - 1,
+      zoneType: engagement.zoneType,
+      direction: moveDirection,
+      originalDice: dice,
+    });
+    playerPos.set(finalPos);
+    gamePhase.set('engagementChoice');
+    if (onAnimationComplete) onAnimationComplete();
+    return;
+  }
+
+  if (outcome === 'engageVision') {
+    // Clear animation state before entering combat
+    animatingPath.set([]);
+    animationStep.set(-1);
+
+    startCombat(engagement.enemyId, engagement.approachAdvantage, preMovePos, path, path.length - 1);
+    if (onAnimationComplete) onAnimationComplete();
+    return;
+  }
+
+  // Update player position
+  playerPos.set(finalPos);
+
+  // Mark all path vertices as visited
+  const vis = get(visited);
+  const newVis = new Set(vis);
+  for (const vid of path) {
+    newVis.add(vid);
+  }
+  visited.set(newVis);
+
+  // Deduct movement pool
+  const newPool = pool - stepsConsumed;
+  movementPool.set(newPool);
+
+  // Increment moves made
+  movesMade.update((n) => n + 1);
+
+  // Clear preview state
+  selectedDirection.set(null);
+  previewPath.set([]);
+  animatingPath.set([]);
+  animationStep.set(-1);
+
+  if (outcome === 'blackhole') {
+    loseReason.set('blackhole');
+    gamePhase.set('lost');
+    if (onAnimationComplete) onAnimationComplete();
+    return;
+  }
+
+  // Legacy: enemy kill zone instant-death (when enemyZoneMap is not available)
+  if (boardData.enemyZones?.has(finalPos) && !boardData.enemyZoneMap) {
+    loseReason.set('enemy');
+    gamePhase.set('lost');
+    if (onAnimationComplete) onAnimationComplete();
+    return;
+  }
+
+  if (outcome === 'win') {
+    gamePhase.set('won');
+    if (onAnimationComplete) onAnimationComplete();
+    return;
+  }
+
+  if (outcome === 'poolExhausted') {
+    loseReason.set('exhausted');
+    gamePhase.set('lost');
+    if (onAnimationComplete) onAnimationComplete();
+    return;
+  }
+
+  if (outcome === 'trapped') {
+    loseReason.set('trapped');
+    gamePhase.set('lost');
+    if (onAnimationComplete) onAnimationComplete();
+    return;
+  }
+
+  // Back to rolling
+  diceValue.set(null);
+  gamePhase.set('rolling');
+  if (onAnimationComplete) onAnimationComplete();
+}
+
+/**
  * Execute the currently previewed move.
- * Animates the player step-by-step, then updates state.
+ * Pre-determines the outcome using resolveMovePath(), then animates step-by-step.
  * Only works during selectingDirection phase with a preview set.
  *
  * @param {function} [onAnimationComplete] - Callback after animation finishes
@@ -338,6 +492,16 @@ export function executeMove(onAnimationComplete) {
   const moveDirection = get(selectedDirection);
   const preMovePos = get(playerPos);
 
+  // Pre-determine the outcome using computePath's engageEnemy as single source of truth
+  const steps = Math.min(dice, pool);
+  const rays = boardData.rays.get(preMovePos);
+  const pathResult = computePath(rays, moveDirection, steps, boardData.obstacles, boardData.targetVertex, boardData.blackholeSet, boardData.enemyZones, boardData.enemyZoneMap);
+  const resolved = resolveMovePath(
+    pathResult.path, pathResult.engageEnemy, pathResult.reachedTarget, pathResult.hitBlackhole,
+    pathResult.stoppedByObstacle, pool, boardData.targetVertex,
+    boardData.rays, boardData.obstacles, moveDirection, boardData
+  );
+
   gamePhase.set('moving');
   animatingPath.set(path);
   animationStep.set(0);
@@ -347,107 +511,7 @@ export function executeMove(onAnimationComplete) {
 
   function advanceStep() {
     if (step >= path.length) {
-      // Animation complete
-      const finalPos = path[path.length - 1];
-      const stepsUsed = path.length;
-
-      // Check engagement BEFORE other state changes — combat interrupts the move
-      const engagement = checkEngagement(finalPos, moveDirection, boardData);
-      if (engagement) {
-        // Clear animation state before entering combat/choice
-        animatingPath.set([]);
-        animationStep.set(-1);
-
-        if (engagement.zoneType === 'proximity') {
-          // Proximity zones give the player a choice to engage or avoid
-          pendingEngagement.set({
-            enemyId: engagement.enemyId,
-            approachAdvantage: engagement.approachAdvantage,
-            preCombatPos: preMovePos,
-            path,
-            triggerIndex: path.length - 1,
-            zoneType: engagement.zoneType,
-            direction: moveDirection,
-            originalDice: dice,
-          });
-          // Update player position to the final spot (they landed there)
-          playerPos.set(finalPos);
-          gamePhase.set('engagementChoice');
-        } else {
-          // Vision zones are mandatory — auto-start combat
-          startCombat(engagement.enemyId, engagement.approachAdvantage, preMovePos, path, path.length - 1);
-        }
-        if (onAnimationComplete) onAnimationComplete();
-        return;
-      }
-
-      // Update player position
-      playerPos.set(finalPos);
-
-      // Mark all path vertices as visited
-      const vis = get(visited);
-      const newVis = new Set(vis);
-      for (const vid of path) {
-        newVis.add(vid);
-      }
-      visited.set(newVis);
-
-      // Deduct movement pool
-      const newPool = pool - stepsUsed;
-      movementPool.set(newPool);
-
-      // Increment moves made
-      movesMade.update((n) => n + 1);
-
-      // Clear preview state
-      selectedDirection.set(null);
-      previewPath.set([]);
-      animatingPath.set([]);
-      animationStep.set(-1);
-
-      // Check hazard death: blackhole
-      if (boardData.blackholeSet?.has(finalPos)) {
-        loseReason.set('blackhole');
-        gamePhase.set('lost');
-        if (onAnimationComplete) onAnimationComplete();
-        return;
-      }
-
-      // Legacy: enemy kill zone instant-death (when enemyZoneMap is not available)
-      if (boardData.enemyZones?.has(finalPos) && !boardData.enemyZoneMap) {
-        loseReason.set('enemy');
-        gamePhase.set('lost');
-        if (onAnimationComplete) onAnimationComplete();
-        return;
-      }
-
-      // Check win condition (target reached during path)
-      if (finalPos === boardData.targetVertex) {
-        gamePhase.set('won');
-        if (onAnimationComplete) onAnimationComplete();
-        return;
-      }
-
-      // Check lose condition: out of movement points
-      if (newPool <= 0) {
-        loseReason.set('exhausted');
-        gamePhase.set('lost');
-        if (onAnimationComplete) onAnimationComplete();
-        return;
-      }
-
-      // Check trapped condition
-      if (isTrapped(boardData.rays, finalPos, boardData.obstacles)) {
-        loseReason.set('trapped');
-        gamePhase.set('lost');
-        if (onAnimationComplete) onAnimationComplete();
-        return;
-      }
-
-      // Back to rolling
-      diceValue.set(null);
-      gamePhase.set('rolling');
-      if (onAnimationComplete) onAnimationComplete();
+      applyMoveOutcome(resolved, path, pool, preMovePos, moveDirection, dice, boardData, onAnimationComplete);
       return;
     }
 
@@ -662,6 +726,8 @@ export function confirmEngagement() {
  * with effective movement = originalDice - 1, bypassing the avoided enemy's zones.
  * Remaining steps = max(0, (originalDice - 1) - stepsAlreadyTaken).
  *
+ * Uses resolveMovePath() to pre-determine outcome, then animates.
+ *
  * @param {function} [onAnimationComplete] - Callback after animation finishes
  */
 export function declineEngagement(onAnimationComplete) {
@@ -697,8 +763,18 @@ export function declineEngagement(onAnimationComplete) {
       );
 
       if (continuationResult.path.length > 0) {
-        // Animate the continuation path
         const contPath = continuationResult.path;
+        const totalSteps = initialSteps + contPath.length;
+
+        // Pre-determine outcome using resolveMovePath (single source of truth)
+        const resolved = resolveMovePath(
+          contPath, continuationResult.engageEnemy, continuationResult.reachedTarget,
+          continuationResult.hitBlackhole, continuationResult.stoppedByObstacle,
+          pool - initialSteps, boardData.targetVertex,
+          boardData.rays, boardData.obstacles, pending.direction, boardData
+        );
+
+        // Animate the continuation path
         gamePhase.set('moving');
         animatingPath.set(contPath);
         animationStep.set(0);
@@ -708,9 +784,8 @@ export function declineEngagement(onAnimationComplete) {
 
         function advanceDiveStep() {
           if (step >= contPath.length) {
-            // Animation complete — finalize
-            const finalPos = contPath[contPath.length - 1];
-            const totalSteps = initialSteps + contPath.length;
+            // Animation complete — apply resolved outcome
+            const finalPos = resolved.finalPos;
 
             // Update player position
             playerPos.set(finalPos);
@@ -737,37 +812,25 @@ export function declineEngagement(onAnimationComplete) {
             animationStep.set(-1);
             diceValue.set(null);
 
-            // Check engagement with a NEW enemy zone (continuation may hit another enemy)
-            if (continuationResult.engageEnemy) {
-              const newEngagement = checkEngagement(finalPos, pending.direction, boardData);
-              if (newEngagement) {
-                if (newEngagement.zoneType === 'proximity') {
-                  pendingEngagement.set({
-                    enemyId: newEngagement.enemyId,
-                    approachAdvantage: newEngagement.approachAdvantage,
-                    preCombatPos: currentPos,
-                    path: contPath,
-                    triggerIndex: contPath.length - 1,
-                    zoneType: newEngagement.zoneType,
-                    direction: pending.direction,
-                    originalDice: effectiveDice,
-                  });
-                  gamePhase.set('engagementChoice');
-                  if (onAnimationComplete) onAnimationComplete();
-                  return;
-                } else {
-                  // Vision zone — mandatory combat
-                  startCombat(newEngagement.enemyId, newEngagement.approachAdvantage, currentPos, contPath, contPath.length - 1);
-                  if (onAnimationComplete) onAnimationComplete();
-                  return;
-                }
-              }
+            // Apply outcome based on resolved result
+            if (resolved.outcome === 'engageProximity') {
+              pendingEngagement.set({
+                enemyId: resolved.engagement.enemyId,
+                approachAdvantage: resolved.engagement.approachAdvantage,
+                preCombatPos: currentPos,
+                path: contPath,
+                triggerIndex: contPath.length - 1,
+                zoneType: resolved.engagement.zoneType,
+                direction: pending.direction,
+                originalDice: effectiveDice,
+              });
+              gamePhase.set('engagementChoice');
+              if (onAnimationComplete) onAnimationComplete();
+              return;
             }
 
-            // Check hazard: blackhole
-            if (boardData.blackholeSet?.has(finalPos)) {
-              loseReason.set('blackhole');
-              gamePhase.set('lost');
+            if (resolved.outcome === 'engageVision') {
+              startCombat(resolved.engagement.enemyId, resolved.engagement.approachAdvantage, currentPos, contPath, contPath.length - 1);
               if (onAnimationComplete) onAnimationComplete();
               return;
             }
@@ -780,23 +843,27 @@ export function declineEngagement(onAnimationComplete) {
               return;
             }
 
-            // Check win condition
-            if (finalPos === boardData.targetVertex) {
+            if (resolved.outcome === 'blackhole') {
+              loseReason.set('blackhole');
+              gamePhase.set('lost');
+              if (onAnimationComplete) onAnimationComplete();
+              return;
+            }
+
+            if (resolved.outcome === 'win') {
               gamePhase.set('won');
               if (onAnimationComplete) onAnimationComplete();
               return;
             }
 
-            // Check lose condition: out of movement points
-            if (newPool <= 0) {
+            if (resolved.outcome === 'poolExhausted') {
               loseReason.set('exhausted');
               gamePhase.set('lost');
               if (onAnimationComplete) onAnimationComplete();
               return;
             }
 
-            // Check trapped condition
-            if (isTrapped(boardData.rays, finalPos, boardData.obstacles)) {
+            if (resolved.outcome === 'trapped') {
               loseReason.set('trapped');
               gamePhase.set('lost');
               if (onAnimationComplete) onAnimationComplete();
