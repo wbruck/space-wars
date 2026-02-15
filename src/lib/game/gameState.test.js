@@ -382,7 +382,7 @@ describe('resetGame', () => {
     expect(get(playerPos)).toBeNull();
     expect(get(movementPool)).toBe(0);
     expect(get(diceValue)).toBeNull();
-    expect(get(gamePhase)).toBe('setup');
+    expect(get(gamePhase)).toBe('galaxy');
     expect(get(visited).size).toBe(0);
     expect(get(movesMade)).toBe(0);
   });

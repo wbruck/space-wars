@@ -100,7 +100,7 @@
         "Commit with message starting with 'US-054'"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

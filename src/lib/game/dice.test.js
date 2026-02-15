@@ -15,8 +15,8 @@ describe('rollDice', () => {
   });
 
   it('returns null if not in rolling phase', () => {
-    // gamePhase starts as 'setup' after resetGame
-    expect(get(gamePhase)).toBe('setup');
+    // gamePhase starts as 'galaxy' after resetGame
+    expect(get(gamePhase)).toBe('galaxy');
     const result = rollDice();
     expect(result).toBeNull();
     expect(get(diceValue)).toBeNull();

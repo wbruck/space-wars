@@ -228,3 +228,23 @@ Started: Fri Feb 13 21:26:55 CST 2026
   - Use `class:selectable` and `status-{board.status}` for dynamic styling
   - Dark-first styling approach since game has sci-fi aesthetic; light mode as override
 ---
+
+## 2026-02-14 18:31 - US-054
+- Added `galaxyState` and `currentBoardPos` writable stores to gameState.js
+- Changed `gamePhase` initial value from 'setup' to 'galaxy'
+- Changed `resetGame()` to set phase to 'galaxy' instead of 'setup'
+- Reset `currentBoardPos` to null in `resetGame()`
+- Updated App.svelte: imports GalaxySelection, galaxy functions, onMount
+- App.svelte onMount: loads saved galaxy from localStorage or generates new one
+- App.svelte routes 'galaxy' phase to GalaxySelection component
+- handleSelectBoard: reads board info from galaxy, sets currentBoardPos, calls initGame with board's seed/difficulty
+- Updated dice.test.js and gameState.test.js: 'setup' → 'galaxy' in phase assertions
+- All 384 tests pass, production build succeeds
+- Browser verification not available (no Chrome extension) — manual verification needed
+- Files changed: src/lib/game/gameState.js, src/App.svelte, src/lib/game/dice.test.js, src/lib/game/gameState.test.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - gamePhase initial value and resetGame() must stay in sync — both use 'galaxy' now
+  - App.svelte uses onMount to load/generate galaxy — galaxy data arrives asynchronously
+  - Tests that check resetGame() phase must use 'galaxy' not 'setup'
+  - SetupScreen import/route kept in App.svelte for now — will be removed in US-058
+---

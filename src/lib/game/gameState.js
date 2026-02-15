@@ -18,8 +18,8 @@ export const movementPool = writable(0);
 /** Current dice roll (1-6 or null) */
 export const diceValue = writable(null);
 
-/** Game phase: 'setup' | 'rolling' | 'selectingDirection' | 'moving' | 'combat' | 'won' | 'lost' */
-export const gamePhase = writable('setup');
+/** Game phase: 'galaxy' | 'rolling' | 'selectingDirection' | 'moving' | 'combat' | 'won' | 'lost' | 'galaxyComplete' */
+export const gamePhase = writable('galaxy');
 
 /** Set of visited vertex IDs */
 export const visited = writable(new Set());
@@ -44,6 +44,12 @@ export const loseReason = writable(null);
 
 /** Combat state: null | { engine: CombatEngine, enemyId: string, approachAdvantage: object, preCombatPlayerPos: string, preCombatPath: string[], triggerVertexIndex: number } */
 export const combatState = writable(null);
+
+/** Galaxy state: null | Object[][] (3x3 grid of board objects) */
+export const galaxyState = writable(null);
+
+/** Current board position in galaxy: null | { row: number, col: number } */
+export const currentBoardPos = writable(null);
 
 // --- Helper functions ---
 
@@ -538,7 +544,7 @@ export function resetGame() {
   playerPos.set(null);
   movementPool.set(0);
   diceValue.set(null);
-  gamePhase.set('setup');
+  gamePhase.set('galaxy');
   visited.set(new Set());
   movesMade.set(0);
   selectedDirection.set(null);
@@ -547,4 +553,5 @@ export function resetGame() {
   animationStep.set(-1);
   loseReason.set(null);
   combatState.set(null);
+  currentBoardPos.set(null);
 }

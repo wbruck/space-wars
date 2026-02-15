@@ -5,12 +5,16 @@
   import SetupScreen from './lib/components/SetupScreen.svelte';
   import GameOver from './lib/components/GameOver.svelte';
   import CombatScreen from './lib/components/CombatScreen.svelte';
+  import GalaxySelection from './lib/components/GalaxySelection.svelte';
   import {
     board, playerPos, gamePhase, visited,
     selectedDirection, previewPath, animatingPath, animationStep,
+    galaxyState, currentBoardPos,
     initGame, resetGame, selectDirection, executeMove,
   } from './lib/game/gameState.js';
   import { getAvailableDirections } from './lib/game/movement.js';
+  import { generateGalaxy, loadGalaxy } from './lib/game/galaxy.js';
+  import { onMount } from 'svelte';
 
   // Subscribe to stores
   let boardData = $derived($board);
@@ -21,6 +25,17 @@
   let preview = $derived($previewPath);
   let animPath = $derived($animatingPath);
   let animStep = $derived($animationStep);
+  let galaxy = $derived($galaxyState);
+
+  // On mount, load or generate galaxy
+  onMount(() => {
+    const saved = loadGalaxy();
+    if (saved) {
+      galaxyState.set(saved);
+    } else {
+      galaxyState.set(generateGalaxy());
+    }
+  });
 
   // Construct enemy render data from boardData
   let enemyRenderData = $derived.by(() => {
@@ -45,6 +60,12 @@
     return getAvailableDirections(boardData.rays, pos, boardData.obstacles);
   });
 
+  function handleSelectBoard(row, col) {
+    const boardInfo = galaxy[row][col];
+    currentBoardPos.set({ row, col });
+    initGame(boardInfo.cols, boardInfo.rows, boardInfo.seed, boardInfo.difficulty);
+  }
+
   function handleStart(cols, rows, difficulty) {
     initGame(cols, rows, undefined, difficulty);
   }
@@ -65,7 +86,10 @@
 <main>
   <h1>Game Time</h1>
 
-  {#if phase === 'setup'}
+  {#if phase === 'galaxy' && galaxy}
+    <GalaxySelection {galaxy} onSelectBoard={handleSelectBoard} />
+
+  {:else if phase === 'setup'}
     <SetupScreen onStart={handleStart} />
 
   {:else if phase === 'won' || phase === 'lost'}
