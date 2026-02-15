@@ -232,37 +232,55 @@ export class Ship extends ComponentContainer(Object) {
 }
 
 /**
- * Player's ship with default components: Weapons (2 HP), Engines (2 HP), Bridge (2 HP).
+ * Player's ship with typed components and size budget.
+ * Default sizeLimit: 7, default components: size-2 weapon (4HP), size-2 engine (4HP), size-2 bridge (3HP).
  */
 export class PlayerShip extends Ship {
   /**
-   * @param {ShipComponent[]} [components] - Optional custom components
+   * @param {ShipComponent[]|{sizeLimit?: number, components?: ShipComponent[]}} [opts] - Legacy component array or options object
    */
-  constructor(components) {
+  constructor(opts) {
     const defaultComponents = [
-      new ShipComponent('Weapons', 2),
-      new ShipComponent('Engines', 2),
-      new ShipComponent('Bridge', 2),
+      new WeaponComponent('Weapons', 4, 2),
+      new EngineComponent('Engines', 4, 2),
+      new BridgeComponent('Bridge', 3, 2),
     ];
-    super('Player Ship', components || defaultComponents);
+
+    if (Array.isArray(opts)) {
+      // Legacy: PlayerShip([comp1, comp2]) — no sizeLimit enforcement
+      super('Player Ship', opts);
+    } else if (opts && typeof opts === 'object') {
+      // New: PlayerShip({ sizeLimit, components })
+      super('Player Ship', {
+        sizeLimit: opts.sizeLimit ?? 7,
+        components: opts.components || defaultComponents,
+      });
+    } else {
+      // Default: PlayerShip() — use defaults with sizeLimit 7
+      super('Player Ship', {
+        sizeLimit: 7,
+        components: defaultComponents,
+      });
+    }
   }
 
-  /** @returns {boolean} False if Weapons component is destroyed — player cannot attack */
+  /** @returns {boolean} True if any weapon component is active (not destroyed) */
   get canAttack() {
-    const weapons = this.getComponent('Weapons');
-    return weapons ? !weapons.destroyed : false;
+    const weapons = this.getComponentsByType('weapon');
+    return weapons.some(w => !w.destroyed);
   }
 
-  /** @returns {boolean} True if Bridge component is destroyed */
+  /** @returns {boolean} True if the bridge component is destroyed */
   get isBridgeDestroyed() {
-    const bridge = this.getComponent('Bridge');
+    const bridge = this.getComponentsByType('bridge')[0];
     return bridge ? bridge.destroyed : false;
   }
 
-  /** @returns {boolean} True if Engines component is destroyed */
+  /** @returns {boolean} True if ALL engine components are destroyed */
   get isEngineDestroyed() {
-    const engines = this.getComponent('Engines');
-    return engines ? engines.destroyed : false;
+    const engines = this.getComponentsByType('engine');
+    if (engines.length === 0) return true;
+    return engines.every(e => e.destroyed);
   }
 }
 

@@ -1686,9 +1686,9 @@ describe('combat board integration (US-036)', () => {
       const ship = get(playerShipStore);
       expect(ship).not.toBeNull();
       expect(ship.name).toBe('Player Ship');
-      expect(ship.getComponent('Weapons').currentHp).toBe(2);
-      expect(ship.getComponent('Engines').currentHp).toBe(2);
-      expect(ship.getComponent('Bridge').currentHp).toBe(2);
+      expect(ship.getComponent('Weapons').currentHp).toBe(4);
+      expect(ship.getComponent('Engines').currentHp).toBe(4);
+      expect(ship.getComponent('Bridge').currentHp).toBe(3);
     });
 
     it('startCombat reuses the persistent PlayerShip instance', () => {
@@ -1709,7 +1709,7 @@ describe('combat board integration (US-036)', () => {
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
-      // First combat — damage player's Weapons (2 HP → 1 HP)
+      // First combat — damage player's Weapons (4 HP → 3 HP)
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
       const state1 = get(combatState);
       state1.engine.playerShip.getComponent('Weapons').takeDamage(1);
@@ -1720,7 +1720,7 @@ describe('combat board integration (US-036)', () => {
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
       const state2 = get(combatState);
       const weapons = state2.engine.playerShip.getComponent('Weapons');
-      expect(weapons.currentHp).toBe(1);
+      expect(weapons.currentHp).toBe(3);
       expect(weapons.destroyed).toBe(false);
 
       diceValue.set(2);
@@ -1731,15 +1731,15 @@ describe('combat board integration (US-036)', () => {
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
-      // First combat — damage Engines (2 HP → 1 HP)
+      // First combat — damage Engines (4 HP → 2 HP)
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
-      get(combatState).engine.playerShip.getComponent('Engines').takeDamage(1);
+      get(combatState).engine.playerShip.getComponent('Engines').takeDamage(2);
       diceValue.set(2);
       resolveCombat('playerLose');
 
-      // Second combat — damage Engines again (1 HP → 0 HP)
+      // Second combat — damage Engines again (2 HP → 0 HP)
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
-      get(combatState).engine.playerShip.getComponent('Engines').takeDamage(1);
+      get(combatState).engine.playerShip.getComponent('Engines').takeDamage(2);
       diceValue.set(2);
       resolveCombat('playerLose');
 
@@ -1756,7 +1756,7 @@ describe('combat board integration (US-036)', () => {
       // Damage the player ship
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
       const state = get(combatState);
-      state.engine.playerShip.getComponent('Weapons').takeDamage(2);
+      state.engine.playerShip.getComponent('Weapons').takeDamage(4);
       state.engine.playerShip.getComponent('Engines').takeDamage(1);
       diceValue.set(2);
       resolveCombat('playerLose');
@@ -1771,9 +1771,9 @@ describe('combat board integration (US-036)', () => {
       // Player ship should be fresh
       const freshShip = get(playerShipStore);
       expect(freshShip).not.toBe(damagedShip);
-      expect(freshShip.getComponent('Weapons').currentHp).toBe(2);
-      expect(freshShip.getComponent('Engines').currentHp).toBe(2);
-      expect(freshShip.getComponent('Bridge').currentHp).toBe(2);
+      expect(freshShip.getComponent('Weapons').currentHp).toBe(4);
+      expect(freshShip.getComponent('Engines').currentHp).toBe(4);
+      expect(freshShip.getComponent('Bridge').currentHp).toBe(3);
     });
 
     it('resetGame clears the player ship store', () => {
@@ -1798,9 +1798,9 @@ describe('combat board integration (US-036)', () => {
       // Second combat — Engines and Bridge should still be at full HP
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
       const state = get(combatState);
-      expect(state.engine.playerShip.getComponent('Engines').currentHp).toBe(2);
-      expect(state.engine.playerShip.getComponent('Bridge').currentHp).toBe(2);
-      expect(state.engine.playerShip.getComponent('Weapons').currentHp).toBe(1);
+      expect(state.engine.playerShip.getComponent('Engines').currentHp).toBe(4);
+      expect(state.engine.playerShip.getComponent('Bridge').currentHp).toBe(3);
+      expect(state.engine.playerShip.getComponent('Weapons').currentHp).toBe(3);
 
       diceValue.set(2);
       resolveCombat('playerLose');

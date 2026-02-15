@@ -621,25 +621,49 @@ describe('PlayerShip', () => {
     expect(ship.components).toHaveLength(3);
   });
 
-  it('default Weapons has 2 HP', () => {
+  it('default sizeLimit is 7', () => {
+    const ship = new PlayerShip();
+    expect(ship.sizeLimit).toBe(7);
+  });
+
+  it('default totalSize is 6 (three size-2 components)', () => {
+    const ship = new PlayerShip();
+    expect(ship.totalSize).toBe(6);
+    expect(ship.remainingCapacity).toBe(1);
+  });
+
+  it('default Weapons is a WeaponComponent with 4 HP, size 2', () => {
     const ship = new PlayerShip();
     const weapons = ship.getComponent('Weapons');
-    expect(weapons.maxHp).toBe(2);
-    expect(weapons.currentHp).toBe(2);
+    expect(weapons).toBeInstanceOf(WeaponComponent);
+    expect(weapons.maxHp).toBe(4);
+    expect(weapons.currentHp).toBe(4);
+    expect(weapons.size).toBe(2);
+    expect(weapons.type).toBe('weapon');
+    expect(weapons.damage).toBe(1);
+    expect(weapons.accuracy).toBe(3);
   });
 
-  it('default Engines has 2 HP', () => {
+  it('default Engines is an EngineComponent with 4 HP, size 2', () => {
     const ship = new PlayerShip();
     const engines = ship.getComponent('Engines');
-    expect(engines.maxHp).toBe(2);
-    expect(engines.currentHp).toBe(2);
+    expect(engines).toBeInstanceOf(EngineComponent);
+    expect(engines.maxHp).toBe(4);
+    expect(engines.currentHp).toBe(4);
+    expect(engines.size).toBe(2);
+    expect(engines.type).toBe('engine');
+    expect(engines.speedBonus).toBe(1);
   });
 
-  it('default Bridge has 2 HP', () => {
+  it('default Bridge is a BridgeComponent with 3 HP, size 2', () => {
     const ship = new PlayerShip();
     const bridge = ship.getComponent('Bridge');
-    expect(bridge.maxHp).toBe(2);
-    expect(bridge.currentHp).toBe(2);
+    expect(bridge).toBeInstanceOf(BridgeComponent);
+    expect(bridge.maxHp).toBe(3);
+    expect(bridge.currentHp).toBe(3);
+    expect(bridge.size).toBe(2);
+    expect(bridge.type).toBe('bridge');
+    expect(bridge.evasionBonus).toBe(1);
   });
 
   it('is instanceof Ship', () => {
@@ -647,7 +671,7 @@ describe('PlayerShip', () => {
     expect(ship).toBeInstanceOf(Ship);
   });
 
-  it('accepts custom components', () => {
+  it('accepts legacy custom components array', () => {
     const custom = [
       new ShipComponent('Laser', 5),
       new ShipComponent('Shield', 3),
@@ -658,12 +682,34 @@ describe('PlayerShip', () => {
     expect(ship.getComponent('Shield').maxHp).toBe(3);
   });
 
-  it('custom components override defaults', () => {
+  it('legacy custom components override defaults', () => {
     const custom = [new ShipComponent('Weapons', 10)];
     const ship = new PlayerShip(custom);
     expect(ship.components).toHaveLength(1);
     expect(ship.getComponent('Weapons').maxHp).toBe(10);
     expect(ship.getComponent('Engines')).toBeUndefined();
+  });
+
+  it('accepts options object with sizeLimit and components', () => {
+    const ship = new PlayerShip({
+      sizeLimit: 5,
+      components: [
+        new WeaponComponent('Laser', 2, 1),
+        new EngineComponent('Thrusters', 2, 1),
+        new BridgeComponent('Bridge', 1, 1),
+      ],
+    });
+    expect(ship.sizeLimit).toBe(5);
+    expect(ship.components).toHaveLength(3);
+    expect(ship.totalSize).toBe(3);
+    expect(ship.remainingCapacity).toBe(2);
+  });
+
+  it('options object defaults to sizeLimit 7 and default components', () => {
+    const ship = new PlayerShip({});
+    expect(ship.sizeLimit).toBe(7);
+    expect(ship.components).toHaveLength(3);
+    expect(ship.getComponent('Weapons')).toBeInstanceOf(WeaponComponent);
   });
 
   // isBridgeDestroyed getter
@@ -674,7 +720,7 @@ describe('PlayerShip', () => {
 
   it('isBridgeDestroyed is true when Bridge is destroyed', () => {
     const ship = new PlayerShip();
-    ship.getComponent('Bridge').takeDamage(2);
+    ship.getComponent('Bridge').takeDamage(3);
     expect(ship.isBridgeDestroyed).toBe(true);
   });
 
@@ -689,15 +735,15 @@ describe('PlayerShip', () => {
     expect(ship.isBridgeDestroyed).toBe(false);
   });
 
-  // canAttack getter
+  // canAttack getter — uses type-based query
   it('canAttack is true when Weapons is active', () => {
     const ship = new PlayerShip();
     expect(ship.canAttack).toBe(true);
   });
 
-  it('canAttack is false when Weapons is destroyed', () => {
+  it('canAttack is false when all weapons are destroyed', () => {
     const ship = new PlayerShip();
-    ship.getComponent('Weapons').takeDamage(2);
+    ship.getComponent('Weapons').takeDamage(4);
     expect(ship.canAttack).toBe(false);
   });
 
@@ -707,9 +753,122 @@ describe('PlayerShip', () => {
     expect(ship.canAttack).toBe(true);
   });
 
-  it('canAttack returns false if no Weapons component exists', () => {
+  it('canAttack returns false if no weapon components exist', () => {
     const ship = new PlayerShip([new ShipComponent('Laser', 2)]);
     expect(ship.canAttack).toBe(false);
+  });
+
+  // isEngineDestroyed getter — uses type-based query, checks ALL engines
+  it('isEngineDestroyed is false when Engines is active', () => {
+    const ship = new PlayerShip();
+    expect(ship.isEngineDestroyed).toBe(false);
+  });
+
+  it('isEngineDestroyed is true when all engines are destroyed', () => {
+    const ship = new PlayerShip();
+    ship.getComponent('Engines').takeDamage(4);
+    expect(ship.isEngineDestroyed).toBe(true);
+  });
+
+  it('isEngineDestroyed returns true if no engine components exist', () => {
+    const ship = new PlayerShip([new ShipComponent('Laser', 2)]);
+    expect(ship.isEngineDestroyed).toBe(true);
+  });
+
+  // US-004: sizeLimit enforcement
+  it('enforces sizeLimit — cannot exceed budget', () => {
+    expect(() => {
+      new PlayerShip({
+        sizeLimit: 3,
+        components: [
+          new WeaponComponent('W', 2, 2),
+          new EngineComponent('E', 2, 2),
+        ],
+      });
+    }).toThrow(/exceed sizeLimit/);
+  });
+
+  // US-004: multiple weapons
+  it('canAttack is true when one of multiple weapons is active', () => {
+    const ship = new PlayerShip({
+      sizeLimit: 10,
+      components: [
+        new WeaponComponent('Laser', 2, 1),
+        new WeaponComponent('Missiles', 2, 1),
+        new EngineComponent('Engines', 2, 1),
+        new BridgeComponent('Bridge', 1, 1),
+      ],
+    });
+    // Destroy first weapon
+    ship.getComponent('Laser').takeDamage(2);
+    expect(ship.canAttack).toBe(true); // Missiles still active
+  });
+
+  it('canAttack is false only when ALL weapons are destroyed', () => {
+    const ship = new PlayerShip({
+      sizeLimit: 10,
+      components: [
+        new WeaponComponent('Laser', 1, 1),
+        new WeaponComponent('Missiles', 1, 1),
+        new EngineComponent('Engines', 2, 1),
+        new BridgeComponent('Bridge', 1, 1),
+      ],
+    });
+    ship.getComponent('Laser').takeDamage(1);
+    ship.getComponent('Missiles').takeDamage(1);
+    expect(ship.canAttack).toBe(false);
+  });
+
+  // US-004: multiple engines — isEngineDestroyed checks ALL
+  it('isEngineDestroyed is false when one of multiple engines is active', () => {
+    const ship = new PlayerShip({
+      sizeLimit: 10,
+      components: [
+        new WeaponComponent('Weapons', 2, 1),
+        new EngineComponent('Main Engine', 1, 1),
+        new EngineComponent('Aux Engine', 1, 1),
+        new BridgeComponent('Bridge', 1, 1),
+      ],
+    });
+    ship.getComponent('Main Engine').takeDamage(1);
+    expect(ship.isEngineDestroyed).toBe(false); // Aux still active
+  });
+
+  it('isEngineDestroyed is true only when ALL engines are destroyed', () => {
+    const ship = new PlayerShip({
+      sizeLimit: 10,
+      components: [
+        new WeaponComponent('Weapons', 2, 1),
+        new EngineComponent('Main Engine', 1, 1),
+        new EngineComponent('Aux Engine', 1, 1),
+        new BridgeComponent('Bridge', 1, 1),
+      ],
+    });
+    ship.getComponent('Main Engine').takeDamage(1);
+    ship.getComponent('Aux Engine').takeDamage(1);
+    expect(ship.isEngineDestroyed).toBe(true);
+  });
+
+  // US-004: backward compat — getComponent still works
+  it('backward compat: getComponent("Weapons") returns the weapon', () => {
+    const ship = new PlayerShip();
+    const w = ship.getComponent('Weapons');
+    expect(w).toBeDefined();
+    expect(w.name).toBe('Weapons');
+  });
+
+  it('backward compat: getComponent("Engines") returns the engine', () => {
+    const ship = new PlayerShip();
+    const e = ship.getComponent('Engines');
+    expect(e).toBeDefined();
+    expect(e.name).toBe('Engines');
+  });
+
+  it('backward compat: getComponent("Bridge") returns the bridge', () => {
+    const ship = new PlayerShip();
+    const b = ship.getComponent('Bridge');
+    expect(b).toBeDefined();
+    expect(b.name).toBe('Bridge');
   });
 });
 
@@ -1025,7 +1184,7 @@ describe('CombatEngine', () => {
 
     it('refuses to attack when player weapons are destroyed', () => {
       const player = new PlayerShip();
-      player.getComponent('Weapons').takeDamage(2); // destroy weapons
+      player.getComponent('Weapons').takeDamage(4); // destroy weapons (4 HP default)
       const engine = new CombatEngine({
         playerShip: player,
         enemyShip: new EnemyShip(),
@@ -1041,7 +1200,7 @@ describe('CombatEngine', () => {
 
     it('does not advance turn or log when player weapons destroyed', () => {
       const player = new PlayerShip();
-      player.getComponent('Weapons').takeDamage(2);
+      player.getComponent('Weapons').takeDamage(4);
       const engine = new CombatEngine({
         playerShip: player,
         enemyShip: new EnemyShip(),
@@ -1118,12 +1277,11 @@ describe('CombatEngine', () => {
 
   describe('all player components destroyed → playerDestroyed', () => {
     it('ends combat when all player components are destroyed', () => {
-      // Player has 3 components with 2 HP each = 6 hits needed
-      // Use 1 HP player components for easier testing
+      // Use 1 HP typed player components for easier testing
       const player = new PlayerShip([
-        new ShipComponent('Weapons', 1),
-        new ShipComponent('Engines', 1),
-        new ShipComponent('Bridge', 1),
+        new WeaponComponent('Weapons', 1, 1),
+        new EngineComponent('Engines', 1, 1),
+        new BridgeComponent('Bridge', 1, 1),
       ]);
       // All enemy attacks hit (rolls of 4), targeting each component
       // rng controls: target selection + attack roll for each enemy attack
@@ -1182,9 +1340,9 @@ describe('CombatEngine', () => {
     it('ends combat when player Bridge is destroyed', () => {
       // Player with 1 HP Bridge for easy testing
       const player = new PlayerShip([
-        new ShipComponent('Weapons', 2),
-        new ShipComponent('Engines', 2),
-        new ShipComponent('Bridge', 1),
+        new WeaponComponent('Weapons', 2, 1),
+        new EngineComponent('Engines', 2, 1),
+        new BridgeComponent('Bridge', 1, 1),
       ]);
       // Enemy hits Bridge: target index selects Bridge (idx 2 of 3 components), roll 4 (hit)
       // For idx 2 with 3 components: Math.floor(rng * 3) = 2, need rng >= 2/3
@@ -1205,9 +1363,9 @@ describe('CombatEngine', () => {
 
     it('playerDestroyed from bridge even with other components alive', () => {
       const player = new PlayerShip([
-        new ShipComponent('Weapons', 2),
-        new ShipComponent('Engines', 2),
-        new ShipComponent('Bridge', 1),
+        new WeaponComponent('Weapons', 2, 1),
+        new EngineComponent('Engines', 2, 1),
+        new BridgeComponent('Bridge', 1, 1),
       ]);
       const engine = new CombatEngine({
         playerShip: player,
@@ -1226,9 +1384,9 @@ describe('CombatEngine', () => {
     it('enemy bridge check has priority over player bridge check (both destroyed same turn)', () => {
       // If both bridges are destroyed, enemy bridge is checked first → playerWin
       const player = new PlayerShip([
-        new ShipComponent('Weapons', 2),
-        new ShipComponent('Engines', 2),
-        new ShipComponent('Bridge', 1),
+        new WeaponComponent('Weapons', 2, 1),
+        new EngineComponent('Engines', 2, 1),
+        new BridgeComponent('Bridge', 1, 1),
       ]);
       const enemy = new EnemyShip();
       const engine = new CombatEngine({
@@ -1251,9 +1409,9 @@ describe('CombatEngine', () => {
     it('player bridge destruction takes priority over isDestroyed check', () => {
       // When bridge is destroyed but ship is not fully destroyed
       const player = new PlayerShip([
-        new ShipComponent('Weapons', 2),
-        new ShipComponent('Engines', 2),
-        new ShipComponent('Bridge', 1),
+        new WeaponComponent('Weapons', 2, 1),
+        new EngineComponent('Engines', 2, 1),
+        new BridgeComponent('Bridge', 1, 1),
       ]);
       const engine = new CombatEngine({
         playerShip: player,
@@ -1300,9 +1458,9 @@ describe('CombatEngine', () => {
 
     it('can escape regardless of component state', () => {
       const player = new PlayerShip([
-        new ShipComponent('Weapons', 1),
-        new ShipComponent('Engines', 1),
-        new ShipComponent('Bridge', 1),
+        new WeaponComponent('Weapons', 1, 1),
+        new EngineComponent('Engines', 1, 1),
+        new BridgeComponent('Bridge', 1, 1),
       ]);
       // Destroy Weapons and Engines
       player.getComponent('Weapons').takeDamage(1);
@@ -1493,13 +1651,13 @@ describe('CombatEngine', () => {
     });
 
     it('simulates combat where enemy eventually destroys all player components', () => {
-      // Player with 1 HP components, enemy goes first, always hits
+      // Player with 1 HP typed components, enemy goes first, always hits
       // Enemy targets Engines first (idx 1), then Weapons, then Bridge
       // so player's Weapons stay alive for their attack turns
       const player = new PlayerShip([
-        new ShipComponent('Weapons', 1),
-        new ShipComponent('Engines', 1),
-        new ShipComponent('Bridge', 1),
+        new WeaponComponent('Weapons', 1, 1),
+        new EngineComponent('Engines', 1, 1),
+        new BridgeComponent('Bridge', 1, 1),
       ]);
       // For idx 1 of 3: roll 3 → rng=0.4167 → floor(0.4167*3)=1 (Engines)
       // For idx 0 of 2 remaining [Weapons, Bridge]: roll 1 → rng=0.0833 → floor(0.0833*2)=0 (Weapons)

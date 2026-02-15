@@ -90,7 +90,7 @@
         "Commit with message starting with US-004"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
