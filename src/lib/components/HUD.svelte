@@ -1,10 +1,10 @@
 <script>
-  import { movementPool, diceValue, gamePhase, playerShip, stealthDive } from '../game/gameState.js';
+  import { movementPool, diceValue, gamePhase, playerShipStore, stealthDive } from '../game/gameState.js';
 
   let pool = $derived($movementPool);
   let dice = $derived($diceValue);
   let phase = $derived($gamePhase);
-  let ship = $derived($playerShip);
+  let ship = $derived($playerShipStore);
   let isDiving = $derived($stealthDive);
   let engineDamaged = $derived(ship?.isEngineDestroyed ?? false);
 
