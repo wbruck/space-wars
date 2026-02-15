@@ -186,3 +186,27 @@ Started: Fri Feb 13 21:26:55 CST 2026
   - Difficulty range for galaxy boards is 7-20, wider than the original 1-10 game difficulty
   - All 376 tests pass including 21 new galaxy tests
 ---
+
+## 2026-02-14 18:26 - US-051
+- getAdjacentBoards() and unlockAdjacentBoards() were already implemented in US-050
+- Added comprehensive tests: all 4 corners (3 neighbors each), all 4 edges (5 neighbors each), center (8 neighbors) with specific neighbor verification
+- Added unlock tests: mixed neighbor statuses, non-adjacent boards unaffected, unlocked status preserved
+- Total tests: 29 galaxy tests, 384 total (all pass)
+- Files changed: src/lib/game/galaxy.test.js
+- **Learnings for future iterations:**
+  - US-050 proactively implemented adjacency/unlock logic — check existing code before implementing
+  - getAdjacentBoards uses double loop dr/dc ∈ [-1,1] with bounds check to 0-2 range
+  - unlockAdjacentBoards only mutates 'locked' → 'unlocked', safe to call with any status mix
+---
+
+## 2026-02-14 18:28 - US-052
+- Persistence functions (saveGalaxy, loadGalaxy, clearGalaxy) were already implemented in US-050
+- Tests for save/load/clear with mock localStorage already existed (4 tests in galaxy.test.js)
+- All 384 tests pass, no new code changes needed
+- The "save after every board completion" wiring happens in US-055 (board completion handler)
+- Files changed: scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - US-050 proactively implemented persistence — always check existing code before starting a story
+  - Mock localStorage pattern: `vi.stubGlobal('localStorage', { getItem, setItem, removeItem })`
+  - STORAGE_KEY = 'galaxyProgress' — used consistently across save/load/clear
+---

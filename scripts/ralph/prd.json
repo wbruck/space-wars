@@ -37,7 +37,7 @@
         "Commit with message starting with 'US-051'"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -56,7 +56,7 @@
         "Commit with message starting with 'US-052'"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
