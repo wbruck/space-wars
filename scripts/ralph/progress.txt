@@ -140,3 +140,19 @@ Started: Sun Feb 15 16:23:36 CST 2026
   - The addEnemyToBoard helper is only available in the 'combat board integration (US-036)' describe block — other combat test sections add enemies inline
   - 1 new test added; all 593 total tests pass
 ---
+
+## 2026-02-15 - US-008
+- Verified CombatScreen.svelte works with new typed component system — no code changes needed
+- playerComponents and enemyComponents derived values map c.name, c.currentHp, c.maxHp, c.destroyed — all on ShipComponent base class, unchanged
+- HP bars use proportional scaling (currentHp/maxHp * 100) — works correctly for new HP values (4/4/3 player, 1/1/1 enemy)
+- Target buttons use getComponent(name) backward-compat lookup — still works via ComponentContainer mixin
+- canAttack derived uses engine.playerShip.canAttack — same interface, now type-based query internally
+- Build succeeds (no compilation errors), all 593 tests pass
+- Browser extension unavailable for live verification — manual browser testing recommended
+- Files changed: scripts/ralph/prd.json, scripts/ralph/progress.txt (verification only, no source code changes)
+- **Learnings for future iterations:**
+  - CombatScreen.svelte only accesses base ShipComponent properties (name, currentHp, maxHp, destroyed) — typed subclass properties are invisible to the UI
+  - HP bar proportional scaling (currentHp/maxHp) is naturally compatible with any HP values — no UI changes needed when component stats change
+  - The component system refactor was designed for backward compatibility — UI components need zero changes
+  - Browser extension may not always be available for live verification — build + test pass is the minimum bar
+---
