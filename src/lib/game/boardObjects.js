@@ -118,11 +118,13 @@ export class Enemy extends Obstacle {
 
   /**
    * Returns the enemy's own vertex plus kill zone vertices along the facing direction.
+   * Vision rays stop at obstacles — the obstacle vertex is NOT included.
    * @param {Map<string, string[]>} _adjacency - Graph adjacency map
    * @param {Map<string, Array<{direction: number, vertices: string[]}>>} [rays] - Precomputed ray map
+   * @param {Set<string>} [obstacleSet] - Obstacle vertex IDs; vision ray stops at these
    * @returns {string[]}
    */
-  getAffectedVertices(_adjacency, rays) {
+  getAffectedVertices(_adjacency, rays, obstacleSet) {
     // Disarmed enemies (weapons destroyed) have no vision ray
     if (this.combatShip && !this.combatShip.canAttack) {
       return [this.vertexId];
@@ -134,7 +136,12 @@ export class Enemy extends Obstacle {
         const facingRay = vertexRays.find(r => r.direction === this.direction);
         if (facingRay) {
           for (let i = 0; i < this.visionRange && i < facingRay.vertices.length; i++) {
-            killZoneVertices.push(facingRay.vertices[i]);
+            const vid = facingRay.vertices[i];
+            // Stop at obstacles (don't include the obstacle vertex)
+            if (obstacleSet && obstacleSet.has(vid)) {
+              break;
+            }
+            killZoneVertices.push(vid);
           }
         }
       }
@@ -242,6 +249,8 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
   const enemyZones = new Set();
   const enemyZoneMap = new Map();
   let budgetRemaining = enemyBudget;
+
+  // Phase 1: Place all enemies and add to obstacleSet
   while (budgetRemaining > 0 && idx < eligible.length) {
     const vertexId = eligible[idx++];
     const value = obsMin + Math.floor(rng() * (obsMax - obsMin + 1));
@@ -253,10 +262,13 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
     const enemy = new Enemy(vertexId, value, direction, visionRange);
     enemies.push(enemy);
     obstacleSet.add(vertexId);
+  }
 
-    // Compute kill zone from rays
+  // Phase 2: Compute zones for all enemies (after all obstacles are finalized)
+  for (const enemy of enemies) {
+    // Compute kill zone from rays (respecting all obstacles including other enemies)
     if (rays) {
-      const affected = enemy.getAffectedVertices(null, rays);
+      const affected = enemy.getAffectedVertices(null, rays, obstacleSet);
       // Skip the first element (enemy's own vertex) since that's in obstacleSet
       for (let j = 1; j < affected.length; j++) {
         enemyZones.add(affected[j]);
@@ -267,8 +279,8 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
     // Compute proximity zone via BFS (depth <= 2)
     if (adjacency) {
       const proxVisited = new Set();
-      proxVisited.add(vertexId); // enemy's own vertex
-      let frontier = [vertexId];
+      proxVisited.add(enemy.vertexId); // enemy's own vertex
+      let frontier = [enemy.vertexId];
       for (let depth = 0; depth < 2; depth++) {
         const nextFrontier = [];
         for (const fv of frontier) {

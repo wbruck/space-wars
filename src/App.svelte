@@ -42,7 +42,7 @@
   let enemyRenderData = $derived.by(() => {
     if (!boardData || !boardData.enemies) return [];
     return boardData.enemies.map(enemy => {
-      const affected = enemy.getAffectedVertices(null, boardData.rays);
+      const affected = enemy.getAffectedVertices(null, boardData.rays, boardData.obstacles);
       // Kill zone vertices are all affected vertices except the enemy's own vertex
       const killZoneVertices = affected.slice(1);
       return {

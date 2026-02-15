@@ -25,6 +25,7 @@ import {
   declineEngagement,
   selectDirection,
   executeMove,
+  resolveMovePath,
 } from './gameState.js';
 import { isCenterVertex } from './hexGrid.js';
 import { Enemy } from './boardObjects.js';
@@ -1292,8 +1293,8 @@ describe('combat board integration (US-036)', () => {
     boardData.obstacles.add(enemy.vertexId);
     boardData.boardObjects.push(enemy);
 
-    // Compute kill zone
-    const affected = enemy.getAffectedVertices(null, boardData.rays);
+    // Compute kill zone (respecting obstacles)
+    const affected = enemy.getAffectedVertices(null, boardData.rays, boardData.obstacles);
     for (let i = 1; i < affected.length; i++) {
       boardData.enemyZones.add(affected[i]);
       boardData.enemyZoneMap.set(affected[i], { enemyId: enemy.id, zoneType: 'vision' });
@@ -1817,8 +1818,8 @@ describe('combat board integration (US-036)', () => {
       boardData.obstacles.add(enemy.vertexId);
       boardData.boardObjects.push(enemy);
 
-      // Compute vision zone from rays
-      const affected = enemy.getAffectedVertices(null, boardData.rays);
+      // Compute vision zone from rays (respecting obstacles)
+      const affected = enemy.getAffectedVertices(null, boardData.rays, boardData.obstacles);
       for (let i = 1; i < affected.length; i++) {
         boardData.enemyZones.add(affected[i]);
         boardData.enemyZoneMap.set(affected[i], { enemyId: enemy.id, zoneType: 'vision' });
@@ -2020,5 +2021,253 @@ describe('combat board integration (US-036)', () => {
       }
       expect(visionCountAfter).toBe(0);
     });
+  });
+});
+
+describe('resolveMovePath (pure function)', () => {
+  it('returns noMove for empty path', () => {
+    const result = resolveMovePath([], null, false, false, false, 10, 'target', new Map(), new Set(), 0, {});
+    expect(result.outcome).toBe('noMove');
+    expect(result.finalPos).toBeNull();
+    expect(result.stepsConsumed).toBe(0);
+  });
+
+  it('returns move for normal movement', () => {
+    // Set up rays so isTrapped returns false
+    const rays = new Map([['B', [{ direction: 0, vertices: ['C'] }]]]);
+    const result = resolveMovePath(['A', 'B'], null, false, false, false, 10, 'target', rays, new Set(), 0, {});
+    expect(result.outcome).toBe('move');
+    expect(result.finalPos).toBe('B');
+    expect(result.stepsConsumed).toBe(2);
+  });
+
+  it('returns win when reachedTarget is true', () => {
+    const result = resolveMovePath(['A', 'target'], null, true, false, false, 10, 'target', new Map(), new Set(), 0, {});
+    expect(result.outcome).toBe('win');
+    expect(result.finalPos).toBe('target');
+  });
+
+  it('returns win when finalPos equals target', () => {
+    const result = resolveMovePath(['target'], null, false, false, false, 10, 'target', new Map(), new Set(), 0, {});
+    expect(result.outcome).toBe('win');
+    expect(result.finalPos).toBe('target');
+  });
+
+  it('returns blackhole when hitBlackhole is true', () => {
+    const result = resolveMovePath(['A', 'B'], null, false, true, false, 10, 'target', new Map(), new Set(), 0, {});
+    expect(result.outcome).toBe('blackhole');
+    expect(result.finalPos).toBe('B');
+  });
+
+  it('returns poolExhausted when pool runs out', () => {
+    const result = resolveMovePath(['A', 'B'], null, false, false, false, 2, 'target', new Map(), new Set(), 0, {});
+    expect(result.outcome).toBe('poolExhausted');
+  });
+
+  it('returns trapped when no directions available', () => {
+    // Empty rays = trapped
+    const rays = new Map([['B', []]]);
+    const result = resolveMovePath(['A', 'B'], null, false, false, false, 10, 'target', rays, new Set(), 0, {});
+    expect(result.outcome).toBe('trapped');
+  });
+
+  it('returns engageVision for vision zone engagement', () => {
+    const engageEnemy = { vertexIndex: 1, enemyId: 'enemy:v1', zoneType: 'vision' };
+    const boardData = { enemies: [{ id: 'enemy:v1', direction: 2 }] };
+    const result = resolveMovePath(['A', 'B'], engageEnemy, false, false, false, 10, 'target', new Map(), new Set(), 0, boardData);
+    expect(result.outcome).toBe('engageVision');
+    expect(result.engagement.enemyId).toBe('enemy:v1');
+    expect(result.engagement.approachAdvantage).toBeDefined();
+  });
+
+  it('returns engageProximity for proximity zone engagement', () => {
+    const engageEnemy = { vertexIndex: 1, enemyId: 'enemy:v1', zoneType: 'proximity' };
+    const boardData = { enemies: [{ id: 'enemy:v1', direction: 2 }] };
+    const result = resolveMovePath(['A', 'B'], engageEnemy, false, false, false, 10, 'target', new Map(), new Set(), 0, boardData);
+    expect(result.outcome).toBe('engageProximity');
+    expect(result.engagement.enemyId).toBe('enemy:v1');
+    expect(result.engagement.zoneType).toBe('proximity');
+  });
+
+  it('engagement takes priority over other outcomes', () => {
+    // Even if target is reached, engagement should fire first
+    const engageEnemy = { vertexIndex: 0, enemyId: 'enemy:v1', zoneType: 'vision' };
+    const boardData = { enemies: [{ id: 'enemy:v1', direction: 0 }] };
+    const result = resolveMovePath(['target'], engageEnemy, true, false, false, 10, 'target', new Map(), new Set(), 0, boardData);
+    expect(result.outcome).toBe('engageVision');
+  });
+
+  it('blackhole takes priority over win', () => {
+    const result = resolveMovePath(['A'], null, true, true, false, 10, 'A', new Map(), new Set(), 0, {});
+    expect(result.outcome).toBe('blackhole');
+  });
+});
+
+describe('vision zones blocked by obstacles', () => {
+  let boardData;
+
+  beforeEach(() => {
+    resetGame();
+    boardData = initGame(7, 6, 42, 5);
+  });
+
+  it('enemy vision zone does not extend through obstacles on the board', () => {
+    // Find an enemy with a vision zone
+    const enemy = boardData.enemies.find(e => {
+      const affected = e.getAffectedVertices(null, boardData.rays, boardData.obstacles);
+      return affected.length > 1; // has vision zone vertices
+    });
+    if (!enemy) return; // skip if no enemy has vision zone (all blocked)
+
+    // Get the vision ray vertices
+    const vertexRays = boardData.rays.get(enemy.vertexId);
+    const facingRay = vertexRays?.find(r => r.direction === enemy.direction);
+    if (!facingRay || facingRay.vertices.length === 0) return;
+
+    // Check that no vision zone vertex is behind an obstacle
+    let sawObstacle = false;
+    for (let i = 0; i < facingRay.vertices.length && i < enemy.visionRange; i++) {
+      const vid = facingRay.vertices[i];
+      if (boardData.obstacles.has(vid)) {
+        sawObstacle = true;
+        continue;
+      }
+      if (sawObstacle) {
+        // This vertex is behind an obstacle — should NOT be in zone
+        expect(boardData.enemyZoneMap.has(vid) && boardData.enemyZoneMap.get(vid).enemyId === enemy.id && boardData.enemyZoneMap.get(vid).zoneType === 'vision').toBe(false);
+      }
+    }
+  });
+
+  it('vision zone stops before obstacle vertex', () => {
+    // Create a controlled scenario with a mock obstacle in the ray
+    const pos = get(playerPos);
+    const rays = boardData.rays.get(pos);
+    const longRay = rays?.find(r => r.vertices.length >= 4 && !boardData.obstacles.has(r.vertices[0]));
+    if (!longRay) return;
+
+    // Place an obstacle at index 2 in the ray
+    const obstacleVertex = longRay.vertices[2];
+    boardData.obstacles.add(obstacleVertex);
+
+    // Create enemy at pos facing in the longRay direction
+    const enemy = new Enemy(pos, 3, longRay.direction, 5);
+    const affected = enemy.getAffectedVertices(null, boardData.rays, boardData.obstacles);
+
+    // Vision zone should include vertices 0, 1 but NOT 2 (obstacle) or beyond
+    expect(affected).toContain(pos); // own vertex
+    expect(affected).toContain(longRay.vertices[0]);
+    expect(affected).toContain(longRay.vertices[1]);
+    expect(affected).not.toContain(obstacleVertex);
+    if (longRay.vertices.length > 3) {
+      expect(affected).not.toContain(longRay.vertices[3]);
+    }
+
+    // Clean up
+    boardData.obstacles.delete(obstacleVertex);
+  });
+});
+
+describe('engagement uses computePath as single source of truth', () => {
+  let boardData;
+
+  beforeEach(() => {
+    resetGame();
+    boardData = initGame(5, 4, 42, 5);
+  });
+
+  function executeMoveAsync() {
+    return new Promise((resolve) => {
+      executeMove(() => resolve());
+    });
+  }
+
+  it('engagement detected during path computation triggers correctly', async () => {
+    const pos = get(playerPos);
+    const rays = boardData.rays.get(pos);
+    const longRay = rays?.find(r => {
+      if (r.vertices.length < 3) return false;
+      return !boardData.obstacles.has(r.vertices[0]) && !boardData.obstacles.has(r.vertices[1])
+        && !boardData.enemyZoneMap.has(r.vertices[0]) && !boardData.enemyZoneMap.has(r.vertices[1]);
+    });
+    if (!longRay) return;
+
+    const zoneVertex = longRay.vertices[1];
+    const enemy = new Enemy('test-enemy-vertex', 3, 2);
+    boardData.enemies.push(enemy);
+    boardData.enemyZones.add(zoneVertex);
+    boardData.enemyZoneMap.set(zoneVertex, { enemyId: enemy.id, zoneType: 'vision' });
+    board.set(boardData);
+
+    movementPool.set(20);
+    diceValue.set(3);
+    gamePhase.set('selectingDirection');
+    selectDirection(longRay.direction);
+
+    await executeMoveAsync();
+
+    // Should trigger combat via computePath's engageEnemy, not checkEngagement
+    expect(get(gamePhase)).toBe('combat');
+    expect(get(combatState)).not.toBeNull();
+    expect(get(combatState).enemyId).toBe(enemy.id);
+  });
+});
+
+describe('stealth dive excludeEnemyId bypass', () => {
+  let boardData;
+
+  beforeEach(() => {
+    resetGame();
+    boardData = initGame(5, 4, 42, 5);
+  });
+
+  function executeMoveAsync() {
+    return new Promise((resolve) => {
+      executeMove(() => resolve());
+    });
+  }
+
+  it('declineEngagement bypasses the declined enemy zone during continuation', async () => {
+    const pos = get(playerPos);
+    const rays = boardData.rays.get(pos);
+    // Find a ray with enough vertices
+    const longRay = rays?.find(r => {
+      if (r.vertices.length < 4) return false;
+      return !boardData.obstacles.has(r.vertices[0]) && !boardData.obstacles.has(r.vertices[1])
+        && !boardData.obstacles.has(r.vertices[2])
+        && !boardData.enemyZoneMap.has(r.vertices[0]) && !boardData.enemyZoneMap.has(r.vertices[1]);
+    });
+    if (!longRay) return;
+
+    // Place enemy with proximity zone at vertex 1
+    const zoneVertex = longRay.vertices[1];
+    const enemy = new Enemy('stealth-test-enemy', 3, 2);
+    boardData.enemies.push(enemy);
+    boardData.enemyZones.add(zoneVertex);
+    boardData.enemyZoneMap.set(zoneVertex, { enemyId: enemy.id, zoneType: 'proximity' });
+    // Also place the same enemy's zone at vertex 2 (to test bypass)
+    boardData.enemyZones.add(longRay.vertices[2]);
+    boardData.enemyZoneMap.set(longRay.vertices[2], { enemyId: enemy.id, zoneType: 'proximity' });
+    board.set(boardData);
+
+    movementPool.set(20);
+    diceValue.set(4);
+    gamePhase.set('selectingDirection');
+    selectDirection(longRay.direction);
+
+    await executeMoveAsync();
+
+    // Should be in engagementChoice (proximity zone hit)
+    expect(get(gamePhase)).toBe('engagementChoice');
+
+    // Decline — should perform stealth dive and bypass this enemy's zones
+    await new Promise(resolve => {
+      declineEngagement(resolve);
+    });
+
+    // Should NOT be in engagementChoice again (bypassed same enemy)
+    // Should be in rolling or another valid state
+    const phase = get(gamePhase);
+    expect(phase).not.toBe('engagementChoice');
   });
 });

@@ -476,10 +476,10 @@ describe('generateBoardObjects', () => {
 
   it('enemy kill zones computed from rays', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
-    // Recompute expected kill zones
+    // Recompute expected kill zones (passing obstacleSet to match what generateBoardObjects does)
     const expectedZones = new Set();
     for (const enemy of result.enemies) {
-      const affected = enemy.getAffectedVertices(null, grid.rays);
+      const affected = enemy.getAffectedVertices(null, grid.rays, result.obstacleSet);
       // Skip own vertex (index 0)
       for (let i = 1; i < affected.length; i++) {
         expectedZones.add(affected[i]);
@@ -654,7 +654,7 @@ describe('generateBoardObjects', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays, grid.adjacency);
     // For any enemy, check that kill zone vertices have 'vision' type even if they're within 2 hops
     for (const enemy of result.enemies) {
-      const affected = enemy.getAffectedVertices(null, grid.rays);
+      const affected = enemy.getAffectedVertices(null, grid.rays, result.obstacleSet);
       for (let i = 1; i < affected.length; i++) {
         const zoneInfo = result.enemyZoneMap.get(affected[i]);
         if (zoneInfo) {
@@ -679,5 +679,160 @@ describe('generateBoardObjects', () => {
     for (const [, zoneInfo] of result.enemyZoneMap) {
       expect(zoneInfo.zoneType).toBe('vision');
     }
+  });
+});
+
+describe('getAffectedVertices with obstacles', () => {
+  it('vision zone stops at obstacle vertex (obstacle not included)', () => {
+    const enemy = new Enemy('A', 3, 0, 4);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D', 'E'] },
+      ]],
+    ]);
+    const obstacles = new Set(['C']); // Obstacle at C
+    const result = enemy.getAffectedVertices(new Map(), mockRays, obstacles);
+    // Should include A (own vertex) + B, but NOT C (obstacle) or D, E (behind obstacle)
+    expect(result).toEqual(['A', 'B']);
+  });
+
+  it('vision zone stops at first obstacle in ray', () => {
+    const enemy = new Enemy('A', 3, 0, 6);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D', 'E', 'F', 'G'] },
+      ]],
+    ]);
+    const obstacles = new Set(['D']); // Obstacle at D
+    const result = enemy.getAffectedVertices(new Map(), mockRays, obstacles);
+    expect(result).toEqual(['A', 'B', 'C']);
+  });
+
+  it('obstacle at first ray vertex blocks entire vision zone', () => {
+    const enemy = new Enemy('A', 3, 0, 3);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D'] },
+      ]],
+    ]);
+    const obstacles = new Set(['B']); // Obstacle at very first vertex
+    const result = enemy.getAffectedVertices(new Map(), mockRays, obstacles);
+    expect(result).toEqual(['A']); // Only own vertex
+  });
+
+  it('no obstacles — full vision zone as before', () => {
+    const enemy = new Enemy('A', 3, 0, 3);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D', 'E'] },
+      ]],
+    ]);
+    const result = enemy.getAffectedVertices(new Map(), mockRays, new Set());
+    expect(result).toEqual(['A', 'B', 'C', 'D']);
+  });
+
+  it('no obstacleSet parameter — backward compatible (full vision zone)', () => {
+    const enemy = new Enemy('A', 3, 0, 3);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D', 'E'] },
+      ]],
+    ]);
+    const result = enemy.getAffectedVertices(new Map(), mockRays);
+    expect(result).toEqual(['A', 'B', 'C', 'D']);
+  });
+
+  it('obstacle on own vertex does not affect ray (enemy vertex is first element, ray starts after)', () => {
+    const enemy = new Enemy('A', 3, 0, 3);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D'] },
+      ]],
+    ]);
+    // Enemy's own vertex in obstacles — should not block the ray
+    const obstacles = new Set(['A']);
+    const result = enemy.getAffectedVertices(new Map(), mockRays, obstacles);
+    expect(result).toEqual(['A', 'B', 'C', 'D']);
+  });
+
+  it('disarmed enemy still returns only own vertex regardless of obstacles', () => {
+    const enemy = new Enemy('A', 3, 0, 4);
+    enemy.combatShip = { canAttack: false };
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D', 'E'] },
+      ]],
+    ]);
+    const result = enemy.getAffectedVertices(new Map(), mockRays, new Set());
+    expect(result).toEqual(['A']);
+  });
+
+  it('proximity zones are unaffected by obstacle parameter', () => {
+    // Proximity zones are computed via BFS in generateBoardObjects, not in getAffectedVertices.
+    // getAffectedVertices only handles vision zones. This is a documentation test.
+    const enemy = new Enemy('A', 3, 0, 2);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C'] },
+      ]],
+    ]);
+    // Vision zone with obstacles
+    const obstacles = new Set(['B']);
+    const result = enemy.getAffectedVertices(new Map(), mockRays, obstacles);
+    expect(result).toEqual(['A']); // Only own vertex (B is blocked)
+    // Proximity zones would be computed separately via BFS — not tested here
+  });
+});
+
+describe('generateBoardObjects vision zones respect obstacles', () => {
+  const grid = generateGrid(7, 6, 40);
+  const ids = [...grid.vertices.keys()];
+  const startVertex = ids[0];
+  const targetVertex = ids[ids.length - 1];
+
+  it('vision zones do not pass through obstacles', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays, grid.adjacency);
+
+    for (const enemy of result.enemies) {
+      const vertexRays = grid.rays.get(enemy.vertexId);
+      if (!vertexRays) continue;
+      const facingRay = vertexRays.find(r => r.direction === enemy.direction);
+      if (!facingRay) continue;
+
+      let sawObstacle = false;
+      for (let i = 0; i < facingRay.vertices.length && i < enemy.visionRange; i++) {
+        const vid = facingRay.vertices[i];
+        if (result.obstacleSet.has(vid)) {
+          sawObstacle = true;
+          // The obstacle vertex itself should NOT be in the vision zone
+          const zoneInfo = result.enemyZoneMap.get(vid);
+          if (zoneInfo && zoneInfo.enemyId === enemy.id) {
+            expect(zoneInfo.zoneType).not.toBe('vision');
+          }
+          continue;
+        }
+        if (sawObstacle) {
+          // Vertices behind obstacles should NOT have vision zone from this enemy
+          const zoneInfo = result.enemyZoneMap.get(vid);
+          if (zoneInfo && zoneInfo.enemyId === enemy.id) {
+            expect(zoneInfo.zoneType).not.toBe('vision');
+          }
+        }
+      }
+    }
+  });
+
+  it('zone computation uses final obstacle set (all enemies placed first)', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+
+    // Recompute expected zones with the final obstacleSet — should match exactly
+    const expectedZones = new Set();
+    for (const enemy of result.enemies) {
+      const affected = enemy.getAffectedVertices(null, grid.rays, result.obstacleSet);
+      for (let i = 1; i < affected.length; i++) {
+        expectedZones.add(affected[i]);
+      }
+    }
+    expect(result.enemyZones).toEqual(expectedZones);
   });
 });
