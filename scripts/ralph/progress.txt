@@ -279,3 +279,15 @@ Started: Fri Feb 13 21:26:55 CST 2026
   - 'galaxyComplete' routing must be checked BEFORE 'galaxy' in the if/else chain
   - isGalaxyComplete already had 3 tests; added 2 more for mixed statuses and edge case
 ---
+
+## 2026-02-14 18:47 - US-057
+- Changed GameOver button text from 'Play Again' to 'Return to Galaxy'
+- Prop name `onPlayAgain` kept as-is (handler in App.svelte already changed to handleContinue in US-055)
+- All existing stats preserved: moves made, points remaining, board size, loss reason
+- All 386 tests pass, production build succeeds
+- Browser verification not available (no Chrome extension) — manual verification needed
+- Files changed: src/lib/components/GameOver.svelte, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - Minimal change: only button text updated, prop name kept for backward compatibility
+  - The standalone 'Play Again' flow was already removed in US-055 (handleContinue replaces it)
+---
