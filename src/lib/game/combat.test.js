@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShipComponent, WeaponComponent, EngineComponent, BridgeComponent, Ship, PlayerShip, EnemyShip, CombatEngine, getApproachAdvantage, getApproachPosition } from './combat.js';
+import { ShipComponent, WeaponComponent, EngineComponent, BridgeComponent, ComponentContainer, Ship, PlayerShip, EnemyShip, CombatEngine, getApproachAdvantage, getApproachPosition } from './combat.js';
 
 describe('ShipComponent', () => {
   it('constructs with correct properties', () => {
@@ -195,6 +195,299 @@ describe('BridgeComponent', () => {
     expect(b.destroyed).toBe(false);
     b.takeDamage(1);
     expect(b.destroyed).toBe(true);
+  });
+});
+
+describe('ComponentContainer mixin', () => {
+  // Create a simple test class using the mixin
+  class TestBase {}
+  const TestContainer = ComponentContainer(TestBase);
+
+  function makeContainer(sizeLimit = 10) {
+    const container = new TestContainer();
+    container.sizeLimit = sizeLimit;
+    return container;
+  }
+
+  describe('mixin basics', () => {
+    it('is a function that returns a class', () => {
+      expect(typeof ComponentContainer).toBe('function');
+      expect(typeof TestContainer).toBe('function');
+    });
+
+    it('resulting class extends the base', () => {
+      const container = new TestContainer();
+      expect(container).toBeInstanceOf(TestBase);
+    });
+
+    it('starts with empty components and Infinity sizeLimit', () => {
+      const container = new TestContainer();
+      expect(container.components).toEqual([]);
+      expect(container.sizeLimit).toBe(Infinity);
+    });
+  });
+
+  describe('addComponent', () => {
+    it('adds a component to the internal array', () => {
+      const container = makeContainer(10);
+      const w = new WeaponComponent('Laser', 2, 1);
+      container.addComponent(w);
+      expect(container.components).toHaveLength(1);
+      expect(container.components[0]).toBe(w);
+    });
+
+    it('allows adding multiple components within budget', () => {
+      const container = makeContainer(5);
+      container.addComponent(new WeaponComponent('Laser', 2, 1));
+      container.addComponent(new EngineComponent('Thrusters', 2, 2));
+      container.addComponent(new BridgeComponent('Bridge', 1, 1));
+      expect(container.components).toHaveLength(3);
+      expect(container.totalSize).toBe(4);
+    });
+
+    it('throws when adding would exceed sizeLimit', () => {
+      const container = makeContainer(2);
+      container.addComponent(new WeaponComponent('Laser', 2, 2));
+      expect(() => {
+        container.addComponent(new EngineComponent('Thrusters', 1, 1));
+      }).toThrow(/exceed sizeLimit/);
+    });
+
+    it('throws when adding exactly exceeds sizeLimit', () => {
+      const container = makeContainer(3);
+      container.addComponent(new WeaponComponent('Laser', 2, 2));
+      expect(() => {
+        container.addComponent(new EngineComponent('Thrusters', 1, 2));
+      }).toThrow(/exceed sizeLimit/);
+    });
+
+    it('allows adding up to exact sizeLimit', () => {
+      const container = makeContainer(3);
+      container.addComponent(new WeaponComponent('Laser', 2, 2));
+      container.addComponent(new EngineComponent('Thrusters', 1, 1));
+      expect(container.totalSize).toBe(3);
+      expect(container.remainingCapacity).toBe(0);
+    });
+
+    it('throws when adding a second BridgeComponent', () => {
+      const container = makeContainer(10);
+      container.addComponent(new BridgeComponent('Bridge1', 1, 1));
+      expect(() => {
+        container.addComponent(new BridgeComponent('Bridge2', 1, 1));
+      }).toThrow(/second BridgeComponent/);
+    });
+
+    it('allows adding bridge after removing previous bridge', () => {
+      const container = makeContainer(10);
+      container.addComponent(new BridgeComponent('Bridge1', 1, 1));
+      container.removeComponent('Bridge1');
+      container.addComponent(new BridgeComponent('Bridge2', 1, 1));
+      expect(container.components).toHaveLength(1);
+      expect(container.components[0].name).toBe('Bridge2');
+    });
+
+    it('allows multiple weapons', () => {
+      const container = makeContainer(10);
+      container.addComponent(new WeaponComponent('Laser', 2, 1));
+      container.addComponent(new WeaponComponent('Missiles', 2, 1));
+      expect(container.getComponentsByType('weapon')).toHaveLength(2);
+    });
+
+    it('allows multiple engines', () => {
+      const container = makeContainer(10);
+      container.addComponent(new EngineComponent('Main', 2, 2));
+      container.addComponent(new EngineComponent('Aux', 1, 1));
+      expect(container.getComponentsByType('engine')).toHaveLength(2);
+    });
+  });
+
+  describe('removeComponent', () => {
+    it('removes a component by name and returns it', () => {
+      const container = makeContainer(10);
+      const w = new WeaponComponent('Laser', 2, 1);
+      container.addComponent(w);
+      const removed = container.removeComponent('Laser');
+      expect(removed).toBe(w);
+      expect(container.components).toHaveLength(0);
+    });
+
+    it('returns undefined for unknown name', () => {
+      const container = makeContainer(10);
+      expect(container.removeComponent('Nonexistent')).toBeUndefined();
+    });
+
+    it('frees capacity after removal', () => {
+      const container = makeContainer(3);
+      container.addComponent(new WeaponComponent('Laser', 2, 2));
+      expect(container.remainingCapacity).toBe(1);
+      container.removeComponent('Laser');
+      expect(container.remainingCapacity).toBe(3);
+    });
+
+    it('only removes the first matching component', () => {
+      const container = makeContainer(10);
+      container.addComponent(new WeaponComponent('Gun', 1, 1));
+      container.addComponent(new WeaponComponent('Gun', 2, 1));
+      container.removeComponent('Gun');
+      expect(container.components).toHaveLength(1);
+      expect(container.components[0].maxHp).toBe(2);
+    });
+  });
+
+  describe('totalSize and remainingCapacity', () => {
+    it('totalSize is 0 when empty', () => {
+      const container = makeContainer(10);
+      expect(container.totalSize).toBe(0);
+    });
+
+    it('totalSize sums all component sizes', () => {
+      const container = makeContainer(10);
+      container.addComponent(new WeaponComponent('W', 1, 2));
+      container.addComponent(new EngineComponent('E', 1, 3));
+      expect(container.totalSize).toBe(5);
+    });
+
+    it('totalSize includes destroyed components', () => {
+      const container = makeContainer(10);
+      const w = new WeaponComponent('W', 1, 2);
+      container.addComponent(w);
+      w.takeDamage(1); // destroy it
+      expect(w.destroyed).toBe(true);
+      expect(container.totalSize).toBe(2);
+    });
+
+    it('remainingCapacity reflects sizeLimit - totalSize', () => {
+      const container = makeContainer(7);
+      container.addComponent(new WeaponComponent('W', 1, 2));
+      container.addComponent(new EngineComponent('E', 1, 2));
+      expect(container.remainingCapacity).toBe(3);
+    });
+  });
+
+  describe('getComponentsByType and hasComponentType', () => {
+    it('getComponentsByType returns matching components', () => {
+      const container = makeContainer(10);
+      container.addComponent(new WeaponComponent('Laser', 2, 1));
+      container.addComponent(new WeaponComponent('Missiles', 2, 1));
+      container.addComponent(new EngineComponent('Thrusters', 2, 1));
+      const weapons = container.getComponentsByType('weapon');
+      expect(weapons).toHaveLength(2);
+      expect(weapons.every(c => c.type === 'weapon')).toBe(true);
+    });
+
+    it('getComponentsByType returns empty for no matches', () => {
+      const container = makeContainer(10);
+      container.addComponent(new WeaponComponent('Laser', 2, 1));
+      expect(container.getComponentsByType('bridge')).toEqual([]);
+    });
+
+    it('hasComponentType returns true when type exists', () => {
+      const container = makeContainer(10);
+      container.addComponent(new BridgeComponent('Bridge', 1, 1));
+      expect(container.hasComponentType('bridge')).toBe(true);
+    });
+
+    it('hasComponentType returns false when type does not exist', () => {
+      const container = makeContainer(10);
+      expect(container.hasComponentType('bridge')).toBe(false);
+    });
+
+    it('includes destroyed components in type queries', () => {
+      const container = makeContainer(10);
+      const w = new WeaponComponent('Laser', 1, 1);
+      container.addComponent(w);
+      w.takeDamage(1);
+      expect(w.destroyed).toBe(true);
+      expect(container.getComponentsByType('weapon')).toHaveLength(1);
+      expect(container.hasComponentType('weapon')).toBe(true);
+    });
+  });
+
+  describe('getComponent (backward compat)', () => {
+    it('returns component by name', () => {
+      const container = makeContainer(10);
+      const b = new BridgeComponent('Bridge', 1, 1);
+      container.addComponent(b);
+      expect(container.getComponent('Bridge')).toBe(b);
+    });
+
+    it('returns undefined for unknown name', () => {
+      const container = makeContainer(10);
+      expect(container.getComponent('Nope')).toBeUndefined();
+    });
+  });
+
+  describe('getActiveComponents', () => {
+    it('returns only non-destroyed components', () => {
+      const container = makeContainer(10);
+      const w = new WeaponComponent('Laser', 1, 1);
+      const e = new EngineComponent('Thrusters', 2, 1);
+      container.addComponent(w);
+      container.addComponent(e);
+      w.takeDamage(1); // destroy
+      const active = container.getActiveComponents();
+      expect(active).toHaveLength(1);
+      expect(active[0]).toBe(e);
+    });
+
+    it('returns all when none destroyed', () => {
+      const container = makeContainer(10);
+      container.addComponent(new WeaponComponent('W', 2, 1));
+      container.addComponent(new EngineComponent('E', 2, 1));
+      expect(container.getActiveComponents()).toHaveLength(2);
+    });
+
+    it('returns empty when all destroyed', () => {
+      const container = makeContainer(10);
+      const w = new WeaponComponent('W', 1, 1);
+      container.addComponent(w);
+      w.takeDamage(1);
+      expect(container.getActiveComponents()).toHaveLength(0);
+    });
+  });
+
+  describe('isDestroyed', () => {
+    it('is false when components have HP', () => {
+      const container = makeContainer(10);
+      container.addComponent(new WeaponComponent('W', 2, 1));
+      expect(container.isDestroyed).toBe(false);
+    });
+
+    it('is true when all components destroyed', () => {
+      const container = makeContainer(10);
+      const w = new WeaponComponent('W', 1, 1);
+      const e = new EngineComponent('E', 1, 1);
+      container.addComponent(w);
+      container.addComponent(e);
+      w.takeDamage(1);
+      e.takeDamage(1);
+      expect(container.isDestroyed).toBe(true);
+    });
+
+    it('is false when empty (no components)', () => {
+      const container = makeContainer(10);
+      expect(container.isDestroyed).toBe(false);
+    });
+  });
+
+  describe('components getter', () => {
+    it('returns the internal _components array', () => {
+      const container = makeContainer(10);
+      const w = new WeaponComponent('W', 1, 1);
+      container.addComponent(w);
+      expect(container.components).toEqual([w]);
+      expect(container.components).toBe(container._components);
+    });
+
+    it('destroyed components remain in the array', () => {
+      const container = makeContainer(10);
+      const w = new WeaponComponent('W', 1, 1);
+      container.addComponent(w);
+      w.takeDamage(1);
+      expect(w.destroyed).toBe(true);
+      expect(container.components).toHaveLength(1);
+      expect(container.components[0]).toBe(w);
+    });
   });
 });
 

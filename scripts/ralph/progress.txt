@@ -1,0 +1,40 @@
+# Ralph Progress Log
+Started: Sun Feb 15 16:23:36 CST 2026
+
+## Codebase Patterns
+- ShipComponent constructor is (name, maxHp, size=1) — size defaults to 1 for backward compat
+- Typed subclasses (WeaponComponent, EngineComponent, BridgeComponent) use a `type` getter ('weapon', 'engine', 'bridge')
+- Size-based stat scaling: size >= 2 gets better stats (accuracy 3 vs 4, speedBonus 1 vs 0, evasionBonus 1 vs 0)
+- All existing tests use `new ShipComponent('Name', hp)` without size — backward compat is critical
+- combat.test.js uses `makeRng(rolls)` and `makeEngine(rolls, opts)` helpers for deterministic testing
+- ComponentContainer is a mixin: `ComponentContainer(Base)` returns a class extending Base with component management
+- ComponentContainer enforces sizeLimit budget and bridge uniqueness (max 1 BridgeComponent)
+- Components are never auto-removed on destruction — they stay in _components with destroyed === true
+- ComponentContainer provides: addComponent, removeComponent, totalSize, remainingCapacity, getComponentsByType, hasComponentType, getComponent, getActiveComponents, isDestroyed, components getter
+
+---
+
+## 2026-02-15 - US-001
+- Implemented WeaponComponent, EngineComponent, BridgeComponent extending ShipComponent
+- Added `size` parameter (default 1) to ShipComponent constructor
+- Each subclass has a `type` getter and type-specific stats that scale with size
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
+- **Learnings for future iterations:**
+  - Size defaults to 1 so all existing `new ShipComponent('Name', hp)` calls still work
+  - Stats scale at size >= 2 threshold (not linearly)
+  - 20 new tests added; all 497 total tests pass
+---
+
+## 2026-02-15 - US-002
+- Implemented ComponentContainer mixin in src/lib/game/combat.js
+- Mixin provides: sizeLimit, addComponent (with size budget + bridge uniqueness enforcement), removeComponent, totalSize, remainingCapacity, getComponentsByType, hasComponentType, getComponent, getActiveComponents, isDestroyed, components getter
+- Added 35 new tests covering: add/remove, capacity enforcement, bridge uniqueness, type queries, destroyed component persistence, backward compat methods
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
+- **Learnings for future iterations:**
+  - ComponentContainer uses standard JS mixin pattern: `const ComponentContainer = (Base) => class extends Base { ... }`
+  - The mixin's constructor sets sizeLimit to Infinity by default — callers must set it explicitly or pass it
+  - Bridge uniqueness check uses `component.type === 'bridge'` — relies on typed subclass `type` getter
+  - ShipComponent base class has no `type` getter, so plain ShipComponents won't trigger bridge uniqueness check
+  - The `components` getter returns `_components` directly, preserving array identity for .map() in Svelte components
+  - 35 new tests added; all 532 total tests pass
+---

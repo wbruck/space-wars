@@ -96,6 +96,109 @@ export class BridgeComponent extends ShipComponent {
 }
 
 /**
+ * Mixin that provides shared component management logic.
+ * Usage: class Ship extends ComponentContainer(Object) { ... }
+ *
+ * @param {Function} Base - The base class to extend
+ * @returns {Function} A class extending Base with component management
+ */
+export const ComponentContainer = (Base) => class extends Base {
+  /**
+   * @param  {...any} args - Arguments passed to Base constructor.
+   *   If the last arg is an object with sizeLimit, it is consumed as options.
+   */
+  constructor(...args) {
+    super(...args);
+    /** @type {ShipComponent[]} */
+    this._components = [];
+    /** @type {number} */
+    this.sizeLimit = Infinity;
+  }
+
+  /**
+   * Add a component, enforcing size budget and bridge uniqueness.
+   * @param {ShipComponent} component
+   * @throws {Error} If adding would exceed sizeLimit
+   * @throws {Error} If adding a second BridgeComponent
+   */
+  addComponent(component) {
+    if (this.totalSize + component.size > this.sizeLimit) {
+      throw new Error(`Cannot add component "${component.name}": would exceed sizeLimit (${this.totalSize + component.size} > ${this.sizeLimit})`);
+    }
+    if (component.type === 'bridge' && this.hasComponentType('bridge')) {
+      throw new Error('Cannot add a second BridgeComponent — only one bridge allowed');
+    }
+    this._components.push(component);
+  }
+
+  /**
+   * Explicitly remove a component by name. Never triggered by damage/destruction.
+   * @param {string} name
+   * @returns {ShipComponent|undefined} The removed component, or undefined
+   */
+  removeComponent(name) {
+    const idx = this._components.findIndex(c => c.name === name);
+    if (idx === -1) return undefined;
+    return this._components.splice(idx, 1)[0];
+  }
+
+  /** @returns {number} Sum of all component sizes (including destroyed) */
+  get totalSize() {
+    return this._components.reduce((sum, c) => sum + c.size, 0);
+  }
+
+  /** @returns {number} sizeLimit - totalSize */
+  get remainingCapacity() {
+    return this.sizeLimit - this.totalSize;
+  }
+
+  /**
+   * @param {string} type - Component type string (e.g. 'weapon', 'engine', 'bridge')
+   * @returns {ShipComponent[]} Components matching the given type
+   */
+  getComponentsByType(type) {
+    return this._components.filter(c => c.type === type);
+  }
+
+  /**
+   * @param {string} type
+   * @returns {boolean}
+   */
+  hasComponentType(type) {
+    return this._components.some(c => c.type === type);
+  }
+
+  /**
+   * Backward-compatible name-based lookup.
+   * @param {string} name
+   * @returns {ShipComponent|undefined}
+   */
+  getComponent(name) {
+    return this._components.find(c => c.name === name);
+  }
+
+  /**
+   * @returns {ShipComponent[]} Components with currentHp > 0
+   */
+  getActiveComponents() {
+    return this._components.filter(c => c.currentHp > 0);
+  }
+
+  /** @returns {boolean} True when all components are destroyed */
+  get isDestroyed() {
+    return this._components.length > 0 && this._components.every(c => c.destroyed);
+  }
+
+  /**
+   * Backward-compatible components getter — returns the internal array.
+   * @returns {ShipComponent[]}
+   */
+  get components() {
+    return this._components;
+  }
+};
+
+/**
  * Base ship with named components.
  */
 export class Ship {
