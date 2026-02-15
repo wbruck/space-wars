@@ -67,7 +67,7 @@
         "Commit with message starting with US-003"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

@@ -11,6 +11,9 @@ Started: Sun Feb 15 16:23:36 CST 2026
 - ComponentContainer enforces sizeLimit budget and bridge uniqueness (max 1 BridgeComponent)
 - Components are never auto-removed on destruction — they stay in _components with destroyed === true
 - ComponentContainer provides: addComponent, removeComponent, totalSize, remainingCapacity, getComponentsByType, hasComponentType, getComponent, getActiveComponents, isDestroyed, components getter
+- Ship extends ComponentContainer(Object) — all ships get mixin methods (addComponent, removeComponent, type queries, etc.)
+- Ship constructor supports two forms: `new Ship('name', [comps])` (legacy) and `new Ship('name', { sizeLimit, components })` (new)
+- Legacy array form defaults sizeLimit to Infinity for backward compat — existing tests need zero changes
 
 ---
 
@@ -37,4 +40,19 @@ Started: Sun Feb 15 16:23:36 CST 2026
   - ShipComponent base class has no `type` getter, so plain ShipComponents won't trigger bridge uniqueness check
   - The `components` getter returns `_components` directly, preserving array identity for .map() in Svelte components
   - 35 new tests added; all 532 total tests pass
+---
+
+## 2026-02-15 - US-003
+- Refactored Ship base class to use ComponentContainer mixin: `class Ship extends ComponentContainer(Object)`
+- Ship constructor supports two signatures: legacy `(name, [comps])` and new `(name, { sizeLimit, components })`
+- Legacy array form detected via `Array.isArray(opts)`, defaults sizeLimit to Infinity
+- All 179 existing combat tests pass with zero modifications — full backward compat achieved
+- Added 6 new tests: mixin method availability, options form constructor, sizeLimit enforcement, legacy sizeLimit default, destroyed component persistence, isDestroyed read-only behavior
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
+- **Learnings for future iterations:**
+  - Ship uses `ComponentContainer(Object)` as base — `Object` is the neutral base class for the mixin
+  - The backward compat detection (`Array.isArray(opts)`) is critical since PlayerShip/EnemyShip constructors pass arrays
+  - All mixin methods (addComponent, getComponentsByType, etc.) are now available on all Ship instances
+  - `instanceof Ship` still works correctly for PlayerShip and EnemyShip
+  - 6 new tests added; all 538 total tests pass
 ---

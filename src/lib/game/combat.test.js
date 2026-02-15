@@ -552,6 +552,66 @@ describe('Ship', () => {
     const ship = makeShip();
     expect(ship.getComponent('Shields')).toBeUndefined();
   });
+
+  // US-003: Ship uses ComponentContainer mixin
+  it('uses ComponentContainer mixin (has addComponent)', () => {
+    const ship = makeShip();
+    expect(typeof ship.addComponent).toBe('function');
+    expect(typeof ship.removeComponent).toBe('function');
+    expect(typeof ship.getComponentsByType).toBe('function');
+    expect(typeof ship.hasComponentType).toBe('function');
+  });
+
+  it('accepts options object with sizeLimit and components', () => {
+    const ship = new Ship('Custom', {
+      sizeLimit: 5,
+      components: [
+        new WeaponComponent('Laser', 2, 2),
+        new EngineComponent('Thrusters', 1, 1),
+      ],
+    });
+    expect(ship.name).toBe('Custom');
+    expect(ship.sizeLimit).toBe(5);
+    expect(ship.components).toHaveLength(2);
+    expect(ship.totalSize).toBe(3);
+    expect(ship.remainingCapacity).toBe(2);
+  });
+
+  it('options form enforces sizeLimit', () => {
+    expect(() => {
+      new Ship('Overloaded', {
+        sizeLimit: 2,
+        components: [
+          new WeaponComponent('Laser', 2, 2),
+          new EngineComponent('Thrusters', 1, 1),
+        ],
+      });
+    }).toThrow(/exceed sizeLimit/);
+  });
+
+  it('legacy array form defaults sizeLimit to Infinity', () => {
+    const ship = makeShip();
+    expect(ship.sizeLimit).toBe(Infinity);
+  });
+
+  it('destroyed components remain in array (never auto-removed)', () => {
+    const ship = makeShip();
+    ship.getComponent('Engines').takeDamage(1);
+    expect(ship.getComponent('Engines').destroyed).toBe(true);
+    expect(ship.components).toHaveLength(3);
+  });
+
+  it('isDestroyed is read-only status — does not trigger removal', () => {
+    const ship = makeShip();
+    for (const c of ship.components) {
+      c.takeDamage(c.maxHp);
+    }
+    expect(ship.isDestroyed).toBe(true);
+    // All components still present
+    expect(ship.components).toHaveLength(3);
+    // Components iterable for future salvage
+    expect(ship.components.map(c => c.name)).toEqual(['Weapons', 'Engines', 'Bridge']);
+  });
 });
 
 describe('PlayerShip', () => {

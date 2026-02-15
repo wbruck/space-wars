@@ -199,36 +199,35 @@ export const ComponentContainer = (Base) => class extends Base {
 };
 
 /**
- * Base ship with named components.
+ * Base ship with named components, using ComponentContainer mixin.
+ *
+ * Supports two constructor signatures for backward compatibility:
+ *   new Ship('name', [comp1, comp2])          — legacy array form
+ *   new Ship('name', { sizeLimit, components }) — new options form
  */
-export class Ship {
+export class Ship extends ComponentContainer(Object) {
   /**
    * @param {string} name - Ship name
-   * @param {ShipComponent[]} components - Array of ship components
+   * @param {ShipComponent[]|{sizeLimit?: number, components?: ShipComponent[]}} [opts] - Components array or options object
    */
-  constructor(name, components) {
+  constructor(name, opts) {
+    super();
     this.name = name;
-    this.components = components;
-  }
 
-  /** @returns {boolean} True when all components are destroyed */
-  get isDestroyed() {
-    return this.components.every(c => c.destroyed);
-  }
+    // Backward compat: if second arg is an array, treat as { components: arr, sizeLimit: Infinity }
+    let sizeLimit = Infinity;
+    let components = [];
+    if (Array.isArray(opts)) {
+      components = opts;
+    } else if (opts && typeof opts === 'object') {
+      sizeLimit = opts.sizeLimit ?? Infinity;
+      components = opts.components || [];
+    }
 
-  /**
-   * @returns {ShipComponent[]} Components with currentHp > 0
-   */
-  getActiveComponents() {
-    return this.components.filter(c => c.currentHp > 0);
-  }
-
-  /**
-   * @param {string} name - Component name
-   * @returns {ShipComponent|undefined}
-   */
-  getComponent(name) {
-    return this.components.find(c => c.name === name);
+    this.sizeLimit = sizeLimit;
+    for (const c of components) {
+      this.addComponent(c);
+    }
   }
 }
 
