@@ -6,6 +6,12 @@ Started: Fri Feb 13 21:26:55 CST 2026
 - Galaxy state is a plain 2D array (galaxy[row][col]) — serializable to JSON, no Maps/Sets
 - Mock localStorage in tests with `vi.stubGlobal('localStorage', {...})`
 - Size mappings: Small=5x4, Medium=7x6, Large=9x8; galaxy difficulty range 7-20
+- gamePhase initial value is 'galaxy' (not 'setup') — SetupScreen has been removed
+- Galaxy phases: 'galaxy' (selection screen), 'galaxyComplete' (summary screen)
+- GalaxySelection and GalaxyComplete components live in src/lib/components/
+- GalaxySelection uses props-only pattern (no store subscriptions); GalaxyComplete uses stores
+- App.svelte onMount loads galaxy from localStorage or generates new one
+- handleContinue in App.svelte handles board completion: updates galaxy, saves, checks completion
 - Combat classes live in src/lib/game/combat.js, tests in src/lib/game/combat.test.js
 - Combat state management (startCombat, resolveCombat, combatState store) lives in gameState.js, tests in gameState.test.js
 - startCombat creates fresh PlayerShip each combat; reuses EnemyShip from enemy.combatShip if present (damage persists between encounters)
