@@ -11,11 +11,13 @@ export class ShipComponent {
   /**
    * @param {string} name - Component name (e.g. 'Weapons', 'Engines', 'Bridge')
    * @param {number} maxHp - Maximum hit points
+   * @param {number} [size=1] - Size/weight cost (integer >= 1)
    */
-  constructor(name, maxHp) {
+  constructor(name, maxHp, size = 1) {
     this.name = name;
     this.maxHp = maxHp;
     this.currentHp = maxHp;
+    this.size = size;
   }
 
   /** @returns {boolean} True when currentHp <= 0 */
@@ -33,6 +35,64 @@ export class ShipComponent {
     this.currentHp = Math.max(0, this.currentHp - amount);
     return { destroyed: wasBefore && this.currentHp <= 0 };
   }
+}
+
+/**
+ * A weapon component with damage and accuracy stats.
+ */
+export class WeaponComponent extends ShipComponent {
+  /**
+   * @param {string} name
+   * @param {number} maxHp
+   * @param {number} [size=1]
+   */
+  constructor(name, maxHp, size = 1) {
+    super(name, maxHp, size);
+    // Size 2: damage 1, accuracy 3. Size 1 (default): damage 1, accuracy 4.
+    this.damage = 1;
+    this.accuracy = size >= 2 ? 3 : 4;
+  }
+
+  /** @returns {'weapon'} */
+  get type() { return 'weapon'; }
+}
+
+/**
+ * An engine component with speed bonus.
+ */
+export class EngineComponent extends ShipComponent {
+  /**
+   * @param {string} name
+   * @param {number} maxHp
+   * @param {number} [size=1]
+   */
+  constructor(name, maxHp, size = 1) {
+    super(name, maxHp, size);
+    // Size 2: speedBonus 1. Size 1 (default): speedBonus 0.
+    this.speedBonus = size >= 2 ? 1 : 0;
+  }
+
+  /** @returns {'engine'} */
+  get type() { return 'engine'; }
+}
+
+/**
+ * A bridge component with evasion bonus.
+ */
+export class BridgeComponent extends ShipComponent {
+  /**
+   * @param {string} name
+   * @param {number} maxHp
+   * @param {number} [size=1]
+   */
+  constructor(name, maxHp, size = 1) {
+    super(name, maxHp, size);
+    // Size 2: evasionBonus 1. Size 1 (default): evasionBonus 0.
+    this.evasionBonus = size >= 2 ? 1 : 0;
+  }
+
+  /** @returns {'bridge'} */
+  get type() { return 'bridge'; }
 }
 
 /**

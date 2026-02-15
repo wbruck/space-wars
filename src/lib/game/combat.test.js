@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ShipComponent, Ship, PlayerShip, EnemyShip, CombatEngine, getApproachAdvantage, getApproachPosition } from './combat.js';
+import { ShipComponent, WeaponComponent, EngineComponent, BridgeComponent, Ship, PlayerShip, EnemyShip, CombatEngine, getApproachAdvantage, getApproachPosition } from './combat.js';
 
 describe('ShipComponent', () => {
   it('constructs with correct properties', () => {
@@ -64,6 +64,137 @@ describe('ShipComponent', () => {
     comp.takeDamage(1);
     expect(comp.currentHp).toBe(0);
     expect(comp.destroyed).toBe(true);
+  });
+});
+
+describe('ShipComponent size property', () => {
+  it('defaults size to 1', () => {
+    const comp = new ShipComponent('Test', 2);
+    expect(comp.size).toBe(1);
+  });
+
+  it('accepts custom size', () => {
+    const comp = new ShipComponent('Test', 2, 3);
+    expect(comp.size).toBe(3);
+  });
+});
+
+describe('WeaponComponent', () => {
+  it('extends ShipComponent', () => {
+    const w = new WeaponComponent('Laser', 2);
+    expect(w).toBeInstanceOf(ShipComponent);
+  });
+
+  it('has type getter returning "weapon"', () => {
+    const w = new WeaponComponent('Laser', 2);
+    expect(w.type).toBe('weapon');
+  });
+
+  it('size 1 defaults: damage 1, accuracy 4', () => {
+    const w = new WeaponComponent('Laser', 1, 1);
+    expect(w.damage).toBe(1);
+    expect(w.accuracy).toBe(4);
+    expect(w.maxHp).toBe(1);
+    expect(w.size).toBe(1);
+  });
+
+  it('size 2 defaults: damage 1, accuracy 3', () => {
+    const w = new WeaponComponent('Laser', 2, 2);
+    expect(w.damage).toBe(1);
+    expect(w.accuracy).toBe(3);
+    expect(w.maxHp).toBe(2);
+    expect(w.size).toBe(2);
+  });
+
+  it('defaults size to 1 when omitted', () => {
+    const w = new WeaponComponent('Laser', 1);
+    expect(w.size).toBe(1);
+    expect(w.accuracy).toBe(4);
+  });
+
+  it('inherits takeDamage and destroyed', () => {
+    const w = new WeaponComponent('Laser', 1);
+    expect(w.destroyed).toBe(false);
+    w.takeDamage(1);
+    expect(w.destroyed).toBe(true);
+  });
+});
+
+describe('EngineComponent', () => {
+  it('extends ShipComponent', () => {
+    const e = new EngineComponent('Thrusters', 2);
+    expect(e).toBeInstanceOf(ShipComponent);
+  });
+
+  it('has type getter returning "engine"', () => {
+    const e = new EngineComponent('Thrusters', 2);
+    expect(e.type).toBe('engine');
+  });
+
+  it('size 1 defaults: speedBonus 0', () => {
+    const e = new EngineComponent('Thrusters', 1, 1);
+    expect(e.speedBonus).toBe(0);
+    expect(e.maxHp).toBe(1);
+    expect(e.size).toBe(1);
+  });
+
+  it('size 2 defaults: speedBonus 1', () => {
+    const e = new EngineComponent('Thrusters', 2, 2);
+    expect(e.speedBonus).toBe(1);
+    expect(e.maxHp).toBe(2);
+    expect(e.size).toBe(2);
+  });
+
+  it('defaults size to 1 when omitted', () => {
+    const e = new EngineComponent('Thrusters', 1);
+    expect(e.size).toBe(1);
+    expect(e.speedBonus).toBe(0);
+  });
+
+  it('inherits takeDamage and destroyed', () => {
+    const e = new EngineComponent('Thrusters', 1);
+    expect(e.destroyed).toBe(false);
+    e.takeDamage(1);
+    expect(e.destroyed).toBe(true);
+  });
+});
+
+describe('BridgeComponent', () => {
+  it('extends ShipComponent', () => {
+    const b = new BridgeComponent('Command', 2);
+    expect(b).toBeInstanceOf(ShipComponent);
+  });
+
+  it('has type getter returning "bridge"', () => {
+    const b = new BridgeComponent('Command', 2);
+    expect(b.type).toBe('bridge');
+  });
+
+  it('size 1 defaults: evasionBonus 0', () => {
+    const b = new BridgeComponent('Command', 1, 1);
+    expect(b.evasionBonus).toBe(0);
+    expect(b.maxHp).toBe(1);
+    expect(b.size).toBe(1);
+  });
+
+  it('size 2 defaults: evasionBonus 1', () => {
+    const b = new BridgeComponent('Command', 3, 2);
+    expect(b.evasionBonus).toBe(1);
+    expect(b.maxHp).toBe(3);
+    expect(b.size).toBe(2);
+  });
+
+  it('defaults size to 1 when omitted', () => {
+    const b = new BridgeComponent('Command', 1);
+    expect(b.size).toBe(1);
+    expect(b.evasionBonus).toBe(0);
+  });
+
+  it('inherits takeDamage and destroyed', () => {
+    const b = new BridgeComponent('Command', 1);
+    expect(b.destroyed).toBe(false);
+    b.takeDamage(1);
+    expect(b.destroyed).toBe(true);
   });
 });
 
