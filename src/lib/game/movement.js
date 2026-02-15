@@ -44,9 +44,10 @@ export function getAvailableDirections(rays, vertexId, obstacles) {
  * @param {Set<string>} [blackholes] - Blackhole vertex IDs (optional)
  * @param {Set<string>} [enemyZones] - Enemy kill zone vertex IDs (optional)
  * @param {Map<string, string>} [enemyZoneMap] - Map of zone vertex ID → enemy ID (optional)
+ * @param {string} [excludeEnemyId] - Enemy ID whose zones should be treated as passable (optional, for stealth dive)
  * @returns {{ path: string[], stoppedByObstacle: boolean, reachedTarget: boolean, hitBlackhole: boolean, hitByEnemy: boolean, engageEnemy: { vertexIndex: number, enemyId: string } | null }}
  */
-export function computePath(rays, direction, steps, obstacles, targetVertex, blackholes, enemyZones, enemyZoneMap) {
+export function computePath(rays, direction, steps, obstacles, targetVertex, blackholes, enemyZones, enemyZoneMap, excludeEnemyId) {
   const ray = rays.find((r) => r.direction === direction);
   if (!ray) return { path: [], stoppedByObstacle: false, reachedTarget: false, hitBlackhole: false, hitByEnemy: false, engageEnemy: null };
 
@@ -75,10 +76,19 @@ export function computePath(rays, direction, steps, obstacles, targetVertex, bla
 
     // Check for enemy kill zone (include vertex, then stop)
     if (enemyZones?.has(vid)) {
+      // Skip zones belonging to excluded enemy (stealth dive bypass)
+      const zoneInfo = enemyZoneMap?.get(vid);
+      if (excludeEnemyId && zoneInfo && zoneInfo.enemyId === excludeEnemyId) {
+        path.push(vid);
+        if (vid === targetVertex) {
+          reachedTarget = true;
+          break;
+        }
+        continue;
+      }
       path.push(vid);
       // If enemyZoneMap is provided, set engageEnemy instead of hitByEnemy
-      if (enemyZoneMap && enemyZoneMap.has(vid)) {
-        const zoneInfo = enemyZoneMap.get(vid);
+      if (enemyZoneMap && zoneInfo) {
         engageEnemy = { vertexIndex: path.length - 1, enemyId: zoneInfo.enemyId, zoneType: zoneInfo.zoneType };
       } else {
         hitByEnemy = true;

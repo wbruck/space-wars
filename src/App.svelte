@@ -6,6 +6,7 @@
   import CombatScreen from './lib/components/CombatScreen.svelte';
   import GalaxySelection from './lib/components/GalaxySelection.svelte';
   import GalaxyComplete from './lib/components/GalaxyComplete.svelte';
+  import EngagementModal from './lib/components/EngagementModal.svelte';
   import {
     board, playerPos, gamePhase, visited,
     selectedDirection, previewPath, animatingPath, animationStep,
@@ -146,6 +147,10 @@
     <Dice />
 
     <HUD />
+
+    {#if phase === 'engagementChoice'}
+      <EngagementModal />
+    {/if}
   {/if}
 </main>
 

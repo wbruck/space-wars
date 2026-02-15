@@ -18,7 +18,7 @@
         "Commit with message starting with 'US-050'"
       ],
       "priority": 1,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -37,7 +37,7 @@
         "Commit with message starting with 'US-051'"
       ],
       "priority": 2,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -56,7 +56,7 @@
         "Commit with message starting with 'US-052'"
       ],
       "priority": 3,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -79,7 +79,7 @@
         "Commit with message starting with 'US-053'"
       ],
       "priority": 4,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -100,7 +100,7 @@
         "Commit with message starting with 'US-054'"
       ],
       "priority": 5,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -121,7 +121,7 @@
         "Commit with message starting with 'US-055'"
       ],
       "priority": 6,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -143,7 +143,7 @@
         "Commit with message starting with 'US-056'"
       ],
       "priority": 7,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -160,7 +160,7 @@
         "Commit with message starting with 'US-057'"
       ],
       "priority": 8,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
@@ -179,7 +179,7 @@
         "Commit with message starting with 'US-058'"
       ],
       "priority": 9,
-      "passes": true,
+      "passes": false,
       "notes": ""
     }
   ]

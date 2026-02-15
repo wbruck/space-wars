@@ -43,9 +43,12 @@
 
   let approachLabel = $derived.by(() => {
     if (!advantage) return '';
-    if (advantage.rollBonus > 0) return 'Rear';
-    if (advantage.firstAttacker === 'enemy') return 'Vision';
-    return 'Proximity';
+    switch (advantage.approachType) {
+      case 'rear_ambush': return 'Rear Ambush';
+      case 'vision': return 'Vision';
+      case 'simple': return 'Simple';
+      default: return '';
+    }
   });
 
   let hasRollBonus = $derived.by(() => {
@@ -178,7 +181,7 @@
 
   <div class="combat-header">
     <div class="turn-info">Turn {currentTurn}</div>
-    <div class="approach-badge" class:rear={approachLabel === 'Rear'} class:vision={approachLabel === 'Vision'} class:proximity={approachLabel === 'Proximity'}>
+    <div class="approach-badge" class:rear_ambush={approachLabel === 'Rear Ambush'} class:vision={approachLabel === 'Vision'} class:simple={approachLabel === 'Simple'}>
       {approachLabel} Approach
     </div>
     <div class="turn-indicator" class:player-turn={isPlayerTurn} class:enemy-turn={!isPlayerTurn}>
@@ -357,9 +360,9 @@
     text-transform: uppercase;
   }
 
-  .approach-badge.rear { background: #e8f5e9; color: #2e7d32; }
+  .approach-badge.rear_ambush { background: #e8f5e9; color: #2e7d32; }
   .approach-badge.vision { background: #fce4ec; color: #c62828; }
-  .approach-badge.proximity { background: #e3f2fd; color: #1565c0; }
+  .approach-badge.simple { background: #e3f2fd; color: #1565c0; }
 
   .turn-indicator {
     font-size: 0.95rem;
@@ -621,9 +624,9 @@
 
   @media (prefers-color-scheme: dark) {
     .turn-info { color: #bbb; }
-    .approach-badge.rear { background: #1b5e20; color: #a5d6a7; }
+    .approach-badge.rear_ambush { background: #1b5e20; color: #a5d6a7; }
     .approach-badge.vision { background: #b71c1c; color: #ef9a9a; }
-    .approach-badge.proximity { background: #0d47a1; color: #90caf9; }
+    .approach-badge.simple { background: #0d47a1; color: #90caf9; }
     .turn-indicator.player-turn { background: #0d47a1; color: #90caf9; }
     .turn-indicator.enemy-turn { background: #b71c1c; color: #ef9a9a; }
     .player-panel { border-color: #1565c0; background: #0d1b2a; }

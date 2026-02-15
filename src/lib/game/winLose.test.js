@@ -261,8 +261,8 @@ describe('Lose condition: player trapped', () => {
       }
     }
 
-    // Update board obstacles
-    const newBoard = { ...boardData, obstacles: augmentedObstacles };
+    // Update board obstacles; clear enemy zones so engagement doesn't interfere
+    const newBoard = { ...boardData, obstacles: augmentedObstacles, enemyZones: new Set(), enemyZoneMap: new Map() };
     board.set(newBoard);
 
     movementPool.set(10);
@@ -639,7 +639,8 @@ describe('loseReason store', () => {
       }
     }
 
-    const newBoard = { ...boardData, obstacles: augmentedObstacles };
+    // Clear enemy zones so engagement doesn't interfere with trap detection
+    const newBoard = { ...boardData, obstacles: augmentedObstacles, enemyZones: new Set(), enemyZoneMap: new Map() };
     board.set(newBoard);
 
     movementPool.set(10);

@@ -205,6 +205,34 @@ describe('Enemy', () => {
     const result = enemy.getAffectedVertices(new Map(), mockRays);
     expect(result).toEqual(['A', 'B', 'C', 'D', 'E', 'F', 'G']);
   });
+
+  it('getAffectedVertices returns only own vertex when combatShip has destroyed weapons (disarmed)', () => {
+    const enemy = new Enemy('A', 3, 0, 4);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D', 'E'] },
+      ]],
+    ]);
+    // Without combatShip, should return full ray
+    expect(enemy.getAffectedVertices(new Map(), mockRays)).toEqual(['A', 'B', 'C', 'D', 'E']);
+
+    // Simulate a disarmed combatShip (weapons destroyed)
+    enemy.combatShip = { canAttack: false };
+    const result = enemy.getAffectedVertices(new Map(), mockRays);
+    expect(result).toEqual(['A']);
+  });
+
+  it('getAffectedVertices returns full ray when combatShip can still attack', () => {
+    const enemy = new Enemy('A', 3, 0, 3);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D'] },
+      ]],
+    ]);
+    enemy.combatShip = { canAttack: true };
+    const result = enemy.getAffectedVertices(new Map(), mockRays);
+    expect(result).toEqual(['A', 'B', 'C', 'D']);
+  });
 });
 
 describe('PowerUp', () => {

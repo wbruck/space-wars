@@ -96,6 +96,12 @@ export class PlayerShip extends Ship {
     const bridge = this.getComponent('Bridge');
     return bridge ? bridge.destroyed : false;
   }
+
+  /** @returns {boolean} True if Engines component is destroyed */
+  get isEngineDestroyed() {
+    const engines = this.getComponent('Engines');
+    return engines ? engines.destroyed : false;
+  }
 }
 
 /**
@@ -135,23 +141,39 @@ export class EnemyShip extends Ship {
 }
 
 /**
+ * Compute the player's approach position (1-6) relative to an enemy.
+ *
+ * Positions clockwise from enemy's front:
+ *   1=Front, 2=Front-right, 3=Back-right, 4=Behind, 5=Back-left, 6=Front-left
+ *
+ * @param {number} playerDirection - Player's movement direction (0-5)
+ * @param {number} enemyFacingDirection - Enemy's facing direction (0-5)
+ * @returns {number} Approach position 1-6
+ */
+export function getApproachPosition(playerDirection, enemyFacingDirection) {
+  return ((playerDirection - enemyFacingDirection + 3 + 6) % 6) + 1;
+}
+
+/**
  * Determine first-attack advantage based on zone type and approach direction.
  * @param {string} zoneType - 'vision' or 'proximity'
  * @param {number} playerDirection - Player's movement direction (0-5)
  * @param {number} enemyFacingDirection - Enemy's facing direction (0-5)
- * @returns {{ firstAttacker: 'player'|'enemy', bonusAttacks: number, rollBonus: number }}
+ * @returns {{ firstAttacker: 'player'|'enemy', bonusAttacks: number, rollBonus: number, approachType: 'vision'|'rear_ambush'|'simple', approachPosition: number }}
  */
 export function getApproachAdvantage(zoneType, playerDirection, enemyFacingDirection) {
+  const approachPosition = getApproachPosition(playerDirection, enemyFacingDirection);
+
   if (zoneType === 'vision') {
     // Entered enemy's line of fire: enemy attacks first
-    return { firstAttacker: 'enemy', bonusAttacks: 0, rollBonus: 0 };
+    return { firstAttacker: 'enemy', bonusAttacks: 0, rollBonus: 0, approachType: 'vision', approachPosition };
   }
   // Proximity engagement: player attacks first
-  // Check if approaching from directly behind the enemy
-  if (playerDirection === enemyFacingDirection) {
-    return { firstAttacker: 'player', bonusAttacks: 0, rollBonus: 1 };
+  // Only position 4 (directly behind) grants rear ambush
+  if (approachPosition === 4) {
+    return { firstAttacker: 'player', bonusAttacks: 0, rollBonus: 1, approachType: 'rear_ambush', approachPosition };
   }
-  return { firstAttacker: 'player', bonusAttacks: 0, rollBonus: 0 };
+  return { firstAttacker: 'player', bonusAttacks: 0, rollBonus: 0, approachType: 'simple', approachPosition };
 }
 
 /**
