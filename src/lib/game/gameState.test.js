@@ -10,6 +10,7 @@ import {
   movesMade,
   loseReason,
   combatState,
+  playerShip,
   selectedDirection,
   previewPath,
   animatingPath,
@@ -382,7 +383,7 @@ describe('resetGame', () => {
     expect(get(playerPos)).toBeNull();
     expect(get(movementPool)).toBe(0);
     expect(get(diceValue)).toBeNull();
-    expect(get(gamePhase)).toBe('galaxy');
+    expect(get(gamePhase)).toBe('setup');
     expect(get(visited).size).toBe(0);
     expect(get(movesMade)).toBe(0);
   });
@@ -656,6 +657,106 @@ describe('combat state management', () => {
 
       // stepsUsed = triggerVertexIndex + 1 = 1
       expect(get(movementPool)).toBe(poolBefore - 1);
+    });
+  });
+
+  describe('resolveCombat — escaped (US-040)', () => {
+    it('returns player to pre-combat position', () => {
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) {
+        const vertexIds = [...boardData.vertices.keys()];
+        const enemyVertex = vertexIds.find(
+          id => id !== boardData.startVertex && id !== boardData.targetVertex && !boardData.obstacles.has(id)
+        );
+        const enemy = new Enemy(enemyVertex, 3, 0);
+        enemies.push(enemy);
+        boardData.obstacles.add(enemyVertex);
+        board.set(boardData);
+      }
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a', 'b'], 1);
+      playerPos.set('some-combat-pos');
+
+      resolveCombat('escaped');
+
+      expect(get(playerPos)).toBe(preCombatPos);
+    });
+
+    it('deducts steps used from movement pool', () => {
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) {
+        const vertexIds = [...boardData.vertices.keys()];
+        const enemyVertex = vertexIds.find(
+          id => id !== boardData.startVertex && id !== boardData.targetVertex && !boardData.obstacles.has(id)
+        );
+        const enemy = new Enemy(enemyVertex, 3, 0);
+        enemies.push(enemy);
+        boardData.obstacles.add(enemyVertex);
+        board.set(boardData);
+      }
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+      const poolBefore = get(movementPool);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a', 'b', 'c'], 2);
+
+      resolveCombat('escaped');
+
+      // stepsUsed = triggerVertexIndex + 1 = 3
+      expect(get(movementPool)).toBe(poolBefore - 3);
+    });
+
+    it('returns to rolling phase after escape', () => {
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) {
+        const vertexIds = [...boardData.vertices.keys()];
+        const enemyVertex = vertexIds.find(
+          id => id !== boardData.startVertex && id !== boardData.targetVertex && !boardData.obstacles.has(id)
+        );
+        const enemy = new Enemy(enemyVertex, 3, 0);
+        enemies.push(enemy);
+        boardData.obstacles.add(enemyVertex);
+        board.set(boardData);
+      }
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+
+      resolveCombat('escaped');
+
+      expect(get(gamePhase)).toBe('rolling');
+      expect(get(combatState)).toBeNull();
+    });
+
+    it('triggers game over if pool runs out after escape deduction', () => {
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) {
+        const vertexIds = [...boardData.vertices.keys()];
+        const enemyVertex = vertexIds.find(
+          id => id !== boardData.startVertex && id !== boardData.targetVertex && !boardData.obstacles.has(id)
+        );
+        const enemy = new Enemy(enemyVertex, 3, 0);
+        enemies.push(enemy);
+        boardData.obstacles.add(enemyVertex);
+        board.set(boardData);
+      }
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+
+      movementPool.set(1);
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+
+      resolveCombat('escaped');
+
+      expect(get(gamePhase)).toBe('lost');
+      expect(get(loseReason)).toBe('exhausted');
     });
   });
 
@@ -1261,6 +1362,132 @@ describe('combat board integration (US-036)', () => {
       expect(get(gamePhase)).toBe('lost');
       expect(get(loseReason)).toBe('enemy');
       expect(get(combatState)).toBeNull();
+    });
+  });
+
+  describe('player ship health persistence (US-039)', () => {
+    it('initGame creates a fresh PlayerShip with full HP', () => {
+      const ship = get(playerShip);
+      expect(ship).not.toBeNull();
+      expect(ship.name).toBe('Player Ship');
+      expect(ship.getComponent('Weapons').currentHp).toBe(2);
+      expect(ship.getComponent('Engines').currentHp).toBe(2);
+      expect(ship.getComponent('Bridge').currentHp).toBe(2);
+    });
+
+    it('startCombat reuses the persistent PlayerShip instance', () => {
+      const enemy = addEnemyToBoard();
+      const preCombatPos = get(playerPos);
+      const shipBefore = get(playerShip);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+
+      const state = get(combatState);
+      expect(state.engine.playerShip).toBe(shipBefore);
+
+      diceValue.set(2);
+      resolveCombat('playerLose');
+    });
+
+    it('player ship damage persists across multiple combat encounters', () => {
+      const enemy = addEnemyToBoard();
+      const preCombatPos = get(playerPos);
+
+      // First combat — damage player's Weapons (2 HP → 1 HP)
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      const state1 = get(combatState);
+      state1.engine.playerShip.getComponent('Weapons').takeDamage(1);
+      diceValue.set(2);
+      resolveCombat('playerLose');
+
+      // Second combat — player should retain damaged Weapons
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      const state2 = get(combatState);
+      const weapons = state2.engine.playerShip.getComponent('Weapons');
+      expect(weapons.currentHp).toBe(1);
+      expect(weapons.destroyed).toBe(false);
+
+      diceValue.set(2);
+      resolveCombat('playerLose');
+    });
+
+    it('player ship damage accumulates across encounters', () => {
+      const enemy = addEnemyToBoard();
+      const preCombatPos = get(playerPos);
+
+      // First combat — damage Engines (2 HP → 1 HP)
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      get(combatState).engine.playerShip.getComponent('Engines').takeDamage(1);
+      diceValue.set(2);
+      resolveCombat('playerLose');
+
+      // Second combat — damage Engines again (1 HP → 0 HP)
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      get(combatState).engine.playerShip.getComponent('Engines').takeDamage(1);
+      diceValue.set(2);
+      resolveCombat('playerLose');
+
+      // Verify Engines are now destroyed
+      const ship = get(playerShip);
+      expect(ship.getComponent('Engines').currentHp).toBe(0);
+      expect(ship.getComponent('Engines').destroyed).toBe(true);
+    });
+
+    it('initGame resets player ship to full HP after damage', () => {
+      const enemy = addEnemyToBoard();
+      const preCombatPos = get(playerPos);
+
+      // Damage the player ship
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      const state = get(combatState);
+      state.engine.playerShip.getComponent('Weapons').takeDamage(2);
+      state.engine.playerShip.getComponent('Engines').takeDamage(1);
+      diceValue.set(2);
+      resolveCombat('playerLose');
+
+      // Verify damage exists
+      const damagedShip = get(playerShip);
+      expect(damagedShip.getComponent('Weapons').currentHp).toBe(0);
+
+      // Start a new game
+      initGame(5, 4, 99);
+
+      // Player ship should be fresh
+      const freshShip = get(playerShip);
+      expect(freshShip).not.toBe(damagedShip);
+      expect(freshShip.getComponent('Weapons').currentHp).toBe(2);
+      expect(freshShip.getComponent('Engines').currentHp).toBe(2);
+      expect(freshShip.getComponent('Bridge').currentHp).toBe(2);
+    });
+
+    it('resetGame clears the player ship store', () => {
+      // Verify ship exists
+      expect(get(playerShip)).not.toBeNull();
+
+      resetGame();
+
+      expect(get(playerShip)).toBeNull();
+    });
+
+    it('undamaged components retain full HP between encounters', () => {
+      const enemy = addEnemyToBoard();
+      const preCombatPos = get(playerPos);
+
+      // First combat — damage only Weapons
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      get(combatState).engine.playerShip.getComponent('Weapons').takeDamage(1);
+      diceValue.set(2);
+      resolveCombat('playerLose');
+
+      // Second combat — Engines and Bridge should still be at full HP
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      const state = get(combatState);
+      expect(state.engine.playerShip.getComponent('Engines').currentHp).toBe(2);
+      expect(state.engine.playerShip.getComponent('Bridge').currentHp).toBe(2);
+      expect(state.engine.playerShip.getComponent('Weapons').currentHp).toBe(1);
+
+      diceValue.set(2);
+      resolveCombat('playerLose');
     });
   });
 });

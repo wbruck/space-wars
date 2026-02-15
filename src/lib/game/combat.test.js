@@ -181,6 +181,52 @@ describe('PlayerShip', () => {
     expect(ship.getComponent('Weapons').maxHp).toBe(10);
     expect(ship.getComponent('Engines')).toBeUndefined();
   });
+
+  // isBridgeDestroyed getter
+  it('isBridgeDestroyed is false when Bridge is active', () => {
+    const ship = new PlayerShip();
+    expect(ship.isBridgeDestroyed).toBe(false);
+  });
+
+  it('isBridgeDestroyed is true when Bridge is destroyed', () => {
+    const ship = new PlayerShip();
+    ship.getComponent('Bridge').takeDamage(2);
+    expect(ship.isBridgeDestroyed).toBe(true);
+  });
+
+  it('isBridgeDestroyed is false when Bridge is damaged but not destroyed', () => {
+    const ship = new PlayerShip();
+    ship.getComponent('Bridge').takeDamage(1);
+    expect(ship.isBridgeDestroyed).toBe(false);
+  });
+
+  it('isBridgeDestroyed returns false if no Bridge component exists', () => {
+    const ship = new PlayerShip([new ShipComponent('Laser', 2)]);
+    expect(ship.isBridgeDestroyed).toBe(false);
+  });
+
+  // canAttack getter
+  it('canAttack is true when Weapons is active', () => {
+    const ship = new PlayerShip();
+    expect(ship.canAttack).toBe(true);
+  });
+
+  it('canAttack is false when Weapons is destroyed', () => {
+    const ship = new PlayerShip();
+    ship.getComponent('Weapons').takeDamage(2);
+    expect(ship.canAttack).toBe(false);
+  });
+
+  it('canAttack is true when Weapons is damaged but not destroyed', () => {
+    const ship = new PlayerShip();
+    ship.getComponent('Weapons').takeDamage(1);
+    expect(ship.canAttack).toBe(true);
+  });
+
+  it('canAttack returns false if no Weapons component exists', () => {
+    const ship = new PlayerShip([new ShipComponent('Laser', 2)]);
+    expect(ship.canAttack).toBe(false);
+  });
 });
 
 describe('EnemyShip', () => {
@@ -492,6 +538,36 @@ describe('CombatEngine', () => {
       expect(result.roll).toBe(0);
       expect(result.combatOver).toBe(true);
     });
+
+    it('refuses to attack when player weapons are destroyed', () => {
+      const player = new PlayerShip();
+      player.getComponent('Weapons').takeDamage(2); // destroy weapons
+      const engine = new CombatEngine({
+        playerShip: player,
+        enemyShip: new EnemyShip(),
+        rng: makeRng([4]),
+      });
+      const result = engine.executePlayerAttack('Bridge');
+      expect(result.roll).toBe(0);
+      expect(result.isHit).toBe(false);
+      expect(result.destroyed).toBe(false);
+      // Enemy should not be damaged
+      expect(engine.enemyShip.getComponent('Bridge').currentHp).toBe(1);
+    });
+
+    it('does not advance turn or log when player weapons destroyed', () => {
+      const player = new PlayerShip();
+      player.getComponent('Weapons').takeDamage(2);
+      const engine = new CombatEngine({
+        playerShip: player,
+        enemyShip: new EnemyShip(),
+        rng: makeRng([4]),
+      });
+      engine.executePlayerAttack('Bridge');
+      expect(engine.turnLog).toHaveLength(0);
+      expect(engine._playerAttackCount).toBe(0);
+      expect(engine.isPlayerTurn).toBe(true); // still player turn
+    });
   });
 
   describe('executeEnemyAttack', () => {
@@ -615,6 +691,148 @@ describe('CombatEngine', () => {
       const result = engine.executeEnemyAttack();
       expect(result.combatOver).toBe(true);
       expect(result.result).toBe('playerLose');
+    });
+  });
+
+  describe('player bridge destroyed → playerDestroyed', () => {
+    it('ends combat when player Bridge is destroyed', () => {
+      // Player with 1 HP Bridge for easy testing
+      const player = new PlayerShip([
+        new ShipComponent('Weapons', 2),
+        new ShipComponent('Engines', 2),
+        new ShipComponent('Bridge', 1),
+      ]);
+      // Enemy hits Bridge: target index selects Bridge (idx 2 of 3 components), roll 4 (hit)
+      // For idx 2 with 3 components: Math.floor(rng * 3) = 2, need rng >= 2/3
+      // Roll 5 gives rng = (5-0.5)/6 = 0.75, Math.floor(0.75 * 3) = 2 ✓
+      const engine = new CombatEngine({
+        playerShip: player,
+        enemyShip: new EnemyShip(),
+        rng: makeRng([5, 4]), // target idx 2 (Bridge), roll 4 (hit)
+      });
+      engine.setFirstAttacker('enemy');
+
+      const result = engine.executeEnemyAttack();
+      expect(result.targetComponent).toBe('Bridge');
+      expect(result.destroyed).toBe(true);
+      expect(result.combatOver).toBe(true);
+      expect(result.result).toBe('playerDestroyed');
+    });
+
+    it('playerDestroyed from bridge even with other components alive', () => {
+      const player = new PlayerShip([
+        new ShipComponent('Weapons', 2),
+        new ShipComponent('Engines', 2),
+        new ShipComponent('Bridge', 1),
+      ]);
+      const engine = new CombatEngine({
+        playerShip: player,
+        enemyShip: new EnemyShip(),
+        rng: makeRng([5, 4]), // target idx 2 (Bridge), hit
+      });
+      engine.setFirstAttacker('enemy');
+
+      engine.executeEnemyAttack();
+      expect(engine.result).toBe('playerDestroyed');
+      // Weapons and Engines still alive
+      expect(player.getComponent('Weapons').destroyed).toBe(false);
+      expect(player.getComponent('Engines').destroyed).toBe(false);
+    });
+
+    it('enemy bridge check has priority over player bridge check (both destroyed same turn)', () => {
+      // If both bridges are destroyed, enemy bridge is checked first → playerWin
+      const player = new PlayerShip([
+        new ShipComponent('Weapons', 2),
+        new ShipComponent('Engines', 2),
+        new ShipComponent('Bridge', 1),
+      ]);
+      const enemy = new EnemyShip();
+      const engine = new CombatEngine({
+        playerShip: player,
+        enemyShip: enemy,
+        rng: makeRng([4]),
+      });
+
+      // Pre-destroy player bridge
+      player.getComponent('Bridge').takeDamage(1);
+      expect(player.isBridgeDestroyed).toBe(true);
+
+      // Player destroys enemy bridge
+      const result = engine.executePlayerAttack('Bridge');
+      expect(result.destroyed).toBe(true);
+      // Both bridges destroyed, but enemy bridge is checked first → playerWin
+      expect(result.result).toBe('playerWin');
+    });
+
+    it('player bridge destruction takes priority over isDestroyed check', () => {
+      // When bridge is destroyed but ship is not fully destroyed
+      const player = new PlayerShip([
+        new ShipComponent('Weapons', 2),
+        new ShipComponent('Engines', 2),
+        new ShipComponent('Bridge', 1),
+      ]);
+      const engine = new CombatEngine({
+        playerShip: player,
+        enemyShip: new EnemyShip(),
+        rng: makeRng([5, 4]), // target idx 2 (Bridge), hit
+      });
+      engine.setFirstAttacker('enemy');
+
+      engine.executeEnemyAttack(); // Destroys Bridge
+      expect(player.isBridgeDestroyed).toBe(true);
+      expect(player.isDestroyed).toBe(false); // Not all components destroyed
+      expect(engine.result).toBe('playerDestroyed');
+    });
+  });
+
+  describe('escape', () => {
+    it('sets combatOver and result to escaped', () => {
+      const engine = makeEngine([4]);
+      const result = engine.escape();
+      expect(result.combatOver).toBe(true);
+      expect(result.result).toBe('escaped');
+      expect(engine.combatOver).toBe(true);
+      expect(engine.result).toBe('escaped');
+    });
+
+    it('no-ops when combat already over', () => {
+      const engine = makeEngine([4]);
+      // End combat by destroying enemy bridge
+      engine.executePlayerAttack('Bridge');
+      expect(engine.result).toBe('playerWin');
+
+      const result = engine.escape();
+      expect(result.result).toBe('playerWin'); // preserves original result
+    });
+
+    it('can escape on the very first turn', () => {
+      const engine = makeEngine([4]);
+      expect(engine.currentTurn).toBe(1);
+      expect(engine.isPlayerTurn).toBe(true);
+      const result = engine.escape();
+      expect(result.combatOver).toBe(true);
+      expect(result.result).toBe('escaped');
+    });
+
+    it('can escape regardless of component state', () => {
+      const player = new PlayerShip([
+        new ShipComponent('Weapons', 1),
+        new ShipComponent('Engines', 1),
+        new ShipComponent('Bridge', 1),
+      ]);
+      // Destroy Weapons and Engines
+      player.getComponent('Weapons').takeDamage(1);
+      player.getComponent('Engines').takeDamage(1);
+
+      const engine = new CombatEngine({
+        playerShip: player,
+        enemyShip: new EnemyShip(),
+        rng: makeRng([4]),
+      });
+
+      const result = engine.escape();
+      expect(result.combatOver).toBe(true);
+      expect(result.result).toBe('escaped');
     });
   });
 
@@ -745,20 +963,24 @@ describe('CombatEngine', () => {
 
     it('simulates combat where enemy eventually destroys all player components', () => {
       // Player with 1 HP components, enemy goes first, always hits
+      // Enemy targets Engines first (idx 1), then Weapons, then Bridge
+      // so player's Weapons stay alive for their attack turns
       const player = new PlayerShip([
         new ShipComponent('Weapons', 1),
         new ShipComponent('Engines', 1),
         new ShipComponent('Bridge', 1),
       ]);
-      // Sequence: enemy target+roll, player miss, enemy target+roll, player miss, enemy target+roll
-      // Enemy: target index (via rng), then roll 6 (hit)
-      // Player: roll 1 (miss)
+      // For idx 1 of 3: roll 3 → rng=0.4167 → floor(0.4167*3)=1 (Engines)
+      // For idx 0 of 2 remaining [Weapons, Bridge]: roll 1 → rng=0.0833 → floor(0.0833*2)=0 (Weapons)
+      // For idx 0 of 1 remaining [Bridge]: roll 1 → rng=0.0833 → floor(0.0833*1)=0 (Bridge)
       const rngValues = [];
-      // Turn 1: enemy targets idx 0, rolls 6 (hit), player rolls 1 (miss)
-      rngValues.push(1, 6, 1);
-      // Turn 2: enemy targets idx 0 (2 active left), rolls 6 (hit), player rolls 1 (miss)
-      rngValues.push(1, 6, 1);
-      // Turn 3: enemy targets idx 0 (1 active left), rolls 6 (hit) → playerDestroyed
+      // Turn 1: enemy targets idx 1 (Engines), rolls 6 (hit), player rolls 1 (miss)
+      rngValues.push(3, 6, 1);
+      // Turn 2: enemy targets idx 0 (Weapons), rolls 6 (hit) → player weapons destroyed
+      // Player can't attack (weapons destroyed), so no player roll needed
+      // But bridge is still alive so combat continues
+      rngValues.push(1, 6);
+      // Turn 3: enemy targets idx 0 (Bridge), rolls 6 (hit) → playerDestroyed
       rngValues.push(1, 6);
 
       const engine = new CombatEngine({
@@ -768,20 +990,23 @@ describe('CombatEngine', () => {
       });
       engine.setFirstAttacker('enemy');
 
-      // Turn 1
-      engine.executeEnemyAttack(); // hits, destroys one component
+      // Turn 1: enemy destroys Engines
+      engine.executeEnemyAttack();
       expect(engine.combatOver).toBe(false);
-      engine.executePlayerAttack('Bridge'); // miss
-      expect(engine.combatOver).toBe(false);
-
-      // Turn 2
-      engine.executeEnemyAttack(); // hits, destroys another
-      expect(engine.combatOver).toBe(false);
-      engine.executePlayerAttack('Bridge'); // miss
+      engine.executePlayerAttack('Bridge'); // miss (weapons still active)
       expect(engine.combatOver).toBe(false);
 
-      // Turn 3
-      const result = engine.executeEnemyAttack(); // hits, destroys last
+      // Turn 2: enemy destroys Weapons
+      engine.executeEnemyAttack();
+      expect(engine.combatOver).toBe(false);
+      // Player can't attack — weapons destroyed; no-op
+      engine.executePlayerAttack('Bridge');
+      expect(engine.combatOver).toBe(false);
+      // Manually switch to enemy turn since player attack was blocked
+      engine.isPlayerTurn = false;
+
+      // Turn 3: enemy destroys Bridge → playerDestroyed
+      const result = engine.executeEnemyAttack();
       expect(result.combatOver).toBe(true);
       expect(result.result).toBe('playerDestroyed');
     });

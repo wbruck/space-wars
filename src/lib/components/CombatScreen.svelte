@@ -33,6 +33,8 @@
     return enemyComponents.filter(c => c.currentHp > 0);
   });
 
+  let canAttack = $derived.by(() => { tick; return engine?.playerShip?.canAttack ?? true; });
+
   // Check if we have a bonus attack available
   let hasBonusAttack = $derived.by(() => {
     tick;
@@ -76,11 +78,18 @@
   }
 
   function handleTargetClick(componentName) {
-    if (!engine || !isPlayerTurn || rolling || combatOver || combatEnded) return;
+    if (!engine || !isPlayerTurn || rolling || combatOver || combatEnded || !canAttack) return;
     const comp = engine.enemyShip.getComponent(componentName);
     if (!comp || comp.destroyed) return;
 
     animateDiceAndExecute(() => engine.executePlayerAttack(componentName));
+  }
+
+  function handleEscape() {
+    if (!engine || !isPlayerTurn || rolling || combatOver || combatEnded) return;
+    const result = engine.escape();
+    tick++;
+    handleCombatEnd(result.result);
   }
 
   function executeEnemyTurn() {
@@ -111,6 +120,9 @@
         break;
       case 'enemyFled':
         endMessage = 'Enemy Retreat!';
+        break;
+      case 'escaped':
+        endMessage = 'Escaped!';
         break;
       default:
         endMessage = 'Combat Over';
@@ -159,6 +171,7 @@
         class:destroyed={endMessage === 'Destroyed!'}
         class:retreat={endMessage === 'Retreat!'}
         class:enemy-retreat={endMessage === 'Enemy Retreat!'}
+        class:escaped={endMessage === 'Escaped!'}
       >{endMessage}</div>
     </div>
   {/if}
@@ -212,22 +225,6 @@
             {/each}
           </svg>
         </div>
-        {#if showResult && lastResult}
-          <div class="roll-result" class:hit={lastResult.isHit} class:miss={!lastResult.isHit}>
-            {#if lastResult.roll === 0}
-              Auto-Miss!
-            {:else if lastResult.isHit}
-              Hit!{#if hasRollBonus} (+1){/if}{#if lastResult.destroyed} Destroyed!{/if}
-            {:else}
-              Miss!{#if hasRollBonus} (+1){/if}
-            {/if}
-          </div>
-          {#if showResult && lastResult.targetComponent}
-            <div class="target-label">
-              {lastResult.isHit ? 'Hit' : 'Targeted'}: {lastResult.targetComponent}
-            </div>
-          {/if}
-        {/if}
       {:else}
         <div class="combat-die empty">
           <span class="die-prompt">Choose target</span>
@@ -262,12 +259,45 @@
       <button
         class="target-btn"
         class:destroyed={comp.destroyed}
-        disabled={comp.destroyed || !isPlayerTurn || rolling || combatOver || combatEnded}
+        disabled={comp.destroyed || !isPlayerTurn || rolling || combatOver || combatEnded || !canAttack}
         onclick={() => handleTargetClick(comp.name)}
       >
         Target {comp.name}
       </button>
     {/each}
+  </div>
+
+  <!-- Escape button -->
+  <div class="escape-row">
+    <button
+      class="escape-btn"
+      disabled={!isPlayerTurn || rolling || combatOver || combatEnded}
+      onclick={handleEscape}
+    >
+      Escape
+    </button>
+  </div>
+
+  <!-- Attack outcome text (fixed-height to prevent layout shift) -->
+  <div class="outcome-area">
+    {#if !canAttack && isPlayerTurn && !combatOver && !combatEnded && !showResult}
+      <div class="weapons-offline">Weapons destroyed – Escape to retreat!</div>
+    {:else if showResult && lastResult}
+      <div class="roll-result" class:hit={lastResult.isHit} class:miss={!lastResult.isHit}>
+        {#if lastResult.roll === 0}
+          Auto-Miss!
+        {:else if lastResult.isHit}
+          Hit!{#if hasRollBonus} (+1){/if}{#if lastResult.destroyed} Destroyed!{/if}
+        {:else}
+          Miss!{#if hasRollBonus} (+1){/if}
+        {/if}
+      </div>
+      {#if lastResult.targetComponent}
+        <div class="target-label">
+          {lastResult.isHit ? 'Hit' : 'Targeted'}: {lastResult.targetComponent}
+        </div>
+      {/if}
+    {/if}
   </div>
 </div>
 
@@ -302,6 +332,7 @@
   .end-message.destroyed { color: #f44336; }
   .end-message.retreat { color: #ff9800; }
   .end-message.enemy-retreat { color: #ff9800; }
+  .end-message.escaped { color: #f9a825; }
 
   .combat-header {
     display: flex;
@@ -495,6 +526,23 @@
     flex-wrap: wrap;
   }
 
+  .outcome-area {
+    min-height: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    margin-top: 0.5rem;
+  }
+
+  .weapons-offline {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #f57f17;
+    text-align: center;
+  }
+
   .target-btn {
     padding: 0.6rem 1rem;
     min-width: 44px;
@@ -532,6 +580,45 @@
     text-decoration: line-through;
   }
 
+  .escape-row {
+    display: flex;
+    justify-content: center;
+    margin-top: 0.5rem;
+  }
+
+  .escape-btn {
+    padding: 0.6rem 1.5rem;
+    min-width: 44px;
+    min-height: 44px;
+    border: 2px solid #f9a825;
+    border-radius: 8px;
+    background: #fff8e1;
+    color: #f57f17;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  .escape-btn:hover:not(:disabled) {
+    background: #ffecb3;
+    transform: scale(1.03);
+  }
+
+  .escape-btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .escape-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+    border-color: #999;
+    background: #eee;
+    color: #999;
+  }
+
   @media (prefers-color-scheme: dark) {
     .turn-info { color: #bbb; }
     .approach-badge.rear { background: #1b5e20; color: #a5d6a7; }
@@ -555,6 +642,10 @@
     .target-btn { background: #0d47a1; border-color: #1565c0; color: #90caf9; }
     .target-btn:hover:not(:disabled) { background: #1565c0; }
     .target-btn:disabled { background: #333; border-color: #555; color: #666; }
+    .escape-btn { background: #4a3800; border-color: #f9a825; color: #fdd835; }
+    .escape-btn:hover:not(:disabled) { background: #5c4a00; }
+    .escape-btn:disabled { background: #333; border-color: #555; color: #666; }
+    .weapons-offline { color: #fdd835; }
     .end-overlay { background: rgba(0, 0, 0, 0.8); }
   }
 </style>
