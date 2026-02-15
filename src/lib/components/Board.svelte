@@ -30,7 +30,7 @@
     enemies = [],
     playerPos = null,
     visited = new Set(),
-    gamePhase = 'setup',
+    gamePhase = 'galaxy',
     availableDirections = null,
     previewPath = [],
     selectedDirection = null,

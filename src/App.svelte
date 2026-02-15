@@ -2,7 +2,6 @@
   import Board from './lib/components/Board.svelte';
   import Dice from './lib/components/Dice.svelte';
   import HUD from './lib/components/HUD.svelte';
-  import SetupScreen from './lib/components/SetupScreen.svelte';
   import GameOver from './lib/components/GameOver.svelte';
   import CombatScreen from './lib/components/CombatScreen.svelte';
   import GalaxySelection from './lib/components/GalaxySelection.svelte';
@@ -67,10 +66,6 @@
     initGame(boardInfo.cols, boardInfo.rows, boardInfo.seed, boardInfo.difficulty);
   }
 
-  function handleStart(cols, rows, difficulty) {
-    initGame(cols, rows, undefined, difficulty);
-  }
-
   function handleDirectionSelect(direction) {
     selectDirection(direction);
   }
@@ -120,9 +115,6 @@
 
   {:else if phase === 'galaxy' && galaxy}
     <GalaxySelection {galaxy} onSelectBoard={handleSelectBoard} />
-
-  {:else if phase === 'setup'}
-    <SetupScreen onStart={handleStart} />
 
   {:else if phase === 'won' || phase === 'lost'}
     <GameOver onPlayAgain={handleContinue} />

@@ -291,3 +291,18 @@ Started: Fri Feb 13 21:26:55 CST 2026
   - Minimal change: only button text updated, prop name kept for backward compatibility
   - The standalone 'Play Again' flow was already removed in US-055 (handleContinue replaces it)
 ---
+
+## 2026-02-14 18:48 - US-058
+- Deleted `src/lib/components/SetupScreen.svelte`
+- Removed SetupScreen import and 'setup' phase routing from App.svelte
+- Removed `handleStart` function from App.svelte (no longer needed)
+- Updated Board.svelte default gamePhase prop from 'setup' to 'galaxy'
+- Grep confirms zero references to 'SetupScreen' or 'setup' in src/
+- All 386 tests pass, production build succeeds
+- Browser verification not available (no Chrome extension) — manual verification needed
+- Files changed: src/lib/components/SetupScreen.svelte (deleted), src/App.svelte, src/lib/components/Board.svelte, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - Board.svelte had a default prop `gamePhase = 'setup'` — must update defaults when removing phases
+  - Tests referencing 'setup' were already updated in US-054 — no test changes needed here
+  - Bundle size decreased from 75.20 KB to 72.41 KB after removing SetupScreen
+---
