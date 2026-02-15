@@ -1010,6 +1010,270 @@ describe('EnemyShip', () => {
     const ship = new EnemyShip([new ShipComponent('Laser', 2)]);
     expect(ship.isBridgeDestroyed).toBe(false);
   });
+
+  // US-005: typed components and sizeLimit
+  it('default sizeLimit is 4', () => {
+    const ship = new EnemyShip();
+    expect(ship.sizeLimit).toBe(4);
+  });
+
+  it('default totalSize is 3 (three size-1 components)', () => {
+    const ship = new EnemyShip();
+    expect(ship.totalSize).toBe(3);
+    expect(ship.remainingCapacity).toBe(1);
+  });
+
+  it('default Weapons is a WeaponComponent with 1 HP, size 1', () => {
+    const ship = new EnemyShip();
+    const weapons = ship.getComponent('Weapons');
+    expect(weapons).toBeInstanceOf(WeaponComponent);
+    expect(weapons.maxHp).toBe(1);
+    expect(weapons.size).toBe(1);
+    expect(weapons.type).toBe('weapon');
+    expect(weapons.damage).toBe(1);
+    expect(weapons.accuracy).toBe(4);
+  });
+
+  it('default Engines is an EngineComponent with 1 HP, size 1', () => {
+    const ship = new EnemyShip();
+    const engines = ship.getComponent('Engines');
+    expect(engines).toBeInstanceOf(EngineComponent);
+    expect(engines.maxHp).toBe(1);
+    expect(engines.size).toBe(1);
+    expect(engines.type).toBe('engine');
+    expect(engines.speedBonus).toBe(0);
+  });
+
+  it('default Bridge is a BridgeComponent with 1 HP, size 1', () => {
+    const ship = new EnemyShip();
+    const bridge = ship.getComponent('Bridge');
+    expect(bridge).toBeInstanceOf(BridgeComponent);
+    expect(bridge.maxHp).toBe(1);
+    expect(bridge.size).toBe(1);
+    expect(bridge.type).toBe('bridge');
+    expect(bridge.evasionBonus).toBe(0);
+  });
+
+  // US-005: options object constructor
+  it('accepts options object with sizeLimit and components', () => {
+    const ship = new EnemyShip({
+      sizeLimit: 6,
+      components: [
+        new WeaponComponent('Laser', 2, 2),
+        new EngineComponent('Thrusters', 2, 2),
+        new BridgeComponent('Bridge', 1, 1),
+      ],
+    });
+    expect(ship.sizeLimit).toBe(6);
+    expect(ship.components).toHaveLength(3);
+    expect(ship.totalSize).toBe(5);
+    expect(ship.remainingCapacity).toBe(1);
+  });
+
+  it('options object defaults to sizeLimit 4 and default components', () => {
+    const ship = new EnemyShip({});
+    expect(ship.sizeLimit).toBe(4);
+    expect(ship.components).toHaveLength(3);
+    expect(ship.getComponent('Weapons')).toBeInstanceOf(WeaponComponent);
+  });
+
+  it('enforces sizeLimit — cannot exceed budget', () => {
+    expect(() => {
+      new EnemyShip({
+        sizeLimit: 3,
+        components: [
+          new WeaponComponent('W', 1, 2),
+          new EngineComponent('E', 1, 2),
+        ],
+      });
+    }).toThrow(/exceed sizeLimit/);
+  });
+
+  // US-005: variable sizeLimit for difficulty scaling
+  it('supports variable sizeLimit for scaled enemy ships', () => {
+    const weakEnemy = new EnemyShip({ sizeLimit: 3 });
+    expect(weakEnemy.sizeLimit).toBe(3);
+    expect(weakEnemy.totalSize).toBe(3); // default components fit exactly
+
+    const strongEnemy = new EnemyShip({
+      sizeLimit: 8,
+      components: [
+        new WeaponComponent('Heavy Laser', 3, 2),
+        new WeaponComponent('Missiles', 2, 2),
+        new EngineComponent('Engines', 2, 2),
+        new BridgeComponent('Bridge', 2, 1),
+      ],
+    });
+    expect(strongEnemy.sizeLimit).toBe(8);
+    expect(strongEnemy.totalSize).toBe(7);
+    expect(strongEnemy.remainingCapacity).toBe(1);
+  });
+
+  // US-005: canAttack with multiple weapons
+  it('canAttack is true when one of multiple weapons is active', () => {
+    const ship = new EnemyShip({
+      sizeLimit: 10,
+      components: [
+        new WeaponComponent('Laser', 1, 1),
+        new WeaponComponent('Missiles', 1, 1),
+        new EngineComponent('Engines', 1, 1),
+        new BridgeComponent('Bridge', 1, 1),
+      ],
+    });
+    ship.getComponent('Laser').takeDamage(1);
+    expect(ship.canAttack).toBe(true); // Missiles still active
+  });
+
+  it('canAttack is false only when ALL weapons are destroyed', () => {
+    const ship = new EnemyShip({
+      sizeLimit: 10,
+      components: [
+        new WeaponComponent('Laser', 1, 1),
+        new WeaponComponent('Missiles', 1, 1),
+        new EngineComponent('Engines', 1, 1),
+        new BridgeComponent('Bridge', 1, 1),
+      ],
+    });
+    ship.getComponent('Laser').takeDamage(1);
+    ship.getComponent('Missiles').takeDamage(1);
+    expect(ship.canAttack).toBe(false);
+  });
+
+  // US-005: canFlee with multiple engines
+  it('canFlee is true when one of multiple engines is active', () => {
+    const ship = new EnemyShip({
+      sizeLimit: 10,
+      components: [
+        new WeaponComponent('Weapons', 1, 1),
+        new EngineComponent('Main Engine', 1, 1),
+        new EngineComponent('Aux Engine', 1, 1),
+        new BridgeComponent('Bridge', 1, 1),
+      ],
+    });
+    ship.getComponent('Main Engine').takeDamage(1);
+    expect(ship.canFlee).toBe(true); // Aux still active
+  });
+
+  it('canFlee is false only when ALL engines are destroyed', () => {
+    const ship = new EnemyShip({
+      sizeLimit: 10,
+      components: [
+        new WeaponComponent('Weapons', 1, 1),
+        new EngineComponent('Main Engine', 1, 1),
+        new EngineComponent('Aux Engine', 1, 1),
+        new BridgeComponent('Bridge', 1, 1),
+      ],
+    });
+    ship.getComponent('Main Engine').takeDamage(1);
+    ship.getComponent('Aux Engine').takeDamage(1);
+    expect(ship.canFlee).toBe(false);
+  });
+
+  // US-005: component persistence after ship destruction
+  it('all components persist after ship destruction (bridge destroyed)', () => {
+    const ship = new EnemyShip();
+    ship.getComponent('Bridge').takeDamage(1);
+    expect(ship.isBridgeDestroyed).toBe(true);
+    // All components still present, including non-destroyed ones
+    expect(ship.components).toHaveLength(3);
+    expect(ship.getComponent('Weapons').destroyed).toBe(false);
+    expect(ship.getComponent('Engines').destroyed).toBe(false);
+    expect(ship.getComponent('Weapons').currentHp).toBe(1);
+    expect(ship.getComponent('Engines').currentHp).toBe(1);
+  });
+
+  it('non-destroyed components retain HP after ship destruction', () => {
+    const ship = new EnemyShip({
+      sizeLimit: 6,
+      components: [
+        new WeaponComponent('Weapons', 3, 2),
+        new EngineComponent('Engines', 2, 2),
+        new BridgeComponent('Bridge', 1, 1),
+      ],
+    });
+    // Damage weapon partially
+    ship.getComponent('Weapons').takeDamage(1);
+    expect(ship.getComponent('Weapons').currentHp).toBe(2);
+    // Destroy bridge
+    ship.getComponent('Bridge').takeDamage(1);
+    expect(ship.isBridgeDestroyed).toBe(true);
+    // Weapons retains partial HP, engines full HP
+    expect(ship.getComponent('Weapons').currentHp).toBe(2);
+    expect(ship.getComponent('Engines').currentHp).toBe(2);
+    // Components array intact
+    expect(ship.components).toHaveLength(3);
+    expect(ship.components.map(c => c.name)).toEqual(['Weapons', 'Engines', 'Bridge']);
+  });
+
+  // US-005: getSalvageableComponents
+  it('getSalvageableComponents returns all components when none destroyed', () => {
+    const ship = new EnemyShip();
+    const salvageable = ship.getSalvageableComponents();
+    expect(salvageable).toHaveLength(3);
+  });
+
+  it('getSalvageableComponents excludes destroyed components', () => {
+    const ship = new EnemyShip();
+    ship.getComponent('Weapons').takeDamage(1);
+    ship.getComponent('Bridge').takeDamage(1);
+    const salvageable = ship.getSalvageableComponents();
+    expect(salvageable).toHaveLength(1);
+    expect(salvageable[0].name).toBe('Engines');
+  });
+
+  it('getSalvageableComponents returns empty when all destroyed', () => {
+    const ship = new EnemyShip();
+    for (const c of ship.components) {
+      c.takeDamage(c.maxHp);
+    }
+    expect(ship.getSalvageableComponents()).toHaveLength(0);
+  });
+
+  it('getSalvageableComponents returns components with partial HP', () => {
+    const ship = new EnemyShip({
+      sizeLimit: 6,
+      components: [
+        new WeaponComponent('Weapons', 3, 2),
+        new EngineComponent('Engines', 2, 2),
+        new BridgeComponent('Bridge', 1, 1),
+      ],
+    });
+    ship.getComponent('Weapons').takeDamage(1); // 2 HP remaining
+    ship.getComponent('Bridge').takeDamage(1); // destroyed
+    const salvageable = ship.getSalvageableComponents();
+    expect(salvageable).toHaveLength(2); // Weapons (damaged) + Engines (full)
+    expect(salvageable.map(c => c.name)).toEqual(['Weapons', 'Engines']);
+    expect(salvageable[0].currentHp).toBe(2); // Weapons at 2/3 HP
+    expect(salvageable[1].currentHp).toBe(2); // Engines at full
+  });
+
+  // US-005: backward compat — getComponent still works
+  it('backward compat: getComponent("Weapons") returns the weapon', () => {
+    const ship = new EnemyShip();
+    const w = ship.getComponent('Weapons');
+    expect(w).toBeDefined();
+    expect(w.name).toBe('Weapons');
+  });
+
+  it('backward compat: getComponent("Engines") returns the engine', () => {
+    const ship = new EnemyShip();
+    const e = ship.getComponent('Engines');
+    expect(e).toBeDefined();
+    expect(e.name).toBe('Engines');
+  });
+
+  it('backward compat: getComponent("Bridge") returns the bridge', () => {
+    const ship = new EnemyShip();
+    const b = ship.getComponent('Bridge');
+    expect(b).toBeDefined();
+    expect(b.name).toBe('Bridge');
+  });
+
+  // US-005: legacy array form defaults sizeLimit to Infinity
+  it('legacy array form defaults sizeLimit to Infinity', () => {
+    const ship = new EnemyShip([new ShipComponent('Test', 1)]);
+    expect(ship.sizeLimit).toBe(Infinity);
+  });
 });
 
 // --- CombatEngine Tests ---

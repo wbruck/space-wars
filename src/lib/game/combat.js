@@ -285,38 +285,60 @@ export class PlayerShip extends Ship {
 }
 
 /**
- * Enemy ship with 1 HP per component and behavioral getters.
+ * Enemy ship with typed components and size budget.
+ * Default sizeLimit: 4, default components: size-1 weapon (1HP), size-1 engine (1HP), size-1 bridge (1HP).
  * Bridge destruction is the ONLY way to fully defeat an enemy.
  */
 export class EnemyShip extends Ship {
   /**
-   * @param {ShipComponent[]} [components] - Optional custom components
+   * @param {ShipComponent[]|{sizeLimit?: number, components?: ShipComponent[]}} [opts] - Legacy component array or options object
    */
-  constructor(components) {
+  constructor(opts) {
     const defaultComponents = [
-      new ShipComponent('Weapons', 1),
-      new ShipComponent('Engines', 1),
-      new ShipComponent('Bridge', 1),
+      new WeaponComponent('Weapons', 1, 1),
+      new EngineComponent('Engines', 1, 1),
+      new BridgeComponent('Bridge', 1, 1),
     ];
-    super('Enemy Ship', components || defaultComponents);
+
+    if (Array.isArray(opts)) {
+      // Legacy: EnemyShip([comp1, comp2]) — no sizeLimit enforcement
+      super('Enemy Ship', opts);
+    } else if (opts && typeof opts === 'object') {
+      // New: EnemyShip({ sizeLimit, components })
+      super('Enemy Ship', {
+        sizeLimit: opts.sizeLimit ?? 4,
+        components: opts.components || defaultComponents,
+      });
+    } else {
+      // Default: EnemyShip() — use defaults with sizeLimit 4
+      super('Enemy Ship', {
+        sizeLimit: 4,
+        components: defaultComponents,
+      });
+    }
   }
 
-  /** @returns {boolean} False if Weapons component is destroyed — enemy auto-misses attacks */
+  /** @returns {boolean} True if any weapon component is active (not destroyed) */
   get canAttack() {
-    const weapons = this.getComponent('Weapons');
-    return weapons ? !weapons.destroyed : false;
+    const weapons = this.getComponentsByType('weapon');
+    return weapons.some(w => !w.destroyed);
   }
 
-  /** @returns {boolean} False if Engines component is destroyed */
+  /** @returns {boolean} True if any engine component is active */
   get canFlee() {
-    const engines = this.getComponent('Engines');
-    return engines ? !engines.destroyed : false;
+    const engines = this.getComponentsByType('engine');
+    return engines.some(e => !e.destroyed);
   }
 
-  /** @returns {boolean} True if Bridge component is destroyed — enemy fully defeated */
+  /** @returns {boolean} True if the bridge component is destroyed — enemy fully defeated */
   get isBridgeDestroyed() {
-    const bridge = this.getComponent('Bridge');
+    const bridge = this.getComponentsByType('bridge')[0];
     return bridge ? bridge.destroyed : false;
+  }
+
+  /** @returns {ShipComponent[]} Components that are not destroyed (HP > 0), available for salvage */
+  getSalvageableComponents() {
+    return this.components.filter(c => !c.destroyed);
   }
 }
 
