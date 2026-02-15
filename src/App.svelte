@@ -6,6 +6,7 @@
   import GameOver from './lib/components/GameOver.svelte';
   import CombatScreen from './lib/components/CombatScreen.svelte';
   import GalaxySelection from './lib/components/GalaxySelection.svelte';
+  import GalaxyComplete from './lib/components/GalaxyComplete.svelte';
   import {
     board, playerPos, gamePhase, visited,
     selectedDirection, previewPath, animatingPath, animationStep,
@@ -114,7 +115,10 @@
 <main>
   <h1>Game Time</h1>
 
-  {#if phase === 'galaxy' && galaxy}
+  {#if phase === 'galaxyComplete' && galaxy}
+    <GalaxyComplete {galaxy} />
+
+  {:else if phase === 'galaxy' && galaxy}
     <GalaxySelection {galaxy} onSelectBoard={handleSelectBoard} />
 
   {:else if phase === 'setup'}

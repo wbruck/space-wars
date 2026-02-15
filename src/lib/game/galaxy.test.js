@@ -293,6 +293,32 @@ describe('isGalaxyComplete', () => {
     }
     expect(isGalaxyComplete(galaxy)).toBe(true);
   });
+
+  it('returns true with mix of won, lost, and locked (none unlocked)', () => {
+    const galaxy = generateGalaxy(42);
+    galaxy[0][0].status = 'won';
+    galaxy[0][1].status = 'lost';
+    galaxy[0][2].status = 'locked';
+    galaxy[1][0].status = 'won';
+    galaxy[1][1].status = 'lost';
+    galaxy[1][2].status = 'locked';
+    galaxy[2][0].status = 'locked';
+    galaxy[2][1].status = 'won';
+    galaxy[2][2].status = 'lost';
+    expect(isGalaxyComplete(galaxy)).toBe(true);
+  });
+
+  it('returns false when even one board is unlocked', () => {
+    const galaxy = generateGalaxy(42);
+    // Set all to won except one unlocked
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        galaxy[row][col].status = 'won';
+      }
+    }
+    galaxy[2][2].status = 'unlocked';
+    expect(isGalaxyComplete(galaxy)).toBe(false);
+  });
 });
 
 describe('localStorage persistence', () => {
