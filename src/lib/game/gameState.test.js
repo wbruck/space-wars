@@ -1428,17 +1428,23 @@ describe('combat board integration (US-036)', () => {
       expect(updatedBoard.enemies.find(e => e.id === enemy.id)).toBeDefined();
     });
 
-    it('reduces enemy range to 1 on enemyFled', () => {
+    it('disarmed enemy has vision zones removed on enemyFled', () => {
       const enemy = addEnemyToBoard();
-      expect(enemy.range).toBe(3); // original range from value=3
       const preCombatPos = get(playerPos);
 
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      // Destroy enemy weapons so they're disarmed (triggers zone removal)
+      const state = get(combatState);
+      state.engine.enemyShip.getComponent('Weapons').takeDamage(1);
       resolveCombat('enemyFled');
 
       const updatedBoard = get(board);
-      const fledEnemy = updatedBoard.enemies.find(e => e.id === enemy.id);
-      expect(fledEnemy.range).toBe(1);
+      // Vision zones should be removed for disarmed enemy
+      let visionCount = 0;
+      for (const [, info] of updatedBoard.enemyZoneMap) {
+        if (info.enemyId === enemy.id && info.zoneType === 'vision') visionCount++;
+      }
+      expect(visionCount).toBe(0);
     });
 
     it('preserves enemy direction after enemyFled', () => {
@@ -1454,7 +1460,7 @@ describe('combat board integration (US-036)', () => {
       expect(fledEnemy.direction).toBe(3);
     });
 
-    it('recomputes vision zone to at most 1 vertex after enemyFled', () => {
+    it('disarmed enemy vision zones fully removed after enemyFled', () => {
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
@@ -1468,6 +1474,9 @@ describe('combat board integration (US-036)', () => {
       expect(origVisionZones.length).toBeGreaterThan(1); // originally range=3
 
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      // Destroy enemy weapons so they're disarmed
+      const state = get(combatState);
+      state.engine.enemyShip.getComponent('Weapons').takeDamage(1);
       resolveCombat('enemyFled');
 
       const updatedBoard = get(board);
@@ -1477,14 +1486,17 @@ describe('combat board integration (US-036)', () => {
           newVisionZones.push(v);
         }
       }
-      expect(newVisionZones.length).toBeLessThanOrEqual(1);
+      expect(newVisionZones.length).toBe(0);
     });
 
-    it('recomputes proximity zones after enemyFled', () => {
+    it('disarmed enemy retains proximity zones after enemyFled', () => {
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      // Destroy enemy weapons so they're disarmed
+      const state = get(combatState);
+      state.engine.enemyShip.getComponent('Weapons').takeDamage(1);
       resolveCombat('enemyFled');
 
       const updatedBoard = get(board);

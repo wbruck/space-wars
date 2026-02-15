@@ -277,7 +277,7 @@ export function rollDice() {
   const pool = get(movementPool);
 
   // Engine damage caps movement: roll 1-3 → 1 step, roll 4-6 → 2 steps
-  const ship = get(playerShip);
+  const ship = get(playerShipStore);
   const engineCapped = (ship && ship.isEngineDestroyed) ? (raw <= 3 ? 1 : 2) : raw;
   const effective = Math.min(engineCapped, pool);
 
