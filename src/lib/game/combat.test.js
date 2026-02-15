@@ -873,6 +873,53 @@ describe('CombatEngine', () => {
       // Should NOT end as enemyFled — enemy is stuck, combat continues
       expect(r.combatOver).toBe(false);
     });
+
+    it('does NOT trigger flee if player has 0 attacks (disarmed re-encounter)', () => {
+      // Simulate re-encounter: enemy Weapons already destroyed, enemy attacks first (auto-miss)
+      const enemyShip = new EnemyShip();
+      enemyShip.getComponent('Weapons').takeDamage(1); // Pre-destroy Weapons
+      expect(enemyShip.canAttack).toBe(false);
+      expect(enemyShip.canFlee).toBe(true);
+
+      const engine = new CombatEngine({
+        playerShip: new PlayerShip(),
+        enemyShip,
+        rng: makeRng([1]),
+      });
+      engine.setFirstAttacker('enemy');
+
+      // Enemy attacks first — auto-misses (Weapons destroyed)
+      const r = engine.executeEnemyAttack();
+      expect(engine.turnLog[0].autoMiss).toBe(true);
+      // Should NOT trigger flee — player hasn't had a turn yet
+      expect(r.combatOver).toBe(false);
+      expect(engine.isPlayerTurn).toBe(true); // player's turn now
+    });
+
+    it('triggers flee after player gets at least 1 attack on disarmed enemy', () => {
+      // Enemy Weapons pre-destroyed, enemy goes first (auto-miss), then player attacks
+      const enemyShip = new EnemyShip();
+      enemyShip.getComponent('Weapons').takeDamage(1);
+
+      const engine = new CombatEngine({
+        playerShip: new PlayerShip(),
+        enemyShip,
+        rng: makeRng([1, 2]), // enemy target+roll (auto-miss skips), player rolls 2 (miss)
+      });
+      engine.setFirstAttacker('enemy');
+
+      // Enemy auto-miss
+      engine.executeEnemyAttack();
+      expect(engine.combatOver).toBe(false);
+
+      // Player attacks (miss, but attack count increments)
+      const r = engine.executePlayerAttack('Bridge');
+      expect(r.isHit).toBe(false);
+      expect(engine._playerAttackCount).toBe(1);
+      // Now flee should trigger: !canAttack && canFlee && playerAttackCount > 0
+      expect(r.combatOver).toBe(true);
+      expect(r.result).toBe('enemyFled');
+    });
   });
 
   describe('turn ordering', () => {

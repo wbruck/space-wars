@@ -30,7 +30,7 @@
           class="cell status-{board.status}"
           class:selectable
           role={selectable ? 'button' : undefined}
-          tabindex={selectable ? 0 : undefined}
+          tabindex={selectable ? 0 : -1}
           onclick={() => handleSelect(rowIdx, colIdx)}
           onkeydown={(e) => handleKeydown(e, rowIdx, colIdx)}
         >

@@ -10,7 +10,7 @@ import {
   movesMade,
   loseReason,
   combatState,
-  playerShip,
+  playerShipStore,
   selectedDirection,
   previewPath,
   animatingPath,
@@ -383,7 +383,7 @@ describe('resetGame', () => {
     expect(get(playerPos)).toBeNull();
     expect(get(movementPool)).toBe(0);
     expect(get(diceValue)).toBeNull();
-    expect(get(gamePhase)).toBe('setup');
+    expect(get(gamePhase)).toBe('galaxy');
     expect(get(visited).size).toBe(0);
     expect(get(movesMade)).toBe(0);
   });
@@ -1196,6 +1196,77 @@ describe('combat board integration (US-036)', () => {
       expect(updatedBoard.enemies.find(e => e.id === enemy.id)).toBeDefined();
     });
 
+    it('reduces enemy range to 1 on enemyFled', () => {
+      const enemy = addEnemyToBoard();
+      expect(enemy.range).toBe(3); // original range from value=3
+      const preCombatPos = get(playerPos);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      resolveCombat('enemyFled');
+
+      const updatedBoard = get(board);
+      const fledEnemy = updatedBoard.enemies.find(e => e.id === enemy.id);
+      expect(fledEnemy.range).toBe(1);
+    });
+
+    it('preserves enemy direction after enemyFled', () => {
+      const enemy = addEnemyToBoard(undefined, 3);
+      expect(enemy.direction).toBe(3);
+      const preCombatPos = get(playerPos);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      resolveCombat('enemyFled');
+
+      const updatedBoard = get(board);
+      const fledEnemy = updatedBoard.enemies.find(e => e.id === enemy.id);
+      expect(fledEnemy.direction).toBe(3);
+    });
+
+    it('recomputes vision zone to at most 1 vertex after enemyFled', () => {
+      const enemy = addEnemyToBoard();
+      const preCombatPos = get(playerPos);
+
+      // Count original vision zones
+      const origVisionZones = [];
+      for (const [v, info] of boardData.enemyZoneMap) {
+        if (info.enemyId === enemy.id && info.zoneType === 'vision') {
+          origVisionZones.push(v);
+        }
+      }
+      expect(origVisionZones.length).toBeGreaterThan(1); // originally range=3
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      resolveCombat('enemyFled');
+
+      const updatedBoard = get(board);
+      const newVisionZones = [];
+      for (const [v, info] of updatedBoard.enemyZoneMap) {
+        if (info.enemyId === enemy.id && info.zoneType === 'vision') {
+          newVisionZones.push(v);
+        }
+      }
+      expect(newVisionZones.length).toBeLessThanOrEqual(1);
+    });
+
+    it('recomputes proximity zones after enemyFled', () => {
+      const enemy = addEnemyToBoard();
+      const preCombatPos = get(playerPos);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      resolveCombat('enemyFled');
+
+      const updatedBoard = get(board);
+      // Should have some proximity zones around the enemy
+      let hasProximity = false;
+      for (const [, info] of updatedBoard.enemyZoneMap) {
+        if (info.enemyId === enemy.id && info.zoneType === 'proximity') {
+          hasProximity = true;
+          break;
+        }
+      }
+      expect(hasProximity).toBe(true);
+    });
+
     it('deducts steps used from movement pool on retreat', () => {
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
@@ -1367,7 +1438,7 @@ describe('combat board integration (US-036)', () => {
 
   describe('player ship health persistence (US-039)', () => {
     it('initGame creates a fresh PlayerShip with full HP', () => {
-      const ship = get(playerShip);
+      const ship = get(playerShipStore);
       expect(ship).not.toBeNull();
       expect(ship.name).toBe('Player Ship');
       expect(ship.getComponent('Weapons').currentHp).toBe(2);
@@ -1378,7 +1449,7 @@ describe('combat board integration (US-036)', () => {
     it('startCombat reuses the persistent PlayerShip instance', () => {
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
-      const shipBefore = get(playerShip);
+      const shipBefore = get(playerShipStore);
 
       startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
 
@@ -1428,7 +1499,7 @@ describe('combat board integration (US-036)', () => {
       resolveCombat('playerLose');
 
       // Verify Engines are now destroyed
-      const ship = get(playerShip);
+      const ship = get(playerShipStore);
       expect(ship.getComponent('Engines').currentHp).toBe(0);
       expect(ship.getComponent('Engines').destroyed).toBe(true);
     });
@@ -1446,14 +1517,14 @@ describe('combat board integration (US-036)', () => {
       resolveCombat('playerLose');
 
       // Verify damage exists
-      const damagedShip = get(playerShip);
+      const damagedShip = get(playerShipStore);
       expect(damagedShip.getComponent('Weapons').currentHp).toBe(0);
 
       // Start a new game
       initGame(5, 4, 99);
 
       // Player ship should be fresh
-      const freshShip = get(playerShip);
+      const freshShip = get(playerShipStore);
       expect(freshShip).not.toBe(damagedShip);
       expect(freshShip.getComponent('Weapons').currentHp).toBe(2);
       expect(freshShip.getComponent('Engines').currentHp).toBe(2);
@@ -1462,11 +1533,11 @@ describe('combat board integration (US-036)', () => {
 
     it('resetGame clears the player ship store', () => {
       // Verify ship exists
-      expect(get(playerShip)).not.toBeNull();
+      expect(get(playerShipStore)).not.toBeNull();
 
       resetGame();
 
-      expect(get(playerShip)).toBeNull();
+      expect(get(playerShipStore)).toBeNull();
     });
 
     it('undamaged components retain full HP between encounters', () => {

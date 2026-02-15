@@ -84,6 +84,18 @@ export class PlayerShip extends Ship {
     ];
     super('Player Ship', components || defaultComponents);
   }
+
+  /** @returns {boolean} False if Weapons component is destroyed — player cannot attack */
+  get canAttack() {
+    const weapons = this.getComponent('Weapons');
+    return weapons ? !weapons.destroyed : false;
+  }
+
+  /** @returns {boolean} True if Bridge component is destroyed */
+  get isBridgeDestroyed() {
+    const bridge = this.getComponent('Bridge');
+    return bridge ? bridge.destroyed : false;
+  }
 }
 
 /**
@@ -204,6 +216,12 @@ export class CombatEngine {
       this.result = 'playerWin';
       return true;
     }
+    // Player bridge destroyed → player destroyed
+    if (this.playerShip.isBridgeDestroyed) {
+      this.combatOver = true;
+      this.result = 'playerDestroyed';
+      return true;
+    }
     // All player components destroyed → player destroyed
     if (this.playerShip.isDestroyed) {
       this.combatOver = true;
@@ -211,7 +229,8 @@ export class CombatEngine {
       return true;
     }
     // Enemy Weapons destroyed but Engines intact → enemy flees
-    if (!this.enemyShip.canAttack && this.enemyShip.canFlee) {
+    // Require at least 1 player attack before flee triggers (prevents instant flee on re-encounter with disarmed enemy)
+    if (!this.enemyShip.canAttack && this.enemyShip.canFlee && this._playerAttackCount > 0) {
       this.combatOver = true;
       this.result = 'enemyFled';
       return true;
@@ -249,6 +268,20 @@ export class CombatEngine {
   }
 
   /**
+   * Player escapes combat. Always available on the player's turn.
+   * Sets combatOver = true and result = 'escaped'.
+   * @returns {{ combatOver: boolean, result: string }}
+   */
+  escape() {
+    if (this.combatOver) {
+      return { combatOver: true, result: this.result };
+    }
+    this.combatOver = true;
+    this.result = 'escaped';
+    return { combatOver: true, result: 'escaped' };
+  }
+
+  /**
    * Player targets a specific enemy component.
    * @param {string} targetComponentName
    * @returns {{ roll, isHit, targetComponent, destroyed, combatOver, result }}
@@ -256,6 +289,11 @@ export class CombatEngine {
   executePlayerAttack(targetComponentName) {
     if (this.combatOver) {
       return { roll: 0, isHit: false, targetComponent: targetComponentName, destroyed: false, combatOver: true, result: this.result };
+    }
+
+    // Refuse to attack if player weapons are destroyed
+    if (!this.playerShip.canAttack) {
+      return { roll: 0, isHit: false, targetComponent: targetComponentName, destroyed: false, combatOver: this.combatOver, result: this.result };
     }
 
     const { roll } = this.rollAttack();
