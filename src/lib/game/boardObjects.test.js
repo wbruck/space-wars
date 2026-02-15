@@ -97,11 +97,22 @@ describe('Enemy', () => {
     expect(enemy.id).toBe('enemy:40,69.282');
   });
 
-  it('stores value, direction, and range', () => {
-    const enemy = new Enemy('40,69.282', 7, 2);
+  it('stores value, direction, visionRange, and range', () => {
+    const enemy = new Enemy('40,69.282', 7, 2, 4);
     expect(enemy.value).toBe(7);
     expect(enemy.direction).toBe(2);
-    expect(enemy.range).toBe(7);
+    expect(enemy.visionRange).toBe(4);
+    expect(enemy.range).toBe(4);
+  });
+
+  it('defaults visionRange to clamped value when not provided', () => {
+    const enemy = new Enemy('40,69.282', 3, 2);
+    expect(enemy.visionRange).toBe(3);
+    expect(enemy.range).toBe(3);
+    // Value > 6 clamps to 6
+    const enemy2 = new Enemy('40,69.282', 9, 0);
+    expect(enemy2.visionRange).toBe(6);
+    expect(enemy2.range).toBe(6);
   });
 
   it('stores vertexId', () => {
@@ -171,6 +182,29 @@ describe('Enemy', () => {
     const result = enemy.getAffectedVertices(new Map(), mockRays);
     expect(result).toEqual(['A']);
   });
+
+  it('getAffectedVertices uses visionRange not value for ray length', () => {
+    // value=8 but visionRange=2: should only take 2 vertices from the ray
+    const enemy = new Enemy('A', 8, 0, 2);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D', 'E', 'F'] },
+      ]],
+    ]);
+    const result = enemy.getAffectedVertices(new Map(), mockRays);
+    expect(result).toEqual(['A', 'B', 'C']);
+  });
+
+  it('visionRange=6 captures up to 6 ray vertices', () => {
+    const enemy = new Enemy('A', 3, 0, 6);
+    const mockRays = new Map([
+      ['A', [
+        { direction: 0, vertices: ['B', 'C', 'D', 'E', 'F', 'G', 'H'] },
+      ]],
+    ]);
+    const result = enemy.getAffectedVertices(new Map(), mockRays);
+    expect(result).toEqual(['A', 'B', 'C', 'D', 'E', 'F', 'G']);
+  });
 });
 
 describe('PowerUp', () => {
@@ -229,7 +263,16 @@ describe('createBoardObject', () => {
     expect(obj.vertexId).toBe('40,69.282');
     expect(obj.value).toBe(5);
     expect(obj.direction).toBe(3);
+    expect(obj.visionRange).toBe(5); // defaults to clamped value
     expect(obj.range).toBe(5);
+  });
+
+  it('creates Enemy with explicit visionRange', () => {
+    const obj = createBoardObject('enemy', '40,69.282', 8, 3, 2);
+    expect(obj).toBeInstanceOf(Enemy);
+    expect(obj.value).toBe(8);
+    expect(obj.visionRange).toBe(2);
+    expect(obj.range).toBe(2);
   });
 
   it('throws for unknown type', () => {
@@ -329,32 +372,43 @@ describe('generateBoardObjects', () => {
     expect(actualTotal).toBe(expectedTotal);
   });
 
-  it('total obstacle count scales with difficulty at level 5 (~12.2%)', () => {
+  it('regular + blackhole count scales with difficulty at level 5 (~12.2%)', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
     const pct = 0.05 + (5 - 1) * (0.15 / 9);
     const expectedTotal = Math.floor(eligibleCount * pct);
-    const actualTotal = result.obstacles.length + result.blackholes.length + result.enemies.length;
-    expect(actualTotal).toBe(expectedTotal);
+    const expectedRegular = Math.floor(expectedTotal * 0.6);
+    const expectedBlackholes = Math.floor(expectedTotal * 0.2);
+    expect(result.obstacles.length).toBe(expectedRegular);
+    expect(result.blackholes.length).toBe(expectedBlackholes);
+    // Enemy count varies due to visionRange budget system, but enemies should exist
+    expect(result.enemies.length).toBeGreaterThan(0);
   });
 
-  it('total obstacle count scales with difficulty at level 10 (~20%)', () => {
+  it('regular + blackhole count scales with difficulty at level 10 (~20%)', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 10, makeRng(42), grid.rays);
     const pct = 0.05 + (10 - 1) * (0.15 / 9);
     const expectedTotal = Math.floor(eligibleCount * pct);
-    const actualTotal = result.obstacles.length + result.blackholes.length + result.enemies.length;
-    expect(actualTotal).toBe(expectedTotal);
+    const expectedRegular = Math.floor(expectedTotal * 0.6);
+    const expectedBlackholes = Math.floor(expectedTotal * 0.2);
+    expect(result.obstacles.length).toBe(expectedRegular);
+    expect(result.blackholes.length).toBe(expectedBlackholes);
+    expect(result.enemies.length).toBeGreaterThan(0);
   });
 
-  it('type distribution is ~60/20/20 at difficulty 5+', () => {
+  it('type distribution regular/blackhole is ~60/20 at difficulty 5+, enemies from budget', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
     const pct = 0.05 + (5 - 1) * (0.15 / 9);
     const total = Math.floor(eligibleCount * pct);
     const expectedRegular = Math.floor(total * 0.6);
     const expectedBlackholes = Math.floor(total * 0.2);
-    const expectedEnemies = total - expectedRegular - expectedBlackholes;
     expect(result.obstacles.length).toBe(expectedRegular);
     expect(result.blackholes.length).toBe(expectedBlackholes);
-    expect(result.enemies.length).toBe(expectedEnemies);
+    // Enemy count varies due to visionRange budget, but should be at least 1
+    expect(result.enemies.length).toBeGreaterThanOrEqual(1);
+    // Total visionRange budget should be consumed (enemySlots * 3)
+    const enemySlots = total - expectedRegular - expectedBlackholes;
+    const totalVisionRange = result.enemies.reduce((sum, e) => sum + e.visionRange, 0);
+    expect(totalVisionRange).toBeLessThanOrEqual(enemySlots * 3);
   });
 
   it('no enemies at difficulty 1-2, ~80/20 regular/blackhole split', () => {
@@ -383,10 +437,12 @@ describe('generateBoardObjects', () => {
     }
   });
 
-  it('enemy range equals enemy value', () => {
+  it('enemy visionRange is 1-6 and range equals visionRange', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
     for (const enemy of result.enemies) {
-      expect(enemy.range).toBe(enemy.value);
+      expect(enemy.visionRange).toBeGreaterThanOrEqual(1);
+      expect(enemy.visionRange).toBeLessThanOrEqual(6);
+      expect(enemy.range).toBe(enemy.visionRange);
     }
   });
 
@@ -402,6 +458,32 @@ describe('generateBoardObjects', () => {
       }
     }
     expect(result.enemyZones).toEqual(expectedZones);
+  });
+
+  it('enemy visionRange is deterministic with same seed', () => {
+    const r1 = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    const r2 = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    expect(r1.enemies.map(e => e.visionRange)).toEqual(r2.enemies.map(e => e.visionRange));
+  });
+
+  it('enemy visionRange varies (not all the same) across multiple enemies', () => {
+    // Use a large board with high difficulty to get many enemies
+    const lgGrid = generateGrid(9, 8, 72);
+    const lgIds = [...lgGrid.vertices.keys()];
+    const result = generateBoardObjects(lgGrid.vertices, lgIds[0], lgIds[lgIds.length - 1], 8, makeRng(42), lgGrid.rays);
+    if (result.enemies.length >= 3) {
+      const ranges = new Set(result.enemies.map(e => e.visionRange));
+      expect(ranges.size).toBeGreaterThan(1);
+    }
+  });
+
+  it('enemy visionRange budget: total visionRange <= enemySlots * 3', () => {
+    const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
+    const pct = 0.05 + (5 - 1) * (0.15 / 9);
+    const total = Math.floor(eligibleCount * pct);
+    const enemySlots = total - Math.floor(total * 0.6) - Math.floor(total * 0.2);
+    const totalVisionRange = result.enemies.reduce((sum, e) => sum + e.visionRange, 0);
+    expect(totalVisionRange).toBeLessThanOrEqual(enemySlots * 3);
   });
 
   it('power-up count scales inversely at level 1 (~15%)', () => {
@@ -463,8 +545,11 @@ describe('generateBoardObjects', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, undefined, makeRng(42), grid.rays);
     const pct = 0.05 + (5 - 1) * (0.15 / 9);
     const expectedTotal = Math.floor(eligibleCount * pct);
-    const actualTotal = result.obstacles.length + result.blackholes.length + result.enemies.length;
-    expect(actualTotal).toBe(expectedTotal);
+    const expectedRegular = Math.floor(expectedTotal * 0.6);
+    const expectedBlackholes = Math.floor(expectedTotal * 0.2);
+    expect(result.obstacles.length).toBe(expectedRegular);
+    expect(result.blackholes.length).toBe(expectedBlackholes);
+    expect(result.enemies.length).toBeGreaterThan(0);
   });
 
   it('works without rays parameter (backward compat)', () => {

@@ -94,15 +94,17 @@ export class BlackHole extends Obstacle {
 export class Enemy extends Obstacle {
   /**
    * @param {string} vertexId - The vertex this enemy occupies
-   * @param {number} value - Enemy intensity (1-10), also used as kill zone range
+   * @param {number} value - Enemy intensity (1-10)
    * @param {number} direction - Facing direction (0-5)
+   * @param {number} [visionRange] - Vision range (1-6), defaults to clamped value for backward compat
    */
-  constructor(vertexId, value, direction) {
+  constructor(vertexId, value, direction, visionRange) {
     super(vertexId, value);
     this.type = 'enemy';
     this.id = `enemy:${vertexId}`;
     this.direction = direction;
-    this.range = this.value;
+    this.visionRange = visionRange != null ? visionRange : Math.min(Math.max(value, 1), 6);
+    this.range = this.visionRange;
   }
 
   /**
@@ -127,7 +129,7 @@ export class Enemy extends Obstacle {
       if (vertexRays) {
         const facingRay = vertexRays.find(r => r.direction === this.direction);
         if (facingRay) {
-          for (let i = 0; i < this.range && i < facingRay.vertices.length; i++) {
+          for (let i = 0; i < this.visionRange && i < facingRay.vertices.length; i++) {
             killZoneVertices.push(facingRay.vertices[i]);
           }
         }
@@ -229,14 +231,22 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
   }
 
   // Enemies — in obstacleSet (they block movement at their own vertex)
+  // Use a budget system: each enemy costs its visionRange (1-6) from the total budget.
+  // Budget = enemyCount * 3 (slightly below average of 3.5 to maintain enemy count).
+  const enemyBudget = enemyCount * 3;
   const enemies = [];
   const enemyZones = new Set();
   const enemyZoneMap = new Map();
-  for (let i = 0; i < enemyCount; i++) {
+  let budgetRemaining = enemyBudget;
+  while (budgetRemaining > 0 && idx < eligible.length) {
     const vertexId = eligible[idx++];
     const value = obsMin + Math.floor(rng() * (obsMax - obsMin + 1));
     const direction = Math.floor(rng() * 6);
-    const enemy = new Enemy(vertexId, value, direction);
+    // Cap visionRange to remaining budget so we don't overshoot
+    const maxRange = Math.min(6, budgetRemaining);
+    const visionRange = 1 + Math.floor(rng() * maxRange);
+    budgetRemaining -= visionRange;
+    const enemy = new Enemy(vertexId, value, direction, visionRange);
     enemies.push(enemy);
     obstacleSet.add(vertexId);
 
@@ -296,16 +306,17 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
  * @param {string} vertexId - The vertex ID
  * @param {number} value - Object value (1-10)
  * @param {number} [direction] - Facing direction (0-5), required for 'enemy' type
+ * @param {number} [visionRange] - Vision range (1-6), optional for 'enemy' type
  * @returns {BoardObject}
  */
-export function createBoardObject(type, vertexId, value, direction) {
+export function createBoardObject(type, vertexId, value, direction, visionRange) {
   switch (type) {
     case 'obstacle':
       return new Obstacle(vertexId, value);
     case 'blackhole':
       return new BlackHole(vertexId, value);
     case 'enemy':
-      return new Enemy(vertexId, value, direction);
+      return new Enemy(vertexId, value, direction, visionRange);
     case 'powerup':
       return new PowerUp(vertexId, value);
     default:
