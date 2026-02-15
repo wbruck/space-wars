@@ -99,12 +99,29 @@ describe('generateGalaxy', () => {
 });
 
 describe('getAdjacentBoards', () => {
+  // --- Corners (3 neighbors each) ---
   it('corner (0,0) has 3 neighbors', () => {
     const adj = getAdjacentBoards(0, 0);
     expect(adj.length).toBe(3);
     expect(adj).toContainEqual({ row: 0, col: 1 });
     expect(adj).toContainEqual({ row: 1, col: 0 });
     expect(adj).toContainEqual({ row: 1, col: 1 });
+  });
+
+  it('corner (0,2) has 3 neighbors', () => {
+    const adj = getAdjacentBoards(0, 2);
+    expect(adj.length).toBe(3);
+    expect(adj).toContainEqual({ row: 0, col: 1 });
+    expect(adj).toContainEqual({ row: 1, col: 1 });
+    expect(adj).toContainEqual({ row: 1, col: 2 });
+  });
+
+  it('corner (2,0) has 3 neighbors', () => {
+    const adj = getAdjacentBoards(2, 0);
+    expect(adj.length).toBe(3);
+    expect(adj).toContainEqual({ row: 1, col: 0 });
+    expect(adj).toContainEqual({ row: 1, col: 1 });
+    expect(adj).toContainEqual({ row: 2, col: 1 });
   });
 
   it('corner (2,2) has 3 neighbors', () => {
@@ -115,14 +132,60 @@ describe('getAdjacentBoards', () => {
     expect(adj).toContainEqual({ row: 2, col: 1 });
   });
 
+  // --- Edges (5 neighbors each) ---
   it('edge (0,1) has 5 neighbors', () => {
     const adj = getAdjacentBoards(0, 1);
     expect(adj.length).toBe(5);
+    expect(adj).toContainEqual({ row: 0, col: 0 });
+    expect(adj).toContainEqual({ row: 0, col: 2 });
+    expect(adj).toContainEqual({ row: 1, col: 0 });
+    expect(adj).toContainEqual({ row: 1, col: 1 });
+    expect(adj).toContainEqual({ row: 1, col: 2 });
   });
 
-  it('center (1,1) has 8 neighbors', () => {
+  it('edge (1,0) has 5 neighbors', () => {
+    const adj = getAdjacentBoards(1, 0);
+    expect(adj.length).toBe(5);
+    expect(adj).toContainEqual({ row: 0, col: 0 });
+    expect(adj).toContainEqual({ row: 0, col: 1 });
+    expect(adj).toContainEqual({ row: 1, col: 1 });
+    expect(adj).toContainEqual({ row: 2, col: 0 });
+    expect(adj).toContainEqual({ row: 2, col: 1 });
+  });
+
+  it('edge (1,2) has 5 neighbors', () => {
+    const adj = getAdjacentBoards(1, 2);
+    expect(adj.length).toBe(5);
+    expect(adj).toContainEqual({ row: 0, col: 1 });
+    expect(adj).toContainEqual({ row: 0, col: 2 });
+    expect(adj).toContainEqual({ row: 1, col: 1 });
+    expect(adj).toContainEqual({ row: 2, col: 1 });
+    expect(adj).toContainEqual({ row: 2, col: 2 });
+  });
+
+  it('edge (2,1) has 5 neighbors', () => {
+    const adj = getAdjacentBoards(2, 1);
+    expect(adj.length).toBe(5);
+    expect(adj).toContainEqual({ row: 1, col: 0 });
+    expect(adj).toContainEqual({ row: 1, col: 1 });
+    expect(adj).toContainEqual({ row: 1, col: 2 });
+    expect(adj).toContainEqual({ row: 2, col: 0 });
+    expect(adj).toContainEqual({ row: 2, col: 2 });
+  });
+
+  // --- Center (8 neighbors) ---
+  it('center (1,1) has 8 neighbors (all other positions)', () => {
     const adj = getAdjacentBoards(1, 1);
     expect(adj.length).toBe(8);
+    // Should include every position except (1,1) itself
+    const expected = [
+      { row: 0, col: 0 }, { row: 0, col: 1 }, { row: 0, col: 2 },
+      { row: 1, col: 0 },                      { row: 1, col: 2 },
+      { row: 2, col: 0 }, { row: 2, col: 1 }, { row: 2, col: 2 },
+    ];
+    for (const pos of expected) {
+      expect(adj).toContainEqual(pos);
+    }
   });
 });
 
@@ -153,6 +216,54 @@ describe('unlockAdjacentBoards', () => {
     unlockAdjacentBoards(galaxy, 0, 0);
 
     expect(galaxy[1][0].status).toBe('lost');
+  });
+
+  it('does not overwrite unlocked status', () => {
+    const galaxy = generateGalaxy(42);
+    // (0,0) is already unlocked by default, (0,1) set to unlocked manually
+    galaxy[0][1].status = 'unlocked';
+    galaxy[0][0].status = 'won';
+    unlockAdjacentBoards(galaxy, 0, 0);
+
+    expect(galaxy[0][1].status).toBe('unlocked');
+  });
+
+  it('handles mixed neighbor statuses correctly', () => {
+    const galaxy = generateGalaxy(42);
+    // Set up center board with mixed neighbor statuses
+    galaxy[1][1].status = 'won';
+    galaxy[0][0].status = 'won';
+    galaxy[0][1].status = 'lost';
+    galaxy[0][2].status = 'locked';
+    galaxy[1][0].status = 'unlocked';
+    galaxy[1][2].status = 'locked';
+    galaxy[2][0].status = 'locked';
+    galaxy[2][1].status = 'lost';
+    galaxy[2][2].status = 'locked';
+
+    unlockAdjacentBoards(galaxy, 1, 1);
+
+    expect(galaxy[0][0].status).toBe('won');       // won stays won
+    expect(galaxy[0][1].status).toBe('lost');       // lost stays lost
+    expect(galaxy[0][2].status).toBe('unlocked');   // locked → unlocked
+    expect(galaxy[1][0].status).toBe('unlocked');   // unlocked stays unlocked
+    expect(galaxy[1][2].status).toBe('unlocked');   // locked → unlocked
+    expect(galaxy[2][0].status).toBe('unlocked');   // locked → unlocked
+    expect(galaxy[2][1].status).toBe('lost');       // lost stays lost
+    expect(galaxy[2][2].status).toBe('unlocked');   // locked → unlocked
+  });
+
+  it('does not affect non-adjacent boards', () => {
+    const galaxy = generateGalaxy(42);
+    galaxy[0][0].status = 'won';
+    unlockAdjacentBoards(galaxy, 0, 0);
+
+    // (2,2) is not adjacent to (0,0)
+    expect(galaxy[2][2].status).toBe('locked');
+    // (0,2) is not adjacent to (0,0)
+    expect(galaxy[0][2].status).toBe('locked');
+    // (2,0) is not adjacent to (0,0)
+    expect(galaxy[2][0].status).toBe('locked');
   });
 });
 
