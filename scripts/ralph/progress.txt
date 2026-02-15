@@ -2,6 +2,16 @@
 Started: Fri Feb 13 21:26:55 CST 2026
 
 ## Codebase Patterns
+- Galaxy state module: src/lib/game/galaxy.js — self-contained, no gameState imports
+- Galaxy state is a plain 2D array (galaxy[row][col]) — serializable to JSON, no Maps/Sets
+- Mock localStorage in tests with `vi.stubGlobal('localStorage', {...})`
+- Size mappings: Small=5x4, Medium=7x6, Large=9x8; galaxy difficulty range 7-20
+- gamePhase initial value is 'galaxy' (not 'setup') — SetupScreen has been removed
+- Galaxy phases: 'galaxy' (selection screen), 'galaxyComplete' (summary screen)
+- GalaxySelection and GalaxyComplete components live in src/lib/components/
+- GalaxySelection uses props-only pattern (no store subscriptions); GalaxyComplete uses stores
+- App.svelte onMount loads galaxy from localStorage or generates new one
+- handleContinue in App.svelte handles board completion: updates galaxy, saves, checks completion
 - Combat classes live in src/lib/game/combat.js, tests in src/lib/game/combat.test.js
 - Combat state management (startCombat, resolveCombat, combatState store) lives in gameState.js, tests in gameState.test.js
 - startCombat creates fresh PlayerShip each combat; reuses EnemyShip from enemy.combatShip if present (damage persists between encounters)
@@ -167,4 +177,138 @@ Started: Fri Feb 13 21:26:55 CST 2026
   - Board.svelte reactivity chain: board store → App.svelte $derived($board) → enemyRenderData → Board enemies prop
   - GameOver.svelte can import and subscribe to any game store — no need to pass loseReason via props
   - Browser verification not available (no Chrome extension) — manual verification needed
+---
+
+## 2026-02-14 18:23 - US-050
+- Created `src/lib/game/galaxy.js` with `generateGalaxy(seed?)` function
+- Galaxy is a 3x3 grid with randomized size, difficulty (7-20), and deterministic seeds
+- Board (0,0) starts unlocked; all others start locked
+- Also implemented: getAdjacentBoards, unlockAdjacentBoards, isGalaxyComplete, saveGalaxy, loadGalaxy, clearGalaxy
+- Created 21 unit tests in `src/lib/game/galaxy.test.js`
+- Files changed: `src/lib/game/galaxy.js` (new), `src/lib/game/galaxy.test.js` (new)
+- **Learnings for future iterations:**
+  - Galaxy module is self-contained — has its own makeRng, doesn't import from gameState.js
+  - Galaxy state is a plain 2D array (galaxy[row][col]) — no Maps or Sets, JSON-serializable
+  - Difficulty range for galaxy boards is 7-20, wider than the original 1-10 game difficulty
+  - All 376 tests pass including 21 new galaxy tests
+---
+
+## 2026-02-14 18:26 - US-051
+- getAdjacentBoards() and unlockAdjacentBoards() were already implemented in US-050
+- Added comprehensive tests: all 4 corners (3 neighbors each), all 4 edges (5 neighbors each), center (8 neighbors) with specific neighbor verification
+- Added unlock tests: mixed neighbor statuses, non-adjacent boards unaffected, unlocked status preserved
+- Total tests: 29 galaxy tests, 384 total (all pass)
+- Files changed: src/lib/game/galaxy.test.js
+- **Learnings for future iterations:**
+  - US-050 proactively implemented adjacency/unlock logic — check existing code before implementing
+  - getAdjacentBoards uses double loop dr/dc ∈ [-1,1] with bounds check to 0-2 range
+  - unlockAdjacentBoards only mutates 'locked' → 'unlocked', safe to call with any status mix
+---
+
+## 2026-02-14 18:28 - US-052
+- Persistence functions (saveGalaxy, loadGalaxy, clearGalaxy) were already implemented in US-050
+- Tests for save/load/clear with mock localStorage already existed (4 tests in galaxy.test.js)
+- All 384 tests pass, no new code changes needed
+- The "save after every board completion" wiring happens in US-055 (board completion handler)
+- Files changed: scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - US-050 proactively implemented persistence — always check existing code before starting a story
+  - Mock localStorage pattern: `vi.stubGlobal('localStorage', { getItem, setItem, removeItem })`
+  - STORAGE_KEY = 'galaxyProgress' — used consistently across save/load/clear
+---
+
+## 2026-02-14 18:29 - US-053
+- Created `src/lib/components/GalaxySelection.svelte` with 3x3 CSS grid layout
+- Props-based data flow: receives `galaxy` and `onSelectBoard` callback (no direct store subscriptions)
+- Each cell shows size label, difficulty number, and status indicator
+- Status colors: green for 'won', red for 'lost', glowing blue border for 'unlocked', dimmed gray for 'locked'
+- Only unlocked boards are clickable (role="button", tabindex="0", onkeydown for a11y)
+- Won and lost boards are not clickable
+- Mobile-friendly: min 44px touch targets, touch-action: manipulation
+- Dark mode default styling with light mode override via @media (prefers-color-scheme: light)
+- All 384 tests pass, production build succeeds
+- Browser verification not available (no Chrome extension) — manual verification needed
+- Files changed: src/lib/components/GalaxySelection.svelte (new), scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - GalaxySelection follows Board.svelte pattern: props-only, no store subscriptions
+  - Use `class:selectable` and `status-{board.status}` for dynamic styling
+  - Dark-first styling approach since game has sci-fi aesthetic; light mode as override
+---
+
+## 2026-02-14 18:31 - US-054
+- Added `galaxyState` and `currentBoardPos` writable stores to gameState.js
+- Changed `gamePhase` initial value from 'setup' to 'galaxy'
+- Changed `resetGame()` to set phase to 'galaxy' instead of 'setup'
+- Reset `currentBoardPos` to null in `resetGame()`
+- Updated App.svelte: imports GalaxySelection, galaxy functions, onMount
+- App.svelte onMount: loads saved galaxy from localStorage or generates new one
+- App.svelte routes 'galaxy' phase to GalaxySelection component
+- handleSelectBoard: reads board info from galaxy, sets currentBoardPos, calls initGame with board's seed/difficulty
+- Updated dice.test.js and gameState.test.js: 'setup' → 'galaxy' in phase assertions
+- All 384 tests pass, production build succeeds
+- Browser verification not available (no Chrome extension) — manual verification needed
+- Files changed: src/lib/game/gameState.js, src/App.svelte, src/lib/game/dice.test.js, src/lib/game/gameState.test.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - gamePhase initial value and resetGame() must stay in sync — both use 'galaxy' now
+  - App.svelte uses onMount to load/generate galaxy — galaxy data arrives asynchronously
+  - Tests that check resetGame() phase must use 'galaxy' not 'setup'
+  - SetupScreen import/route kept in App.svelte for now — will be removed in US-058
+---
+
+## 2026-02-14 18:32 - US-055
+- Replaced handlePlayAgain with handleContinue in App.svelte
+- handleContinue flow: reads currentBoardPos, updates galaxy board status to 'won'/'lost', unlocks neighbors on win, saves to localStorage, checks galaxy completion
+- Deep copies galaxy before mutation: `galaxy.map(r => r.map(b => ({ ...b })))`
+- If galaxy complete, transitions to 'galaxyComplete' phase; otherwise calls resetGame() to return to 'galaxy' phase
+- GameOver component callback prop name kept as `onPlayAgain` but now wired to handleContinue
+- All 384 tests pass, production build succeeds
+- Browser verification not available (no Chrome extension) — manual verification needed
+- Files changed: src/App.svelte, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - Deep copy galaxy before mutation to ensure Svelte reactivity detects changes
+  - handleContinue must read $currentBoardPos and $gamePhase before calling resetGame (which clears them)
+  - Galaxy completion check must happen before resetGame() call — otherwise phase is already 'galaxy'
+---
+
+## 2026-02-14 18:46 - US-056
+- Created `src/lib/components/GalaxyComplete.svelte` with galaxy summary stats
+- Shows counts: won (green), lost (red), unreachable/locked (gray)
+- 'New Galaxy' button clears localStorage and generates fresh galaxy
+- Added 'galaxyComplete' phase routing in App.svelte (checked before 'galaxy' phase)
+- Added 2 more isGalaxyComplete tests: mixed statuses, single unlocked board
+- `isGalaxyComplete` was already implemented in US-050 — no changes needed to galaxy.js
+- Total tests: 386 (31 galaxy tests), all pass; production build succeeds
+- Browser verification not available (no Chrome extension) — manual verification needed
+- Files changed: src/lib/components/GalaxyComplete.svelte (new), src/App.svelte, src/lib/game/galaxy.test.js, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - GalaxyComplete subscribes to stores directly (galaxyState, gamePhase) since it calls actions
+  - 'galaxyComplete' routing must be checked BEFORE 'galaxy' in the if/else chain
+  - isGalaxyComplete already had 3 tests; added 2 more for mixed statuses and edge case
+---
+
+## 2026-02-14 18:47 - US-057
+- Changed GameOver button text from 'Play Again' to 'Return to Galaxy'
+- Prop name `onPlayAgain` kept as-is (handler in App.svelte already changed to handleContinue in US-055)
+- All existing stats preserved: moves made, points remaining, board size, loss reason
+- All 386 tests pass, production build succeeds
+- Browser verification not available (no Chrome extension) — manual verification needed
+- Files changed: src/lib/components/GameOver.svelte, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - Minimal change: only button text updated, prop name kept for backward compatibility
+  - The standalone 'Play Again' flow was already removed in US-055 (handleContinue replaces it)
+---
+
+## 2026-02-14 18:48 - US-058
+- Deleted `src/lib/components/SetupScreen.svelte`
+- Removed SetupScreen import and 'setup' phase routing from App.svelte
+- Removed `handleStart` function from App.svelte (no longer needed)
+- Updated Board.svelte default gamePhase prop from 'setup' to 'galaxy'
+- Grep confirms zero references to 'SetupScreen' or 'setup' in src/
+- All 386 tests pass, production build succeeds
+- Browser verification not available (no Chrome extension) — manual verification needed
+- Files changed: src/lib/components/SetupScreen.svelte (deleted), src/App.svelte, src/lib/components/Board.svelte, scripts/ralph/prd.json, scripts/ralph/progress.txt
+- **Learnings for future iterations:**
+  - Board.svelte had a default prop `gamePhase = 'setup'` — must update defaults when removing phases
+  - Tests referencing 'setup' were already updated in US-054 — no test changes needed here
+  - Bundle size decreased from 75.20 KB to 72.41 KB after removing SetupScreen
 ---

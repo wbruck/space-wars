@@ -2,15 +2,19 @@
   import Board from './lib/components/Board.svelte';
   import Dice from './lib/components/Dice.svelte';
   import HUD from './lib/components/HUD.svelte';
-  import SetupScreen from './lib/components/SetupScreen.svelte';
   import GameOver from './lib/components/GameOver.svelte';
   import CombatScreen from './lib/components/CombatScreen.svelte';
+  import GalaxySelection from './lib/components/GalaxySelection.svelte';
+  import GalaxyComplete from './lib/components/GalaxyComplete.svelte';
   import {
     board, playerPos, gamePhase, visited,
     selectedDirection, previewPath, animatingPath, animationStep,
+    galaxyState, currentBoardPos,
     initGame, resetGame, selectDirection, executeMove,
   } from './lib/game/gameState.js';
   import { getAvailableDirections } from './lib/game/movement.js';
+  import { generateGalaxy, loadGalaxy, saveGalaxy, unlockAdjacentBoards, isGalaxyComplete } from './lib/game/galaxy.js';
+  import { onMount } from 'svelte';
 
   // Subscribe to stores
   let boardData = $derived($board);
@@ -21,6 +25,17 @@
   let preview = $derived($previewPath);
   let animPath = $derived($animatingPath);
   let animStep = $derived($animationStep);
+  let galaxy = $derived($galaxyState);
+
+  // On mount, load or generate galaxy
+  onMount(() => {
+    const saved = loadGalaxy();
+    if (saved) {
+      galaxyState.set(saved);
+    } else {
+      galaxyState.set(generateGalaxy());
+    }
+  });
 
   // Construct enemy render data from boardData
   let enemyRenderData = $derived.by(() => {
@@ -45,8 +60,10 @@
     return getAvailableDirections(boardData.rays, pos, boardData.obstacles);
   });
 
-  function handleStart(cols, rows, difficulty) {
-    initGame(cols, rows, undefined, difficulty);
+  function handleSelectBoard(row, col) {
+    const boardInfo = galaxy[row][col];
+    currentBoardPos.set({ row, col });
+    initGame(boardInfo.cols, boardInfo.rows, boardInfo.seed, boardInfo.difficulty);
   }
 
   function handleDirectionSelect(direction) {
@@ -57,7 +74,35 @@
     executeMove();
   }
 
-  function handlePlayAgain() {
+  function handleContinue() {
+    const boardPos = $currentBoardPos;
+    const currentPhase = $gamePhase;
+
+    if (boardPos && galaxy) {
+      const { row, col } = boardPos;
+      const updatedGalaxy = galaxy.map(r => r.map(b => ({ ...b })));
+
+      // Update board status based on win/loss
+      updatedGalaxy[row][col].status = currentPhase === 'won' ? 'won' : 'lost';
+
+      // If won, unlock adjacent boards
+      if (currentPhase === 'won') {
+        unlockAdjacentBoards(updatedGalaxy, row, col);
+      }
+
+      // Save and update store
+      saveGalaxy(updatedGalaxy);
+      galaxyState.set(updatedGalaxy);
+
+      // Check completion
+      if (isGalaxyComplete(updatedGalaxy)) {
+        currentBoardPos.set(null);
+        board.set(null);
+        gamePhase.set('galaxyComplete');
+        return;
+      }
+    }
+
     resetGame();
   }
 </script>
@@ -65,11 +110,14 @@
 <main>
   <h1>Game Time</h1>
 
-  {#if phase === 'setup'}
-    <SetupScreen onStart={handleStart} />
+  {#if phase === 'galaxyComplete' && galaxy}
+    <GalaxyComplete {galaxy} />
+
+  {:else if phase === 'galaxy' && galaxy}
+    <GalaxySelection {galaxy} onSelectBoard={handleSelectBoard} />
 
   {:else if phase === 'won' || phase === 'lost'}
-    <GameOver onPlayAgain={handlePlayAgain} />
+    <GameOver onPlayAgain={handleContinue} />
 
   {:else if phase === 'combat'}
     <CombatScreen />

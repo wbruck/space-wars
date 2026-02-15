@@ -56,7 +56,7 @@
     </div>
   </div>
 
-  <button class="play-again-btn" onclick={onPlayAgain}>Play Again</button>
+  <button class="play-again-btn" onclick={onPlayAgain}>Return to Galaxy</button>
 </div>
 
 <style>

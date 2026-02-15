@@ -18,8 +18,8 @@ export const movementPool = writable(0);
 /** Current dice roll (1-6 or null) */
 export const diceValue = writable(null);
 
-/** Game phase: 'setup' | 'rolling' | 'selectingDirection' | 'moving' | 'combat' | 'won' | 'lost' */
-export const gamePhase = writable('setup');
+/** Game phase: 'galaxy' | 'rolling' | 'selectingDirection' | 'moving' | 'combat' | 'won' | 'lost' | 'galaxyComplete' */
+export const gamePhase = writable('galaxy');
 
 /** Set of visited vertex IDs */
 export const visited = writable(new Set());
@@ -44,6 +44,15 @@ export const loseReason = writable(null);
 
 /** Combat state: null | { engine: CombatEngine, enemyId: string, approachAdvantage: object, preCombatPlayerPos: string, preCombatPath: string[], triggerVertexIndex: number } */
 export const combatState = writable(null);
+
+/** Galaxy state: null | Object[][] (3x3 grid of board objects) */
+export const galaxyState = writable(null);
+
+/** Current board position in galaxy: null | { row: number, col: number } */
+export const currentBoardPos = writable(null);
+
+/** Persistent player ship — damage carries across combats within a board */
+export const playerShipStore = writable(null);
 
 // --- Helper functions ---
 
@@ -202,6 +211,7 @@ export function initGame(cols, rows, seed, difficulty = 5) {
   gamePhase.set('rolling');
   visited.set(new Set([startVertex]));
   movesMade.set(0);
+  playerShipStore.set(new PlayerShip());
 
   return boardData;
 }
@@ -407,7 +417,11 @@ export function executeMove(onAnimationComplete) {
  * @param {number} triggerIndex - Index in the path where combat was triggered
  */
 export function startCombat(enemyId, approachAdvantage, preCombatPos, path, triggerIndex) {
-  const playerShip = new PlayerShip();
+  // Reuse persistent player ship (damage carries across combats)
+  const playerShip = get(playerShipStore) || new PlayerShip();
+  if (!get(playerShipStore)) {
+    playerShipStore.set(playerShip);
+  }
 
   // Reuse existing EnemyShip if enemy has one (damage persists between encounters)
   const boardData = get(board);
@@ -440,7 +454,7 @@ export function startCombat(enemyId, approachAdvantage, preCombatPos, path, trig
 /**
  * Resolve a combat encounter and return to the board game.
  *
- * @param {string} result - Combat result: 'playerWin' | 'playerLose' | 'playerDestroyed' | 'enemyFled'
+ * @param {string} result - Combat result: 'playerWin' | 'playerLose' | 'playerDestroyed' | 'enemyFled' | 'escaped'
  */
 export function resolveCombat(result) {
   const combat = get(combatState);
@@ -485,6 +499,69 @@ export function resolveCombat(result) {
         // so Svelte 5's $derived detects the change)
         board.set({ ...boardData });
       }
+    }
+  }
+
+  // On enemyFled: reduce vision range and recompute zones
+  if (result === 'enemyFled' && boardData) {
+    const enemyObj = boardData.enemies.find(e => e.id === combat.enemyId);
+    if (enemyObj) {
+      // Reduce vision range to 1 (disarmed — can't shoot far)
+      enemyObj.range = 1;
+
+      // Remove all existing zones for this enemy
+      if (boardData.enemyZoneMap) {
+        for (const [zoneVertex, zoneInfo] of boardData.enemyZoneMap) {
+          if (zoneInfo.enemyId === combat.enemyId) {
+            boardData.enemyZoneMap.delete(zoneVertex);
+            boardData.enemyZones.delete(zoneVertex);
+          }
+        }
+      }
+
+      // Recompute vision zone (range 1) from enemy's facing direction
+      if (boardData.rays) {
+        const vertexRays = boardData.rays.get(enemyObj.vertexId);
+        if (vertexRays) {
+          const facingRay = vertexRays.find(r => r.direction === enemyObj.direction);
+          if (facingRay && facingRay.vertices.length > 0) {
+            const visionVertex = facingRay.vertices[0];
+            if (!boardData.obstacles.has(visionVertex) &&
+                visionVertex !== boardData.startVertex &&
+                visionVertex !== boardData.targetVertex) {
+              boardData.enemyZones.add(visionVertex);
+              boardData.enemyZoneMap.set(visionVertex, { enemyId: enemyObj.id, zoneType: 'vision' });
+            }
+          }
+        }
+      }
+
+      // Recompute proximity zones via BFS (depth 2)
+      if (boardData.adjacency) {
+        const proxVisited = new Set();
+        proxVisited.add(enemyObj.vertexId);
+        let frontier = [enemyObj.vertexId];
+        for (let depth = 0; depth < 2; depth++) {
+          const nextFrontier = [];
+          for (const fv of frontier) {
+            const neighbors = boardData.adjacency.get(fv) || [];
+            for (const nv of neighbors) {
+              if (proxVisited.has(nv)) continue;
+              proxVisited.add(nv);
+              if (boardData.obstacles.has(nv)) continue;
+              if (nv === boardData.startVertex || nv === boardData.targetVertex) continue;
+              if (!boardData.enemyZones.has(nv)) {
+                boardData.enemyZones.add(nv);
+                boardData.enemyZoneMap.set(nv, { enemyId: enemyObj.id, zoneType: 'proximity' });
+              }
+              nextFrontier.push(nv);
+            }
+          }
+          frontier = nextFrontier;
+        }
+      }
+
+      board.set({ ...boardData });
     }
   }
 
@@ -538,7 +615,7 @@ export function resetGame() {
   playerPos.set(null);
   movementPool.set(0);
   diceValue.set(null);
-  gamePhase.set('setup');
+  gamePhase.set('galaxy');
   visited.set(new Set());
   movesMade.set(0);
   selectedDirection.set(null);
@@ -547,4 +624,6 @@ export function resetGame() {
   animationStep.set(-1);
   loseReason.set(null);
   combatState.set(null);
+  playerShipStore.set(null);
+  currentBoardPos.set(null);
 }
