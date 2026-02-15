@@ -873,10 +873,12 @@ describe('engagement trigger in executeMove (US-034)', () => {
     const pos = get(playerPos);
     const rays = boardData.rays.get(pos);
     // Find a ray with at least 3 vertices so we can place an enemy zone at vertex 1
+    // Also ensure no existing enemy zones on the first 2 vertices (avoid hitting a real enemy first)
     const longRay = rays.find((r) => {
       if (r.vertices.length < 3) return false;
-      // First vertex must not be an obstacle
-      return !boardData.obstacles.has(r.vertices[0]) && !boardData.obstacles.has(r.vertices[1]);
+      // First two vertices must not be an obstacle or existing enemy zone
+      return !boardData.obstacles.has(r.vertices[0]) && !boardData.obstacles.has(r.vertices[1])
+        && !boardData.enemyZones.has(r.vertices[0]) && !boardData.enemyZones.has(r.vertices[1]);
     });
     if (!longRay) return null;
 
