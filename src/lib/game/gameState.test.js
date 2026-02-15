@@ -522,6 +522,46 @@ describe('combat state management', () => {
       resolveCombat('playerWin');
       expect(get(playerPos)).toBe('a');
     });
+
+    it('retains enemyObj.combatShip after playerWin for future salvage (US-007)', () => {
+      const enemies = boardData.enemies;
+      if (enemies.length === 0) {
+        const vertexIds = [...boardData.vertices.keys()];
+        const enemyVertex = vertexIds.find(
+          id => id !== boardData.startVertex && id !== boardData.targetVertex && !boardData.obstacles.has(id)
+        );
+        const enemy = new Enemy(enemyVertex, 3, 0);
+        enemies.push(enemy);
+        boardData.obstacles.add(enemyVertex);
+        boardData.boardObjects.push(enemy);
+        board.set(boardData);
+      }
+
+      const enemy = enemies[0];
+      const preCombatPos = get(playerPos);
+
+      startCombat(enemy.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+
+      // combatShip should now be set on the enemy object
+      expect(enemy.combatShip).toBeDefined();
+      const combatShipRef = enemy.combatShip;
+
+      // Damage the bridge to simulate a real playerWin scenario
+      enemy.combatShip.getComponent('Bridge').takeDamage(10);
+
+      resolveCombat('playerWin');
+
+      // combatShip must be retained (NOT nulled) — all components intact for salvage
+      expect(enemy.combatShip).toBe(combatShipRef);
+      expect(enemy.combatShip.components.length).toBe(3);
+      // Non-destroyed components retain their HP
+      expect(enemy.combatShip.getComponent('Weapons').destroyed).toBe(false);
+      expect(enemy.combatShip.getComponent('Engines').destroyed).toBe(false);
+      // Bridge is destroyed
+      expect(enemy.combatShip.getComponent('Bridge').destroyed).toBe(true);
+      // Salvageable components work
+      expect(enemy.combatShip.getSalvageableComponents().length).toBe(2);
+    });
   });
 
   describe('resolveCombat — playerLose (timeout)', () => {

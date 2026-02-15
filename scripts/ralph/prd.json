@@ -153,7 +153,7 @@
         "Commit with message starting with US-007"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

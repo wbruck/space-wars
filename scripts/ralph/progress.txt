@@ -125,3 +125,18 @@ Started: Sun Feb 15 16:23:36 CST 2026
   - Enemy components are untouched after playerWin — no cleanup occurs, all components retain their state
   - 16 new tests added; all 592 total tests pass
 ---
+
+## 2026-02-15 - US-007
+- Verified gameState.js ship creation already uses new typed component constructors correctly
+- initGame() line 290: `new PlayerShip()` already creates ship with sizeLimit=7 and typed components
+- startCombat() line 549: `new EnemyShip()` already creates ship with sizeLimit=4 and typed components
+- playerShipStore persistence, enemyObj.combatShip persistence, and isEngineDestroyed movement penalty all functional
+- Verified resolveCombat() does NOT null enemyObj.combatShip after playerWin — components retained for salvage
+- Added 1 new test: enemyObj.combatShip retention after playerWin (verifies components array intact, salvageable query works)
+- Files changed: src/lib/game/gameState.test.js, scripts/ralph/prd.json
+- **Learnings for future iterations:**
+  - gameState.js already used `new PlayerShip()` and `new EnemyShip()` with no args — the constructor defaults from US-004/005 made this story mostly a verification task
+  - resolveCombat's playerWin branch marks enemy.destroyed=true and removes from obstacles/zones but never touches combatShip
+  - The addEnemyToBoard helper is only available in the 'combat board integration (US-036)' describe block — other combat test sections add enemies inline
+  - 1 new test added; all 593 total tests pass
+---
