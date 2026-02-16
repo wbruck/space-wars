@@ -1,0 +1,167 @@
+{
+  "project": "Shipyard Screen",
+  "branchName": "ralph/shipyard",
+  "description": "Add a Shipyard screen for building and customizing the player's ship with a power budget system and random component market, accessible from the galaxy screen.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Rename size/sizeLimit to Power/powerLimit in code",
+      "description": "As a developer, I want the component sizing system renamed from 'size' to 'power' so the UI and code use consistent 'Power Requirement' terminology.",
+      "background": "The codebase currently uses 'size' and 'sizeLimit' terminology for ship component capacity. ShipComponent has a 'size' property (1 or 2), ComponentContainer has 'sizeLimit', 'totalSize', and 'remainingCapacity'. These need to be renamed to 'powerCost', 'powerLimit', 'totalPower', and 'remainingPower' respectively to align with the new 'Power Requirement' UI terminology.",
+      "implementation": "Pure rename refactor with no behavioral changes. Rename mapping: ShipComponent.size → ShipComponent.powerCost (constructor parameter), ComponentContainer.sizeLimit → ComponentContainer.powerLimit, ComponentContainer.totalSize → ComponentContainer.totalPower, ComponentContainer.remainingCapacity → ComponentContainer.remainingPower. Files to update: src/lib/game/combat.js (ShipComponent, ComponentContainer, Ship, PlayerShip, EnemyShip, CombatEngine), src/lib/game/combat.test.js (all tests referencing size/sizeLimit/totalSize/remainingCapacity), src/lib/game/gameState.js (PlayerShip creation), src/lib/game/boardObjects.js (if any size references exist for ship components), src/lib/components/CombatScreen.svelte (if any size references in UI). Non-goals: no new features, no behavioral changes.",
+      "acceptanceCriteria": [
+        "ShipComponent.size renamed to ShipComponent.powerCost (constructor param name updated)",
+        "ComponentContainer.sizeLimit renamed to ComponentContainer.powerLimit",
+        "ComponentContainer.totalSize renamed to ComponentContainer.totalPower",
+        "ComponentContainer.remainingCapacity renamed to ComponentContainer.remainingPower",
+        "All references in PlayerShip, EnemyShip, Ship, and CombatEngine updated",
+        "All existing tests updated to use new names",
+        "All tests pass",
+        "Commit with message starting with 'feat: US-001'"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Add shipyard game phase and store",
+      "description": "As a developer, I need a 'shipyard' game phase and a store for the component market so the shipyard screen can be routed and its state managed.",
+      "background": "The game uses a gamePhase store to route between screens (galaxy, rolling, combat, etc.) in App.svelte. The shipyard needs its own phase and supporting stores. Component stats by powerCost: Weapon power 1 (HP 1, damage 1, accuracy 4), Weapon power 2 (HP 2, damage 1, accuracy 3), Engine power 1 (HP 1, speedBonus 0), Engine power 2 (HP 2, speedBonus 1), Bridge power 1 (HP 1, evasionBonus 0), Bridge power 2 (HP 2, evasionBonus 1). Component names stay generic ('Weapons', 'Engines', 'Bridge').",
+      "implementation": "Add to src/lib/game/gameState.js: New gamePhase value 'shipyard' alongside existing phases. New writable store componentMarket (array of component instances). New writable store shipConfirmed (boolean, default false). New function generateComponentMarket(rng) that creates 5-6 components — guaranteed minimum 1 WeaponComponent, 1 EngineComponent, 1 BridgeComponent, remaining 2-3 slots filled randomly from any type. Each component randomly assigned powerCost 1 or 2 with stats matching existing constructors. Market generated once during initGalaxy() using the galaxy seed RNG, persists for the entire session (never refreshed). New function enterShipyard() sets gamePhase to 'shipyard'. New function confirmShipBuild() sets shipConfirmed to true and gamePhase back to 'galaxy'. Non-goals: no currency system, no component upgrades.",
+      "acceptanceCriteria": [
+        "New gamePhase value: 'shipyard'",
+        "New store componentMarket (writable) holding the array of available-for-purchase components",
+        "New store shipConfirmed (writable, boolean, default false) tracking whether the player has confirmed their build",
+        "New function generateComponentMarket(rng) that creates 5-6 random components with at least 1 weapon, 1 engine, 1 bridge; each component randomly powerCost 1 or 2",
+        "componentMarket is generated once during initGalaxy() and persists for the session",
+        "New function enterShipyard() that sets gamePhase to 'shipyard'",
+        "New function confirmShipBuild() that sets shipConfirmed to true and returns to galaxy phase",
+        "Tests for generateComponentMarket verifying: correct count, type coverage, deterministic with seed",
+        "All tests pass",
+        "Commit with message starting with 'feat: US-002'"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Add install/remove component functions",
+      "description": "As a developer, I need game state functions to move components between the market and the player's ship.",
+      "background": "ComponentContainer.addComponent() already enforces powerLimit budget and bridge uniqueness (max 1 bridge). ComponentContainer.removeComponent(name) already handles explicit removal. The component market array uses the same WeaponComponent/EngineComponent/BridgeComponent instances. Both componentMarket and playerShipStore must be updated reactively so the UI reflects changes immediately.",
+      "implementation": "Add to src/lib/game/gameState.js: installComponent(componentIndex) — reads component from componentMarket store by index, calls playerShip.addComponent(component). On success: removes component from componentMarket array, updates both stores. Returns false if addComponent() rejects (insufficient power or bridge conflict). removeComponent(componentName) — calls playerShip.removeComponent(name), resets component HP to maxHp before returning to market (components are repaired when uninstalled), adds component back to componentMarket array, updates both stores. No new validation logic needed — reuse existing ComponentContainer enforcement. Non-goals: no component purchasing with currency, no crafting.",
+      "acceptanceCriteria": [
+        "New function installComponent(componentIndex) — removes component from componentMarket array by index, calls playerShip.addComponent(). Returns false if insufficient power or bridge uniqueness violated.",
+        "New function removeComponent(componentName) — calls playerShip.removeComponent(), adds component back to componentMarket array",
+        "Both functions update their respective stores reactively",
+        "Tests for install (success, insufficient power, bridge conflict) and remove (returns to market)",
+        "All tests pass",
+        "Commit with message starting with 'feat: US-003'"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Shipyard Svelte component — layout and ship display",
+      "description": "As a player, I want to see my current ship loadout with power budget so I know what I'm working with.",
+      "background": "This is a Svelte 5 app using runes syntax ($props(), $state(), $derived()). Existing screens like GalaxySelection and CombatScreen provide styling references. Mobile-friendly design required: 44px min touch targets, touch-action: manipulation, -webkit-tap-highlight-color: transparent. The PlayerShip has powerLimit of 7. Components have typed subclasses with type-based getters (hasComponentType, getComponentsByType).",
+      "implementation": "Create new src/lib/components/Shipyard.svelte. Subscribe to playerShipStore and componentMarket stores using $derived(). Header: 'Shipyard' title with power bar showing totalPower / powerLimit (e.g., 'Power: 4 / 7'). Power bar color coding inverted to indicate build readiness: Red = low usage (underpowered), Yellow = moderate usage, Green = nearly full (ready). Installed Components section: each row shows name, type label, power requirement, HP, bonus stat. Bonus descriptions: Weapon power 2 → '+1 Accuracy (hits 3+)', Engine power 2 → '+1 Speed', Bridge power 2 → '+1 Evasion', any power 1 → 'No bonus'. Each row has Remove button calling removeComponent(name). Confirm Build button calls confirmShipBuild(), disabled unless ship has at least 1 weapon, 1 engine, and 1 bridge — check via hasComponentType('weapon'), hasComponentType('engine'), hasComponentType('bridge').",
+      "acceptanceCriteria": [
+        "New component src/lib/components/Shipyard.svelte",
+        "Header shows: 'Shipyard' title, power bar showing totalPower / powerLimit (e.g., 'Power: 4 / 7')",
+        "Installed Components section lists each component on the ship with: name, type icon/label, power requirement, HP, and bonus stat",
+        "Bonus display examples: Weapon power 2 → '+1 Accuracy (hits 3+)', Engine power 2 → '+1 Speed', Bridge power 2 → '+1 Evasion'. Power 1 components show 'No bonus'",
+        "Each installed component has a Remove button",
+        "Clicking Remove calls removeComponent() and updates the display",
+        "Confirm Build button at the bottom — calls confirmShipBuild()",
+        "Confirm Build is disabled unless the ship has at least 1 weapon, 1 engine, and 1 bridge installed",
+        "All tests pass",
+        "Verify in browser using dev-browser skill",
+        "Commit with message starting with 'feat: US-004'"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Shipyard Svelte component — component market",
+      "description": "As a player, I want to see available components and install them on my ship.",
+      "background": "The Shipyard.svelte component from US-004 already exists with the installed components section. The componentMarket store holds the array of available component instances. Component names stay generic ('Weapons', 'Engines', 'Bridge') — differentiated by displayed power/stats. Bridge uniqueness rule: only 1 bridge allowed on a ship at a time.",
+      "implementation": "Add to src/lib/components/Shipyard.svelte: 'Available Components' section below the installed components section. Subscribe to componentMarket store using $derived(). Same display format as installed components: name, type, power requirement, HP, bonus stat. Each row has Install button calling installComponent(index). Install button disabled if component.powerCost > playerShip.remainingPower. Install button disabled if component type is 'bridge' and playerShip.hasComponentType('bridge') is true. Use $derived() to reactively compute disabled state. When componentMarket array is empty, show 'No components available' message. Non-goals: no component purchasing, no refreshing the market.",
+      "acceptanceCriteria": [
+        "Available Components section lists each component in componentMarket with: name, type, power requirement, HP, bonus stat (same format as installed list)",
+        "Each market component has an Install button",
+        "Install button is disabled if the component's power requirement exceeds remainingPower",
+        "Install button is disabled if it's a bridge and a bridge is already installed",
+        "Clicking Install calls installComponent() and updates both lists",
+        "When market is empty, show 'No components available' message",
+        "All tests pass",
+        "Verify in browser using dev-browser skill",
+        "Commit with message starting with 'feat: US-005'"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Galaxy screen — shipyard button and gating",
+      "description": "As a player, I want a 'Shipyard' button on the galaxy screen, and at game start it should be the only available action until I confirm my ship.",
+      "background": "GalaxySelection.svelte displays a 3x3 grid of board cells with status (unlocked, won, lost, locked). It uses an onSelectBoard callback for board selection. The shipConfirmed store (from US-002) tracks whether the player has confirmed their build. shipConfirmed persists across board plays within the session, resets to false only on new galaxy/game init.",
+      "implementation": "Modify src/lib/components/GalaxySelection.svelte: Add 'Shipyard' button that calls enterShipyard() — always visible and clickable. Subscribe to shipConfirmed store using $derived(). When shipConfirmed === false: all board-selection cells get reduced opacity (opacity: 0.4) and pointer-events: none. Display message 'Confirm your ship build first' near the grid. Only the Shipyard button is interactive. When shipConfirmed === true: board cells function normally (unlocked boards clickable per existing logic). Shipyard button remains available for refitting between missions. Non-goals: no animated transitions between screens.",
+      "acceptanceCriteria": [
+        "New 'Shipyard' button on the galaxy screen that calls enterShipyard()",
+        "When shipConfirmed is false: all board-selection cells are visually greyed out and non-clickable; only the Shipyard button is active",
+        "When shipConfirmed is true: board cells function normally (unlocked boards are clickable); Shipyard button remains available for refitting",
+        "Visual indication on greyed-out cells (e.g., reduced opacity, 'Confirm ship first' tooltip or label)",
+        "All tests pass",
+        "Verify in browser using dev-browser skill",
+        "Commit with message starting with 'feat: US-006'"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Wire shipyard into App.svelte routing",
+      "description": "As a developer, I need the shipyard phase to render the Shipyard component in the app's screen router.",
+      "background": "App.svelte uses gamePhase store to route between screens with Svelte {#if}/{:else if} blocks. Existing pattern: {#if $gamePhase === 'galaxy'} → GalaxySelection, {:else if $gamePhase === 'combat'} → CombatScreen, etc. The Shipyard component (from US-004/US-005) and enterShipyard/confirmShipBuild functions (from US-002) are already implemented.",
+      "implementation": "Modify App.svelte: Import Shipyard component. Add {:else if $gamePhase === 'shipyard'} → <Shipyard /> to the routing block. Full navigation flow: 1) New game → initGalaxy() → gamePhase = 'galaxy' → galaxy shows only Shipyard button active. 2) Click Shipyard → enterShipyard() → gamePhase = 'shipyard' → Shipyard screen. 3) Install/remove components → Confirm Build → confirmShipBuild() → shipConfirmed = true, gamePhase = 'galaxy'. 4) Galaxy shows board cells clickable → select board → play. Edge cases: returning to shipyard after confirming should work (refitting), shipConfirmed stays true. Returning to galaxy from shipyard without confirming needs a Back button or equivalent navigation.",
+      "acceptanceCriteria": [
+        "App.svelte renders Shipyard component when gamePhase === 'shipyard'",
+        "Navigating to shipyard and back to galaxy works correctly",
+        "Starting a new game → galaxy screen shows only shipyard button active",
+        "Full flow works: new game → shipyard → install components → confirm → galaxy → select board → play",
+        "All tests pass",
+        "Verify in browser using dev-browser skill",
+        "Commit with message starting with 'feat: US-007'"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Update PlayerShip defaults for shipyard flow",
+      "description": "As a developer, I need the PlayerShip to start empty (no default components) so the player builds their ship in the shipyard.",
+      "background": "PlayerShip currently defaults to: WeaponComponent('Weapons', 4, 2), EngineComponent('Engines', 4, 2), BridgeComponent('Bridge', 3, 2) — total power 6 of 7. Many existing combat tests assume these defaults are present. The Ship base class still supports legacy array form Ship('name', [comps]) — no change needed there. EnemyShip defaults remain unchanged.",
+      "implementation": "Modify PlayerShip constructor in src/lib/game/combat.js: create ship with empty components array instead of default components. powerLimit remains 7. The generateComponentMarket(rng) from US-002 serves as the 'starter kit' — market includes at least 1 of each type so the player can build a viable ship. Tests must be updated — this is the most impactful change. Audit combat.test.js, gameState.test.js, and any other test files referencing PlayerShip. Tests should either explicitly add components to PlayerShip before testing, or create PlayerShip with components passed in constructor options: new PlayerShip({ powerLimit: 7, components: [...] }). EnemyShip defaults remain unchanged (enemies still spawn with their default loadout). Non-goals: no changes to Ship base class legacy support.",
+      "acceptanceCriteria": [
+        "PlayerShip constructor creates ship with no default components (empty components array)",
+        "PlayerShip.powerLimit remains 7",
+        "Update any tests that relied on default components being present",
+        "Galaxy init creates the component market which includes the starter components the player can choose from",
+        "All tests pass",
+        "Commit with message starting with 'feat: US-008'"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

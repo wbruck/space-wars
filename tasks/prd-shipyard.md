@@ -65,7 +65,7 @@ Add a Shipyard screen where the player can build and customize their ship by ins
 - [ ] Each installed component has a "Remove" button
 - [ ] Clicking "Remove" calls `removeComponent()` and updates the display
 - [ ] "Confirm Build" button at the bottom — calls `confirmShipBuild()`
-- [ ] "Confirm Build" is disabled if the ship has no bridge installed
+- [ ] "Confirm Build" is disabled unless the ship has at least 1 weapon, 1 engine, and 1 bridge installed
 - [ ] All tests pass
 - [ ] Verify in browser using dev-browser skill
 - [ ] Commit with message starting with "feat: US-004"
@@ -127,7 +127,7 @@ Add a Shipyard screen where the player can build and customize their ship by ins
 - FR-4: Component market is fixed for the session (generated once, never refreshed)
 - FR-5: Players can freely install/remove components between the market and their ship, constrained by `powerLimit` and bridge uniqueness
 - FR-6: Shipyard screen displays both installed and available components with: name, type, power requirement, HP, and bonus stat
-- FR-7: "Confirm Build" button sets `shipConfirmed = true` and returns to galaxy; disabled if no bridge is installed
+- FR-7: "Confirm Build" button sets `shipConfirmed = true` and returns to galaxy; disabled unless ship has at least 1 weapon, 1 engine, and 1 bridge
 - FR-8: Galaxy screen shows a "Shipyard" button that navigates to the shipyard phase
 - FR-9: When `shipConfirmed` is `false`, galaxy board cells are greyed out and non-clickable
 - FR-10: When `shipConfirmed` is `true`, galaxy functions normally; shipyard remains accessible for refitting between missions
@@ -145,7 +145,7 @@ Add a Shipyard screen where the player can build and customize their ship by ins
 ## Design Considerations
 
 - Reuse the existing component stat system (`WeaponComponent`, `EngineComponent`, `BridgeComponent`)
-- Power bar should be visually clear — consider a segmented bar showing filled vs. remaining power
+- Power bar uses inverted color coding: Red (low usage) → Yellow (mid) → Green (nearly full). This signals "build readiness" rather than "running out of space"
 - Component bonus descriptions should be human-readable (e.g., "+1 Accuracy (hits 3+)" not "accuracy: 3")
 - Use consistent styling with existing screens (GalaxySelection, CombatScreen)
 - Mobile-friendly: buttons should meet 44px minimum touch target
@@ -158,7 +158,7 @@ Add a Shipyard screen where the player can build and customize their ship by ins
 - When removing a component from the ship, its HP should be reset to `maxHp` before returning to market (components are repaired when uninstalled)
 - The `rng` used for market generation should come from the galaxy seed for determinism
 - `shipConfirmed` should persist across board plays (it's a session-level flag)
-- Component names in the market should be distinguishable (e.g., "Heavy Weapons" vs "Light Weapons" for size 2 vs size 1)
+- Component names stay generic ("Weapons", "Engines", "Bridge") — differentiated by displayed power/stats, not flavor names
 
 ## Success Metrics
 
@@ -167,8 +167,8 @@ Add a Shipyard screen where the player can build and customize their ship by ins
 - All existing tests continue to pass after rename
 - No regression in combat behavior after power rename
 
-## Open Questions
+## Resolved Questions
 
-- Should there be a minimum ship requirement beyond "must have a bridge"? (e.g., must have at least one weapon)
-- What should component names be in the market? (e.g., "Heavy Laser" / "Light Laser" for weapons, "Fusion Drive" / "Ion Drive" for engines)
-- Should the power bar use color coding (green = plenty of room, yellow = almost full, red = at capacity)?
+- **Minimum ship requirement:** Must have at least 1 of each type (weapon, engine, bridge) to confirm build
+- **Component naming:** Generic names ("Weapons", "Engines", "Bridge") with size/stats shown — no flavor names
+- **Power bar colors:** Inverted color coding — Red (low usage, ship underpowered) → Yellow (moderate usage) → Green (nearly full, ship ready). Colors indicate build readiness, not a warning
