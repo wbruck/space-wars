@@ -870,6 +870,22 @@ describe('PlayerShip', () => {
     expect(b).toBeDefined();
     expect(b.name).toBe('Bridge');
   });
+
+  it('legacy array form sets sizeLimit to 7', () => {
+    const ship = new PlayerShip([new ShipComponent('Test', 1)]);
+    expect(ship.sizeLimit).toBe(7);
+  });
+
+  it('legacy array form enforces sizeLimit 7', () => {
+    expect(() => {
+      new PlayerShip([
+        new WeaponComponent('W', 2, 2),
+        new EngineComponent('E', 2, 2),
+        new EngineComponent('E2', 2, 2),
+        new BridgeComponent('B', 3, 2),
+      ]);
+    }).toThrow(/exceed sizeLimit/);
+  });
 });
 
 describe('EnemyShip', () => {
@@ -1269,10 +1285,20 @@ describe('EnemyShip', () => {
     expect(b.name).toBe('Bridge');
   });
 
-  // US-005: legacy array form defaults sizeLimit to Infinity
-  it('legacy array form defaults sizeLimit to Infinity', () => {
-    const ship = new EnemyShip([new ShipComponent('Test', 1)]);
-    expect(ship.sizeLimit).toBe(Infinity);
+  // US-005: legacy array form enforces sizeLimit 4
+  it('legacy array form sets sizeLimit to 4', () => {
+    const ship = new EnemyShip([new WeaponComponent('Test', 1, 1)]);
+    expect(ship.sizeLimit).toBe(4);
+  });
+
+  it('legacy array form enforces sizeLimit 4', () => {
+    expect(() => {
+      new EnemyShip([
+        new WeaponComponent('W', 2, 2),
+        new EngineComponent('E', 2, 2),
+        new BridgeComponent('B', 1, 1),
+      ]);
+    }).toThrow(/exceed sizeLimit/);
   });
 });
 

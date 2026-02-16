@@ -935,7 +935,9 @@ describe('engagement trigger in executeMove (US-034)', () => {
     // Add the enemy to board data
     boardData.enemies.push(enemy);
     boardData.enemyZones.add(zoneVertex);
-    boardData.enemyZoneMap.set(zoneVertex, { enemyId: enemy.id, zoneType: 'vision' });
+    const existing = boardData.enemyZoneMap.get(zoneVertex) || [];
+    existing.push({ enemyId: enemy.id, zoneType: 'vision' });
+    boardData.enemyZoneMap.set(zoneVertex, existing);
     board.set(boardData);
 
     return { enemy, zoneVertex, direction: longRay.direction, enemyDirection };
@@ -1124,7 +1126,9 @@ describe('engagement choice for proximity zones (US-043)', () => {
 
     boardData.enemies.push(enemy);
     boardData.enemyZones.add(zoneVertex);
-    boardData.enemyZoneMap.set(zoneVertex, { enemyId: enemy.id, zoneType });
+    const existingZone = boardData.enemyZoneMap.get(zoneVertex) || [];
+    existingZone.push({ enemyId: enemy.id, zoneType });
+    boardData.enemyZoneMap.set(zoneVertex, existingZone);
     board.set(boardData);
 
     return { enemy, zoneVertex, direction: longRay.direction, enemyDirection };
@@ -1337,7 +1341,9 @@ describe('combat board integration (US-036)', () => {
     const affected = enemy.getAffectedVertices(null, boardData.rays, boardData.obstacles);
     for (let i = 1; i < affected.length; i++) {
       boardData.enemyZones.add(affected[i]);
-      boardData.enemyZoneMap.set(affected[i], { enemyId: enemy.id, zoneType: 'vision' });
+      const existing = boardData.enemyZoneMap.get(affected[i]) || [];
+      existing.push({ enemyId: enemy.id, zoneType: 'vision' });
+      boardData.enemyZoneMap.set(affected[i], existing);
     }
 
     board.set(boardData);
@@ -1385,8 +1391,10 @@ describe('combat board integration (US-036)', () => {
       resolveCombat('playerWin');
 
       const updatedBoard = get(board);
-      for (const [, zoneInfo] of updatedBoard.enemyZoneMap) {
-        expect(zoneInfo.enemyId).not.toBe(enemy.id);
+      for (const [, entries] of updatedBoard.enemyZoneMap) {
+        for (const zoneInfo of entries) {
+          expect(zoneInfo.enemyId).not.toBe(enemy.id);
+        }
       }
     });
 
@@ -1482,8 +1490,10 @@ describe('combat board integration (US-036)', () => {
       const updatedBoard = get(board);
       // Vision zones should be removed for disarmed enemy
       let visionCount = 0;
-      for (const [, info] of updatedBoard.enemyZoneMap) {
-        if (info.enemyId === enemy.id && info.zoneType === 'vision') visionCount++;
+      for (const [, entries] of updatedBoard.enemyZoneMap) {
+        for (const info of entries) {
+          if (info.enemyId === enemy.id && info.zoneType === 'vision') visionCount++;
+        }
       }
       expect(visionCount).toBe(0);
     });
@@ -1507,9 +1517,11 @@ describe('combat board integration (US-036)', () => {
 
       // Count original vision zones
       const origVisionZones = [];
-      for (const [v, info] of boardData.enemyZoneMap) {
-        if (info.enemyId === enemy.id && info.zoneType === 'vision') {
-          origVisionZones.push(v);
+      for (const [v, entries] of boardData.enemyZoneMap) {
+        for (const info of entries) {
+          if (info.enemyId === enemy.id && info.zoneType === 'vision') {
+            origVisionZones.push(v);
+          }
         }
       }
       expect(origVisionZones.length).toBeGreaterThan(1); // originally range=3
@@ -1522,9 +1534,11 @@ describe('combat board integration (US-036)', () => {
 
       const updatedBoard = get(board);
       const newVisionZones = [];
-      for (const [v, info] of updatedBoard.enemyZoneMap) {
-        if (info.enemyId === enemy.id && info.zoneType === 'vision') {
-          newVisionZones.push(v);
+      for (const [v, entries] of updatedBoard.enemyZoneMap) {
+        for (const info of entries) {
+          if (info.enemyId === enemy.id && info.zoneType === 'vision') {
+            newVisionZones.push(v);
+          }
         }
       }
       expect(newVisionZones.length).toBe(0);
@@ -1543,11 +1557,14 @@ describe('combat board integration (US-036)', () => {
       const updatedBoard = get(board);
       // Should have some proximity zones around the enemy
       let hasProximity = false;
-      for (const [, info] of updatedBoard.enemyZoneMap) {
-        if (info.enemyId === enemy.id && info.zoneType === 'proximity') {
-          hasProximity = true;
-          break;
+      for (const [, entries] of updatedBoard.enemyZoneMap) {
+        for (const info of entries) {
+          if (info.enemyId === enemy.id && info.zoneType === 'proximity') {
+            hasProximity = true;
+            break;
+          }
         }
+        if (hasProximity) break;
       }
       expect(hasProximity).toBe(true);
     });
@@ -1573,6 +1590,66 @@ describe('combat board integration (US-036)', () => {
       resolveCombat('playerLose');
 
       expect(get(playerPos)).toBe(preCombatPos);
+    });
+  });
+
+  describe('adjacent enemy zone preservation (Bug 3 regression)', () => {
+    it('destroying one adjacent enemy preserves second enemy zones', () => {
+      // Add two enemies
+      const enemy1 = addEnemyToBoard();
+      const enemy2 = addEnemyToBoard();
+
+      // Record enemy2's zones before destroying enemy1
+      const enemy2ZonesBefore = [];
+      for (const [v, entries] of boardData.enemyZoneMap) {
+        for (const info of entries) {
+          if (info.enemyId === enemy2.id) {
+            enemy2ZonesBefore.push(v);
+          }
+        }
+      }
+
+      const preCombatPos = get(playerPos);
+      startCombat(enemy1.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      resolveCombat('playerWin');
+
+      // enemy2's zones should still be present
+      const updatedBoard = get(board);
+      for (const zv of enemy2ZonesBefore) {
+        const entries = updatedBoard.enemyZoneMap.get(zv);
+        expect(entries).toBeDefined();
+        const entry = entries.find(e => e.enemyId === enemy2.id);
+        expect(entry).toBeDefined();
+      }
+    });
+
+    it('second enemy engageable after first destroyed', () => {
+      const enemy1 = addEnemyToBoard();
+      const enemy2 = addEnemyToBoard();
+
+      const preCombatPos = get(playerPos);
+
+      // Destroy enemy1
+      startCombat(enemy1.id, { firstAttacker: 'player', bonusAttacks: 0 }, preCombatPos, ['a'], 0);
+      resolveCombat('playerWin');
+
+      // enemy2 should still have zones in the enemyZones set
+      const updatedBoard = get(board);
+      let enemy2HasZones = false;
+      for (const [, entries] of updatedBoard.enemyZoneMap) {
+        if (entries.some(e => e.enemyId === enemy2.id)) {
+          enemy2HasZones = true;
+          break;
+        }
+      }
+      expect(enemy2HasZones).toBe(true);
+
+      // enemy2 zones should also be in the enemyZones set
+      for (const [zv, entries] of updatedBoard.enemyZoneMap) {
+        if (entries.some(e => e.enemyId === enemy2.id)) {
+          expect(updatedBoard.enemyZones.has(zv)).toBe(true);
+        }
+      }
     });
   });
 
@@ -1862,7 +1939,9 @@ describe('combat board integration (US-036)', () => {
       const affected = enemy.getAffectedVertices(null, boardData.rays, boardData.obstacles);
       for (let i = 1; i < affected.length; i++) {
         boardData.enemyZones.add(affected[i]);
-        boardData.enemyZoneMap.set(affected[i], { enemyId: enemy.id, zoneType: 'vision' });
+        const existing = boardData.enemyZoneMap.get(affected[i]) || [];
+        existing.push({ enemyId: enemy.id, zoneType: 'vision' });
+        boardData.enemyZoneMap.set(affected[i], existing);
       }
 
       // Compute proximity zone via BFS (depth <= 2)
@@ -1878,9 +1957,11 @@ describe('combat board integration (US-036)', () => {
             proxVisited.add(nv);
             if (boardData.obstacles.has(nv)) continue;
             if (nv === boardData.startVertex || nv === boardData.targetVertex) continue;
-            if (!boardData.enemyZones.has(nv)) {
-              boardData.enemyZones.add(nv);
-              boardData.enemyZoneMap.set(nv, { enemyId: enemy.id, zoneType: 'proximity' });
+            boardData.enemyZones.add(nv);
+            const existingZone = boardData.enemyZoneMap.get(nv) || [];
+            if (!existingZone.some(e => e.enemyId === enemy.id)) {
+              existingZone.push({ enemyId: enemy.id, zoneType: 'proximity' });
+              boardData.enemyZoneMap.set(nv, existingZone);
             }
             nextFrontier.push(nv);
           }
@@ -1898,9 +1979,11 @@ describe('combat board integration (US-036)', () => {
 
       // Record vision zone vertices before combat
       const visionZonesBefore = [];
-      for (const [zv, zoneInfo] of boardData.enemyZoneMap) {
-        if (zoneInfo.enemyId === enemy.id && zoneInfo.zoneType === 'vision') {
-          visionZonesBefore.push(zv);
+      for (const [zv, entries] of boardData.enemyZoneMap) {
+        for (const info of entries) {
+          if (info.enemyId === enemy.id && info.zoneType === 'vision') {
+            visionZonesBefore.push(zv);
+          }
         }
       }
       expect(visionZonesBefore.length).toBeGreaterThan(0);
@@ -1916,9 +1999,12 @@ describe('combat board integration (US-036)', () => {
       // Vision zones should be removed
       const updatedBoard = get(board);
       for (const zv of visionZonesBefore) {
-        const zoneInfo = updatedBoard.enemyZoneMap.get(zv);
-        if (zoneInfo && zoneInfo.enemyId === enemy.id) {
-          expect(zoneInfo.zoneType).not.toBe('vision');
+        const entries = updatedBoard.enemyZoneMap.get(zv);
+        if (entries) {
+          const entry = entries.find(e => e.enemyId === enemy.id);
+          if (entry) {
+            expect(entry.zoneType).not.toBe('vision');
+          }
         }
       }
     });
@@ -1937,9 +2023,11 @@ describe('combat board integration (US-036)', () => {
       // Proximity zones should still exist for this enemy
       const updatedBoard = get(board);
       let proximityCount = 0;
-      for (const [, zoneInfo] of updatedBoard.enemyZoneMap) {
-        if (zoneInfo.enemyId === enemy.id && zoneInfo.zoneType === 'proximity') {
-          proximityCount++;
+      for (const [, entries] of updatedBoard.enemyZoneMap) {
+        for (const info of entries) {
+          if (info.enemyId === enemy.id && info.zoneType === 'proximity') {
+            proximityCount++;
+          }
         }
       }
       expect(proximityCount).toBeGreaterThan(0);
@@ -2010,9 +2098,11 @@ describe('combat board integration (US-036)', () => {
 
       // Record vision zones before
       const visionZonesBefore = [];
-      for (const [zv, zoneInfo] of boardData.enemyZoneMap) {
-        if (zoneInfo.enemyId === enemy.id && zoneInfo.zoneType === 'vision') {
-          visionZonesBefore.push(zv);
+      for (const [zv, entries] of boardData.enemyZoneMap) {
+        for (const info of entries) {
+          if (info.enemyId === enemy.id && info.zoneType === 'vision') {
+            visionZonesBefore.push(zv);
+          }
         }
       }
 
@@ -2024,10 +2114,11 @@ describe('combat board integration (US-036)', () => {
       // Vision zones should still exist for this enemy
       const updatedBoard = get(board);
       for (const zv of visionZonesBefore) {
-        const zoneInfo = updatedBoard.enemyZoneMap.get(zv);
-        expect(zoneInfo).toBeDefined();
-        expect(zoneInfo.enemyId).toBe(enemy.id);
-        expect(zoneInfo.zoneType).toBe('vision');
+        const entries = updatedBoard.enemyZoneMap.get(zv);
+        expect(entries).toBeDefined();
+        const entry = entries.find(e => e.enemyId === enemy.id);
+        expect(entry).toBeDefined();
+        expect(entry.zoneType).toBe('vision');
       }
     });
 
@@ -2037,9 +2128,11 @@ describe('combat board integration (US-036)', () => {
 
       // Record vision zone count before
       let visionCountBefore = 0;
-      for (const [, zoneInfo] of boardData.enemyZoneMap) {
-        if (zoneInfo.enemyId === enemy.id && zoneInfo.zoneType === 'vision') {
-          visionCountBefore++;
+      for (const [, entries] of boardData.enemyZoneMap) {
+        for (const info of entries) {
+          if (info.enemyId === enemy.id && info.zoneType === 'vision') {
+            visionCountBefore++;
+          }
         }
       }
       expect(visionCountBefore).toBeGreaterThan(0);
@@ -2054,9 +2147,11 @@ describe('combat board integration (US-036)', () => {
       // Vision zones should be removed
       const updatedBoard = get(board);
       let visionCountAfter = 0;
-      for (const [, zoneInfo] of updatedBoard.enemyZoneMap) {
-        if (zoneInfo.enemyId === enemy.id && zoneInfo.zoneType === 'vision') {
-          visionCountAfter++;
+      for (const [, entries] of updatedBoard.enemyZoneMap) {
+        for (const info of entries) {
+          if (info.enemyId === enemy.id && info.zoneType === 'vision') {
+            visionCountAfter++;
+          }
         }
       }
       expect(visionCountAfter).toBe(0);
@@ -2173,8 +2268,10 @@ describe('vision zones blocked by obstacles', () => {
         continue;
       }
       if (sawObstacle) {
-        // This vertex is behind an obstacle — should NOT be in zone
-        expect(boardData.enemyZoneMap.has(vid) && boardData.enemyZoneMap.get(vid).enemyId === enemy.id && boardData.enemyZoneMap.get(vid).zoneType === 'vision').toBe(false);
+        // This vertex is behind an obstacle — should NOT have a vision zone entry for this enemy
+        const entries = boardData.enemyZoneMap.get(vid);
+        const hasVision = entries && entries.some(e => e.enemyId === enemy.id && e.zoneType === 'vision');
+        expect(hasVision).toBeFalsy();
       }
     }
   });
@@ -2236,7 +2333,9 @@ describe('engagement uses computePath as single source of truth', () => {
     const enemy = new Enemy('test-enemy-vertex', 3, 2);
     boardData.enemies.push(enemy);
     boardData.enemyZones.add(zoneVertex);
-    boardData.enemyZoneMap.set(zoneVertex, { enemyId: enemy.id, zoneType: 'vision' });
+    const existingEntries = boardData.enemyZoneMap.get(zoneVertex) || [];
+    existingEntries.push({ enemyId: enemy.id, zoneType: 'vision' });
+    boardData.enemyZoneMap.set(zoneVertex, existingEntries);
     board.set(boardData);
 
     movementPool.set(20);
@@ -2284,10 +2383,14 @@ describe('stealth dive excludeEnemyId bypass', () => {
     const enemy = new Enemy('stealth-test-enemy', 3, 2);
     boardData.enemies.push(enemy);
     boardData.enemyZones.add(zoneVertex);
-    boardData.enemyZoneMap.set(zoneVertex, { enemyId: enemy.id, zoneType: 'proximity' });
+    const e1 = boardData.enemyZoneMap.get(zoneVertex) || [];
+    e1.push({ enemyId: enemy.id, zoneType: 'proximity' });
+    boardData.enemyZoneMap.set(zoneVertex, e1);
     // Also place the same enemy's zone at vertex 2 (to test bypass)
     boardData.enemyZones.add(longRay.vertices[2]);
-    boardData.enemyZoneMap.set(longRay.vertices[2], { enemyId: enemy.id, zoneType: 'proximity' });
+    const e2 = boardData.enemyZoneMap.get(longRay.vertices[2]) || [];
+    e2.push({ enemyId: enemy.id, zoneType: 'proximity' });
+    boardData.enemyZoneMap.set(longRay.vertices[2], e2);
     board.set(boardData);
 
     movementPool.set(20);

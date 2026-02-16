@@ -461,7 +461,7 @@ describe('Hazard death: enemy kill zone', () => {
       ...boardData,
       blackholeSet: new Set(),
       enemyZones: new Set([destination]),
-      enemyZoneMap: new Map([[destination, { enemyId: enemy.id, zoneType: 'vision' }]]),
+      enemyZoneMap: new Map([[destination, [{ enemyId: enemy.id, zoneType: 'vision' }]]]),
       enemies: [...boardData.enemies, enemy],
     };
     board.set(newBoard);

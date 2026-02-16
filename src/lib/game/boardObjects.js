@@ -272,7 +272,9 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
       // Skip the first element (enemy's own vertex) since that's in obstacleSet
       for (let j = 1; j < affected.length; j++) {
         enemyZones.add(affected[j]);
-        enemyZoneMap.set(affected[j], { enemyId: enemy.id, zoneType: 'vision' });
+        const existing = enemyZoneMap.get(affected[j]) || [];
+        existing.push({ enemyId: enemy.id, zoneType: 'vision' });
+        enemyZoneMap.set(affected[j], existing);
       }
     }
 
@@ -292,10 +294,11 @@ export function generateBoardObjects(vertices, startVertex, targetVertex, diffic
             if (obstacleSet.has(nv)) continue;
             // Skip start/target vertices
             if (nv === startVertex || nv === targetVertex) continue;
-            // Vision zones take priority — don't overwrite
-            if (!enemyZones.has(nv)) {
-              enemyZones.add(nv);
-              enemyZoneMap.set(nv, { enemyId: enemy.id, zoneType: 'proximity' });
+            enemyZones.add(nv);
+            const existingZone = enemyZoneMap.get(nv) || [];
+            if (!existingZone.some(e => e.enemyId === enemy.id)) {
+              existingZone.push({ enemyId: enemy.id, zoneType: 'proximity' });
+              enemyZoneMap.set(nv, existingZone);
             }
             nextFrontier.push(nv);
           }

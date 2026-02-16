@@ -247,8 +247,8 @@ export class PlayerShip extends Ship {
     ];
 
     if (Array.isArray(opts)) {
-      // Legacy: PlayerShip([comp1, comp2]) — no sizeLimit enforcement
-      super('Player Ship', opts);
+      // Legacy: PlayerShip([comp1, comp2]) — enforce sizeLimit 7
+      super('Player Ship', { sizeLimit: 7, components: opts });
     } else if (opts && typeof opts === 'object') {
       // New: PlayerShip({ sizeLimit, components })
       super('Player Ship', {
@@ -301,8 +301,8 @@ export class EnemyShip extends Ship {
     ];
 
     if (Array.isArray(opts)) {
-      // Legacy: EnemyShip([comp1, comp2]) — no sizeLimit enforcement
-      super('Enemy Ship', opts);
+      // Legacy: EnemyShip([comp1, comp2]) — enforce sizeLimit 4
+      super('Enemy Ship', { sizeLimit: 4, components: opts });
     } else if (opts && typeof opts === 'object') {
       // New: EnemyShip({ sizeLimit, components })
       super('Enemy Ship', {

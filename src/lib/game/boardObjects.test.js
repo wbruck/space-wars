@@ -608,18 +608,22 @@ describe('generateBoardObjects', () => {
     expect(result.enemyZoneMap).toBeInstanceOf(Map);
   });
 
-  it('enemyZoneMap maps zone vertices to { enemyId, zoneType } objects', () => {
+  it('enemyZoneMap maps zone vertices to arrays of { enemyId, zoneType }', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays, grid.adjacency);
-    for (const [zoneVertex, zoneInfo] of result.enemyZoneMap) {
+    for (const [zoneVertex, entries] of result.enemyZoneMap) {
       // zoneVertex should also be in enemyZones
       expect(result.enemyZones.has(zoneVertex)).toBe(true);
-      // zoneInfo should be an object with enemyId and zoneType
-      expect(zoneInfo).toHaveProperty('enemyId');
-      expect(zoneInfo).toHaveProperty('zoneType');
-      expect(['vision', 'proximity']).toContain(zoneInfo.zoneType);
-      // enemyId should match an enemy in the enemies array
-      const enemy = result.enemies.find(e => e.id === zoneInfo.enemyId);
-      expect(enemy).toBeDefined();
+      // entries should be an array
+      expect(Array.isArray(entries)).toBe(true);
+      expect(entries.length).toBeGreaterThan(0);
+      for (const zoneInfo of entries) {
+        expect(zoneInfo).toHaveProperty('enemyId');
+        expect(zoneInfo).toHaveProperty('zoneType');
+        expect(['vision', 'proximity']).toContain(zoneInfo.zoneType);
+        // enemyId should match an enemy in the enemies array
+        const enemy = result.enemies.find(e => e.id === zoneInfo.enemyId);
+        expect(enemy).toBeDefined();
+      }
     }
   });
 
@@ -640,25 +644,29 @@ describe('generateBoardObjects', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays, grid.adjacency);
     if (result.enemies.length === 0) return; // skip if no enemies
     // Should have more zones than just vision (kill zone) vertices
-    const visionZones = [];
-    const proximityZones = [];
-    for (const [, zoneInfo] of result.enemyZoneMap) {
-      if (zoneInfo.zoneType === 'vision') visionZones.push(zoneInfo);
-      if (zoneInfo.zoneType === 'proximity') proximityZones.push(zoneInfo);
+    let visionCount = 0;
+    let proximityCount = 0;
+    for (const [, entries] of result.enemyZoneMap) {
+      for (const zoneInfo of entries) {
+        if (zoneInfo.zoneType === 'vision') visionCount++;
+        if (zoneInfo.zoneType === 'proximity') proximityCount++;
+      }
     }
     // With adjacency, proximity zones should exist
-    expect(proximityZones.length).toBeGreaterThan(0);
+    expect(proximityCount).toBeGreaterThan(0);
   });
 
-  it('vision zones take priority over proximity zones', () => {
+  it('vision zones present for enemy kill zone vertices', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays, grid.adjacency);
-    // For any enemy, check that kill zone vertices have 'vision' type even if they're within 2 hops
+    // For any enemy, check that kill zone vertices have a 'vision' entry for that enemy
     for (const enemy of result.enemies) {
       const affected = enemy.getAffectedVertices(null, grid.rays, result.obstacleSet);
       for (let i = 1; i < affected.length; i++) {
-        const zoneInfo = result.enemyZoneMap.get(affected[i]);
-        if (zoneInfo) {
-          expect(zoneInfo.zoneType).toBe('vision');
+        const entries = result.enemyZoneMap.get(affected[i]);
+        if (entries) {
+          const enemyEntry = entries.find(e => e.enemyId === enemy.id);
+          expect(enemyEntry).toBeDefined();
+          expect(enemyEntry.zoneType).toBe('vision');
         }
       }
     }
@@ -666,19 +674,73 @@ describe('generateBoardObjects', () => {
 
   it('proximity zones do not include start or target vertices', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays, grid.adjacency);
-    for (const [zoneVertex, zoneInfo] of result.enemyZoneMap) {
-      if (zoneInfo.zoneType === 'proximity') {
-        expect(zoneVertex).not.toBe(startVertex);
-        expect(zoneVertex).not.toBe(targetVertex);
+    for (const [zoneVertex, entries] of result.enemyZoneMap) {
+      for (const zoneInfo of entries) {
+        if (zoneInfo.zoneType === 'proximity') {
+          expect(zoneVertex).not.toBe(startVertex);
+          expect(zoneVertex).not.toBe(targetVertex);
+        }
       }
     }
   });
 
   it('no proximity zones when adjacency not provided', () => {
     const result = generateBoardObjects(grid.vertices, startVertex, targetVertex, 5, makeRng(42), grid.rays);
-    for (const [, zoneInfo] of result.enemyZoneMap) {
-      expect(zoneInfo.zoneType).toBe('vision');
+    for (const [, entries] of result.enemyZoneMap) {
+      for (const zoneInfo of entries) {
+        expect(zoneInfo.zoneType).toBe('vision');
+      }
     }
+  });
+
+  it('overlapping proximity zones: both enemies in shared vertex array', () => {
+    // Use a small grid so enemies are close together
+    const smallGrid = generateGrid(5, 4, 40);
+    const ids = [...smallGrid.vertices.keys()];
+    // Pick two adjacent vertices for enemies
+    const v1 = ids[10];
+    const adj1 = smallGrid.adjacency.get(v1) || [];
+    const v2 = adj1.find(v => v !== ids[0] && v !== ids[ids.length - 1]);
+    if (!v2) return; // skip if no adjacency found
+
+    // Create two enemies at adjacent positions
+    const enemy1 = new Enemy(v1, 3, 0, 1);
+    const enemy2 = new Enemy(v2, 3, 0, 1);
+
+    // Build zones manually to test overlap
+    const enemyZones = new Set();
+    const enemyZoneMap = new Map();
+
+    // Add proximity zones for both enemies via BFS depth 2
+    for (const enemy of [enemy1, enemy2]) {
+      const proxVisited = new Set([enemy.vertexId]);
+      let frontier = [enemy.vertexId];
+      for (let depth = 0; depth < 2; depth++) {
+        const nextFrontier = [];
+        for (const fv of frontier) {
+          for (const nv of (smallGrid.adjacency.get(fv) || [])) {
+            if (proxVisited.has(nv)) continue;
+            proxVisited.add(nv);
+            enemyZones.add(nv);
+            const existing = enemyZoneMap.get(nv) || [];
+            if (!existing.some(e => e.enemyId === enemy.id)) {
+              existing.push({ enemyId: enemy.id, zoneType: 'proximity' });
+              enemyZoneMap.set(nv, existing);
+            }
+            nextFrontier.push(nv);
+          }
+        }
+        frontier = nextFrontier;
+      }
+    }
+
+    // Find shared vertices (in both enemies' zones)
+    let sharedCount = 0;
+    for (const [, entries] of enemyZoneMap) {
+      if (entries.length >= 2) sharedCount++;
+    }
+    // Adjacent enemies should have at least some overlapping zones
+    expect(sharedCount).toBeGreaterThan(0);
   });
 });
 
@@ -805,17 +867,23 @@ describe('generateBoardObjects vision zones respect obstacles', () => {
         if (result.obstacleSet.has(vid)) {
           sawObstacle = true;
           // The obstacle vertex itself should NOT be in the vision zone
-          const zoneInfo = result.enemyZoneMap.get(vid);
-          if (zoneInfo && zoneInfo.enemyId === enemy.id) {
-            expect(zoneInfo.zoneType).not.toBe('vision');
+          const entries = result.enemyZoneMap.get(vid);
+          if (entries) {
+            const entry = entries.find(e => e.enemyId === enemy.id);
+            if (entry) {
+              expect(entry.zoneType).not.toBe('vision');
+            }
           }
           continue;
         }
         if (sawObstacle) {
           // Vertices behind obstacles should NOT have vision zone from this enemy
-          const zoneInfo = result.enemyZoneMap.get(vid);
-          if (zoneInfo && zoneInfo.enemyId === enemy.id) {
-            expect(zoneInfo.zoneType).not.toBe('vision');
+          const entries = result.enemyZoneMap.get(vid);
+          if (entries) {
+            const entry = entries.find(e => e.enemyId === enemy.id);
+            if (entry) {
+              expect(entry.zoneType).not.toBe('vision');
+            }
           }
         }
       }
