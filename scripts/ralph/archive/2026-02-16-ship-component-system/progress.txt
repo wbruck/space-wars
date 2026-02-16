@@ -1,0 +1,158 @@
+# Ralph Progress Log
+Started: Sun Feb 15 16:23:36 CST 2026
+
+## Codebase Patterns
+- ShipComponent constructor is (name, maxHp, size=1) — size defaults to 1 for backward compat
+- Typed subclasses (WeaponComponent, EngineComponent, BridgeComponent) use a `type` getter ('weapon', 'engine', 'bridge')
+- Size-based stat scaling: size >= 2 gets better stats (accuracy 3 vs 4, speedBonus 1 vs 0, evasionBonus 1 vs 0)
+- All existing tests use `new ShipComponent('Name', hp)` without size — backward compat is critical
+- combat.test.js uses `makeRng(rolls)` and `makeEngine(rolls, opts)` helpers for deterministic testing
+- ComponentContainer is a mixin: `ComponentContainer(Base)` returns a class extending Base with component management
+- ComponentContainer enforces sizeLimit budget and bridge uniqueness (max 1 BridgeComponent)
+- Components are never auto-removed on destruction — they stay in _components with destroyed === true
+- ComponentContainer provides: addComponent, removeComponent, totalSize, remainingCapacity, getComponentsByType, hasComponentType, getComponent, getActiveComponents, isDestroyed, components getter
+- Ship extends ComponentContainer(Object) — all ships get mixin methods (addComponent, removeComponent, type queries, etc.)
+- Ship constructor supports two forms: `new Ship('name', [comps])` (legacy) and `new Ship('name', { sizeLimit, components })` (new)
+- Legacy array form defaults sizeLimit to Infinity for backward compat — existing tests need zero changes
+- PlayerShip constructor accepts three forms: `PlayerShip()` (defaults), `PlayerShip([comps])` (legacy array), `PlayerShip({ sizeLimit, components })` (new options)
+- PlayerShip defaults: sizeLimit=7, WeaponComponent('Weapons', 4, 2), EngineComponent('Engines', 4, 2), BridgeComponent('Bridge', 3, 2) — total size 6
+- PlayerShip getters use type-based queries: canAttack checks any weapon active, isEngineDestroyed checks ALL engines destroyed, isBridgeDestroyed checks the bridge
+- When creating PlayerShip with custom components in tests, use typed subclasses (WeaponComponent, etc.) not plain ShipComponent — type-based getters won't find plain ShipComponents
+- gameState.test.js expects player component HP values: Weapons=4, Engines=4, Bridge=3 (not the old 2/2/2)
+- EnemyShip constructor accepts three forms: `EnemyShip()` (defaults), `EnemyShip([comps])` (legacy array), `EnemyShip({ sizeLimit, components })` (new options)
+- EnemyShip defaults: sizeLimit=4, WeaponComponent('Weapons', 1, 1), EngineComponent('Engines', 1, 1), BridgeComponent('Bridge', 1, 1) — total size 3
+- EnemyShip getters use type-based queries: canAttack checks any weapon active, canFlee checks any engine active, isBridgeDestroyed checks the bridge
+- EnemyShip.getSalvageableComponents() returns components where destroyed === false
+- Destroyed enemy ships retain all components in their array — non-destroyed components keep their HP for future salvage
+- CombatEngine.executePlayerAttack uses weapon.accuracy (not hitThreshold) and weapon.damage (not hardcoded 1) from first active WeaponComponent
+- CombatEngine.executeEnemyAttack similarly uses enemy weapon accuracy/damage
+- hitThreshold constructor param is fallback only — used by rollAttack() for its own isHit return and as fallback if no typed weapon exists
+- rollBonus only applies to player attacks (roll + rollBonus >= accuracy)
+
+---
+
+## 2026-02-15 - US-001
+- Implemented WeaponComponent, EngineComponent, BridgeComponent extending ShipComponent
+- Added `size` parameter (default 1) to ShipComponent constructor
+- Each subclass has a `type` getter and type-specific stats that scale with size
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
+- **Learnings for future iterations:**
+  - Size defaults to 1 so all existing `new ShipComponent('Name', hp)` calls still work
+  - Stats scale at size >= 2 threshold (not linearly)
+  - 20 new tests added; all 497 total tests pass
+---
+
+## 2026-02-15 - US-002
+- Implemented ComponentContainer mixin in src/lib/game/combat.js
+- Mixin provides: sizeLimit, addComponent (with size budget + bridge uniqueness enforcement), removeComponent, totalSize, remainingCapacity, getComponentsByType, hasComponentType, getComponent, getActiveComponents, isDestroyed, components getter
+- Added 35 new tests covering: add/remove, capacity enforcement, bridge uniqueness, type queries, destroyed component persistence, backward compat methods
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
+- **Learnings for future iterations:**
+  - ComponentContainer uses standard JS mixin pattern: `const ComponentContainer = (Base) => class extends Base { ... }`
+  - The mixin's constructor sets sizeLimit to Infinity by default — callers must set it explicitly or pass it
+  - Bridge uniqueness check uses `component.type === 'bridge'` — relies on typed subclass `type` getter
+  - ShipComponent base class has no `type` getter, so plain ShipComponents won't trigger bridge uniqueness check
+  - The `components` getter returns `_components` directly, preserving array identity for .map() in Svelte components
+  - 35 new tests added; all 532 total tests pass
+---
+
+## 2026-02-15 - US-003
+- Refactored Ship base class to use ComponentContainer mixin: `class Ship extends ComponentContainer(Object)`
+- Ship constructor supports two signatures: legacy `(name, [comps])` and new `(name, { sizeLimit, components })`
+- Legacy array form detected via `Array.isArray(opts)`, defaults sizeLimit to Infinity
+- All 179 existing combat tests pass with zero modifications — full backward compat achieved
+- Added 6 new tests: mixin method availability, options form constructor, sizeLimit enforcement, legacy sizeLimit default, destroyed component persistence, isDestroyed read-only behavior
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
+- **Learnings for future iterations:**
+  - Ship uses `ComponentContainer(Object)` as base — `Object` is the neutral base class for the mixin
+  - The backward compat detection (`Array.isArray(opts)`) is critical since PlayerShip/EnemyShip constructors pass arrays
+  - All mixin methods (addComponent, getComponentsByType, etc.) are now available on all Ship instances
+  - `instanceof Ship` still works correctly for PlayerShip and EnemyShip
+  - 6 new tests added; all 538 total tests pass
+---
+
+## 2026-02-15 - US-004
+- Refactored PlayerShip to use typed components with sizeLimit budget
+- Constructor now accepts three forms: `PlayerShip()`, `PlayerShip([comps])` (legacy), `PlayerShip({ sizeLimit, components })`
+- Default sizeLimit=7, default components: WeaponComponent('Weapons', 4, 2), EngineComponent('Engines', 4, 2), BridgeComponent('Bridge', 3, 2)
+- canAttack uses getComponentsByType('weapon') — true if ANY weapon active
+- isEngineDestroyed uses getComponentsByType('engine') — true if ALL engines destroyed
+- isBridgeDestroyed uses getComponentsByType('bridge')[0]
+- Updated existing tests to use new HP values and typed components
+- Updated gameState.test.js HP expectations (4/4/3 instead of 2/2/2)
+- Added 15 new tests: sizeLimit enforcement, options constructor, multiple weapons, multiple engines, backward compat name lookups
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js, src/lib/game/gameState.test.js
+- **Learnings for future iterations:**
+  - Plain ShipComponent has no `type` getter — type-based queries (getComponentsByType) won't find them. Always use typed subclasses in tests when PlayerShip getters need to work.
+  - CombatEngine tests that create `new PlayerShip()` with default components now deal with 4HP weapons (not 2HP) — `takeDamage(2)` is no longer enough to destroy default weapons
+  - gameState tests for player ship persistence need HP values matching the new defaults (4/4/3)
+  - PlayerShip legacy array form (`PlayerShip([comps])`) sets sizeLimit=Infinity, bypassing size enforcement — useful for tests that don't care about capacity
+  - 15 new tests added; all 553 total tests pass
+---
+
+## 2026-02-15 - US-005
+- Refactored EnemyShip to use typed components with sizeLimit budget
+- Constructor now accepts three forms: `EnemyShip()`, `EnemyShip([comps])` (legacy), `EnemyShip({ sizeLimit, components })`
+- Default sizeLimit=4, default components: WeaponComponent('Weapons', 1, 1), EngineComponent('Engines', 1, 1), BridgeComponent('Bridge', 1, 1)
+- canAttack uses getComponentsByType('weapon') — true if ANY weapon active
+- canFlee uses getComponentsByType('engine') — true if ANY engine active
+- isBridgeDestroyed uses getComponentsByType('bridge')[0]
+- Added getSalvageableComponents() — returns components.filter(c => !c.destroyed)
+- All 200 existing combat tests pass with zero modifications — full backward compat
+- Added 23 new tests: sizeLimit, options constructor, typed component defaults, variable sizeLimit scaling, multiple weapons/engines, component persistence after ship destruction, salvageable component queries, backward compat name lookups
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
+- **Learnings for future iterations:**
+  - EnemyShip mirrors PlayerShip's three-form constructor pattern exactly
+  - Existing tests using `new EnemyShip([new ShipComponent(...)])` still work — legacy array form defaults sizeLimit to Infinity
+  - Plain ShipComponent in legacy EnemyShip tests returns false for type-based getters (canAttack, canFlee, isBridgeDestroyed) — same behavior as name-based lookups failing for non-standard names
+  - getSalvageableComponents is on EnemyShip (not Ship base) since salvage is enemy-specific for now
+  - 23 new tests added; all 576 total tests pass
+---
+
+## 2026-02-15 - US-006
+- Updated CombatEngine.executePlayerAttack() to read accuracy and damage from the first active WeaponComponent
+- Updated CombatEngine.executeEnemyAttack() to read accuracy and damage from the enemy's first active WeaponComponent
+- hitThreshold constructor param preserved as fallback when no typed weapon found (backward compat)
+- rollAttack() unchanged (pure d6 roll, uses hitThreshold for its own isHit return)
+- Updated 1 existing test: rollBonus miss test adjusted for player default weapon accuracy 3 (was 4)
+- Added 16 new tests: player/enemy weapon accuracy, weapon damage, multi-weapon ships, hitThreshold fallback, enemy component persistence after playerWin
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js
+- **Learnings for future iterations:**
+  - Default PlayerShip weapon is size-2 with accuracy 3 — tests using roll 3 as "miss" need updating since it now hits
+  - executePlayerAttack and executeEnemyAttack each get their own weapon independently — player weapon stats don't affect enemy accuracy
+  - rollBonus still only applies to player attacks (added to roll before comparing to weapon accuracy)
+  - When all typed weapons are destroyed, canAttack returns false and the attack is refused (no fallback to hitThreshold needed in practice)
+  - Enemy components are untouched after playerWin — no cleanup occurs, all components retain their state
+  - 16 new tests added; all 592 total tests pass
+---
+
+## 2026-02-15 - US-007
+- Verified gameState.js ship creation already uses new typed component constructors correctly
+- initGame() line 290: `new PlayerShip()` already creates ship with sizeLimit=7 and typed components
+- startCombat() line 549: `new EnemyShip()` already creates ship with sizeLimit=4 and typed components
+- playerShipStore persistence, enemyObj.combatShip persistence, and isEngineDestroyed movement penalty all functional
+- Verified resolveCombat() does NOT null enemyObj.combatShip after playerWin — components retained for salvage
+- Added 1 new test: enemyObj.combatShip retention after playerWin (verifies components array intact, salvageable query works)
+- Files changed: src/lib/game/gameState.test.js, scripts/ralph/prd.json
+- **Learnings for future iterations:**
+  - gameState.js already used `new PlayerShip()` and `new EnemyShip()` with no args — the constructor defaults from US-004/005 made this story mostly a verification task
+  - resolveCombat's playerWin branch marks enemy.destroyed=true and removes from obstacles/zones but never touches combatShip
+  - The addEnemyToBoard helper is only available in the 'combat board integration (US-036)' describe block — other combat test sections add enemies inline
+  - 1 new test added; all 593 total tests pass
+---
+
+## 2026-02-15 - US-008
+- Verified CombatScreen.svelte works with new typed component system — no code changes needed
+- playerComponents and enemyComponents derived values map c.name, c.currentHp, c.maxHp, c.destroyed — all on ShipComponent base class, unchanged
+- HP bars use proportional scaling (currentHp/maxHp * 100) — works correctly for new HP values (4/4/3 player, 1/1/1 enemy)
+- Target buttons use getComponent(name) backward-compat lookup — still works via ComponentContainer mixin
+- canAttack derived uses engine.playerShip.canAttack — same interface, now type-based query internally
+- Build succeeds (no compilation errors), all 593 tests pass
+- Browser extension unavailable for live verification — manual browser testing recommended
+- Files changed: scripts/ralph/prd.json, scripts/ralph/progress.txt (verification only, no source code changes)
+- **Learnings for future iterations:**
+  - CombatScreen.svelte only accesses base ShipComponent properties (name, currentHp, maxHp, destroyed) — typed subclass properties are invisible to the UI
+  - HP bar proportional scaling (currentHp/maxHp) is naturally compatible with any HP values — no UI changes needed when component stats change
+  - The component system refactor was designed for backward compatibility — UI components need zero changes
+  - Browser extension may not always be available for live verification — build + test pass is the minimum bar
+---

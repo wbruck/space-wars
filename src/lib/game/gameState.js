@@ -601,10 +601,13 @@ export function resolveCombat(result) {
 
         // Remove all zone vertices for this enemy (vision + proximity)
         if (boardData.enemyZoneMap) {
-          for (const [zoneVertex, zoneInfo] of boardData.enemyZoneMap) {
-            if (zoneInfo.enemyId === combat.enemyId) {
+          for (const [zoneVertex, entries] of boardData.enemyZoneMap) {
+            const filtered = entries.filter(e => e.enemyId !== combat.enemyId);
+            if (filtered.length === 0) {
               boardData.enemyZoneMap.delete(zoneVertex);
               boardData.enemyZones.delete(zoneVertex);
+            } else {
+              boardData.enemyZoneMap.set(zoneVertex, filtered);
             }
           }
         }
@@ -628,10 +631,13 @@ export function resolveCombat(result) {
     if (enemyObj && enemyObj.combatShip && !enemyObj.combatShip.canAttack) {
       // Remove all zone vertices for this enemy
       if (boardData.enemyZoneMap) {
-        for (const [zoneVertex, zoneInfo] of boardData.enemyZoneMap) {
-          if (zoneInfo.enemyId === combat.enemyId) {
+        for (const [zoneVertex, entries] of boardData.enemyZoneMap) {
+          const filtered = entries.filter(e => e.enemyId !== combat.enemyId);
+          if (filtered.length === 0) {
             boardData.enemyZoneMap.delete(zoneVertex);
             boardData.enemyZones.delete(zoneVertex);
+          } else {
+            boardData.enemyZoneMap.set(zoneVertex, filtered);
           }
         }
       }
@@ -650,9 +656,11 @@ export function resolveCombat(result) {
               proxVisited.add(nv);
               if (boardData.obstacles.has(nv)) continue;
               if (nv === boardData.startVertex || nv === boardData.targetVertex) continue;
-              if (!boardData.enemyZones.has(nv)) {
-                boardData.enemyZones.add(nv);
-                boardData.enemyZoneMap.set(nv, { enemyId: enemyObj.id, zoneType: 'proximity' });
+              boardData.enemyZones.add(nv);
+              const existing = boardData.enemyZoneMap.get(nv) || [];
+              if (!existing.some(e => e.enemyId === enemyObj.id)) {
+                existing.push({ enemyId: enemyObj.id, zoneType: 'proximity' });
+                boardData.enemyZoneMap.set(nv, existing);
               }
               nextFrontier.push(nv);
             }

@@ -64,6 +64,23 @@ Board layout is rectangular using offset columns (odd-q) for flat-top hexes. Siz
 
 Path computation uses **rays** (not adjacency). Remaining steps after hitting an obstacle are lost.
 
+### Combat System (`src/lib/game/combat.js`)
+
+Ship component system using composition-based architecture with a `ComponentContainer` mixin.
+
+**Components:** `ShipComponent` base class with typed subclasses: `WeaponComponent` (damage, accuracy), `EngineComponent` (speedBonus), `BridgeComponent` (evasionBonus). Each has a `type` getter (`'weapon'`, `'engine'`, `'bridge'`). Constructor: `ShipComponent(name, maxHp, size=1)` — size defaults to 1 for backward compat. Size 1 vs size 2 variants have different stats (e.g., weapon accuracy 4 vs 3).
+
+**ComponentContainer mixin:** `ComponentContainer(Base)` returns a class with component management: `addComponent()` (enforces sizeLimit budget and bridge uniqueness), `removeComponent()` (explicit only, never triggered by damage), `totalSize`, `remainingCapacity`, `getComponentsByType(type)`, `hasComponentType(type)`, `getComponent(name)` (backward compat), `getActiveComponents()`, `isDestroyed`. Destroyed components (0 HP) remain in the array permanently — never auto-removed.
+
+**Ships:** `Ship` extends `ComponentContainer(Object)`. Constructors support legacy array form `Ship('name', [comps])` (sizeLimit=Infinity) and new options form `Ship('name', { sizeLimit, components })`.
+
+- `PlayerShip`: sizeLimit=7, defaults: WeaponComponent('Weapons', 4, 2), EngineComponent('Engines', 4, 2), BridgeComponent('Bridge', 3, 2). Getters use type-based queries (`canAttack` = any weapon active, `isEngineDestroyed` = ALL engines destroyed).
+- `EnemyShip`: sizeLimit=4, defaults: WeaponComponent('Weapons', 1, 1), EngineComponent('Engines', 1, 1), BridgeComponent('Bridge', 1, 1). Has `getSalvageableComponents()` returning non-destroyed components.
+
+**CombatEngine:** Turn-based d6 combat. Reads `accuracy` and `damage` from attacker's first active `WeaponComponent` (falls back to `hitThreshold` constructor param). `rollBonus` only applies to player attacks. Win conditions: enemy bridge destroyed. Lose conditions: player bridge destroyed, all player components destroyed, max turns. Enemy flees if weapons destroyed but engines intact.
+
+**Component persistence:** Destroyed ships retain all components (including non-destroyed ones) for future salvage. `enemyObj.combatShip` is preserved after `playerWin` — never nulled.
+
 ### Board Objects (`src/lib/game/boardObjects.js`)
 
 `BoardObject` base class with `Obstacle` and `PowerUp` subclasses. Factory: `createBoardObject(type, vertexId, value)`. Placement: `generateBoardObjects(vertices, start, target, difficulty, rng)` returns `{ obstacles, powerUps, obstacleSet }`. Difficulty 1-10 scales obstacle density (5%-20%) and power-up density (15%-3%). Object values correlate with difficulty level.
@@ -88,7 +105,7 @@ In `.js` files and tests, use `get()` from `svelte/store` to read store values.
 
 ## Testing
 
-148 tests across 6 files in `src/lib/game/` (`hexGrid.test.js`, `gameState.test.js`, `movement.test.js`, `winLose.test.js`, `dice.test.js`, `boardObjects.test.js`). Tests use seeded RNG (`initGame(cols, rows, seed)`) for reproducibility. For async tests with `executeMove`, wrap in a Promise (vitest deprecated `done()` callbacks).
+593 tests across 7 files in `src/lib/game/` (`hexGrid.test.js`, `gameState.test.js`, `movement.test.js`, `winLose.test.js`, `dice.test.js`, `boardObjects.test.js`, `combat.test.js`). Tests use seeded RNG (`initGame(cols, rows, seed)`) for reproducibility. For async tests with `executeMove`, wrap in a Promise (vitest deprecated `done()` callbacks). Combat tests use `makeRng(rolls)` and `makeEngine(rolls, opts)` helpers for deterministic testing. When testing with PlayerShip/EnemyShip, always use typed subclasses (WeaponComponent, etc.) — type-based getters won't find plain ShipComponent instances.
 
 ## Mobile & SVG
 

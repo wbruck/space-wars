@@ -11,11 +11,13 @@ export class ShipComponent {
   /**
    * @param {string} name - Component name (e.g. 'Weapons', 'Engines', 'Bridge')
    * @param {number} maxHp - Maximum hit points
+   * @param {number} [size=1] - Size/weight cost (integer >= 1)
    */
-  constructor(name, maxHp) {
+  constructor(name, maxHp, size = 1) {
     this.name = name;
     this.maxHp = maxHp;
     this.currentHp = maxHp;
+    this.size = size;
   }
 
   /** @returns {boolean} True when currentHp <= 0 */
@@ -36,107 +38,307 @@ export class ShipComponent {
 }
 
 /**
- * Base ship with named components.
+ * A weapon component with damage and accuracy stats.
  */
-export class Ship {
+export class WeaponComponent extends ShipComponent {
   /**
-   * @param {string} name - Ship name
-   * @param {ShipComponent[]} components - Array of ship components
+   * @param {string} name
+   * @param {number} maxHp
+   * @param {number} [size=1]
    */
-  constructor(name, components) {
-    this.name = name;
-    this.components = components;
+  constructor(name, maxHp, size = 1) {
+    super(name, maxHp, size);
+    // Size 2: damage 1, accuracy 3. Size 1 (default): damage 1, accuracy 4.
+    this.damage = 1;
+    this.accuracy = size >= 2 ? 3 : 4;
   }
 
-  /** @returns {boolean} True when all components are destroyed */
-  get isDestroyed() {
-    return this.components.every(c => c.destroyed);
+  /** @returns {'weapon'} */
+  get type() { return 'weapon'; }
+}
+
+/**
+ * An engine component with speed bonus.
+ */
+export class EngineComponent extends ShipComponent {
+  /**
+   * @param {string} name
+   * @param {number} maxHp
+   * @param {number} [size=1]
+   */
+  constructor(name, maxHp, size = 1) {
+    super(name, maxHp, size);
+    // Size 2: speedBonus 1. Size 1 (default): speedBonus 0.
+    this.speedBonus = size >= 2 ? 1 : 0;
+  }
+
+  /** @returns {'engine'} */
+  get type() { return 'engine'; }
+}
+
+/**
+ * A bridge component with evasion bonus.
+ */
+export class BridgeComponent extends ShipComponent {
+  /**
+   * @param {string} name
+   * @param {number} maxHp
+   * @param {number} [size=1]
+   */
+  constructor(name, maxHp, size = 1) {
+    super(name, maxHp, size);
+    // Size 2: evasionBonus 1. Size 1 (default): evasionBonus 0.
+    this.evasionBonus = size >= 2 ? 1 : 0;
+  }
+
+  /** @returns {'bridge'} */
+  get type() { return 'bridge'; }
+}
+
+/**
+ * Mixin that provides shared component management logic.
+ * Usage: class Ship extends ComponentContainer(Object) { ... }
+ *
+ * @param {Function} Base - The base class to extend
+ * @returns {Function} A class extending Base with component management
+ */
+export const ComponentContainer = (Base) => class extends Base {
+  /**
+   * @param  {...any} args - Arguments passed to Base constructor.
+   *   If the last arg is an object with sizeLimit, it is consumed as options.
+   */
+  constructor(...args) {
+    super(...args);
+    /** @type {ShipComponent[]} */
+    this._components = [];
+    /** @type {number} */
+    this.sizeLimit = Infinity;
+  }
+
+  /**
+   * Add a component, enforcing size budget and bridge uniqueness.
+   * @param {ShipComponent} component
+   * @throws {Error} If adding would exceed sizeLimit
+   * @throws {Error} If adding a second BridgeComponent
+   */
+  addComponent(component) {
+    if (this.totalSize + component.size > this.sizeLimit) {
+      throw new Error(`Cannot add component "${component.name}": would exceed sizeLimit (${this.totalSize + component.size} > ${this.sizeLimit})`);
+    }
+    if (component.type === 'bridge' && this.hasComponentType('bridge')) {
+      throw new Error('Cannot add a second BridgeComponent — only one bridge allowed');
+    }
+    this._components.push(component);
+  }
+
+  /**
+   * Explicitly remove a component by name. Never triggered by damage/destruction.
+   * @param {string} name
+   * @returns {ShipComponent|undefined} The removed component, or undefined
+   */
+  removeComponent(name) {
+    const idx = this._components.findIndex(c => c.name === name);
+    if (idx === -1) return undefined;
+    return this._components.splice(idx, 1)[0];
+  }
+
+  /** @returns {number} Sum of all component sizes (including destroyed) */
+  get totalSize() {
+    return this._components.reduce((sum, c) => sum + c.size, 0);
+  }
+
+  /** @returns {number} sizeLimit - totalSize */
+  get remainingCapacity() {
+    return this.sizeLimit - this.totalSize;
+  }
+
+  /**
+   * @param {string} type - Component type string (e.g. 'weapon', 'engine', 'bridge')
+   * @returns {ShipComponent[]} Components matching the given type
+   */
+  getComponentsByType(type) {
+    return this._components.filter(c => c.type === type);
+  }
+
+  /**
+   * @param {string} type
+   * @returns {boolean}
+   */
+  hasComponentType(type) {
+    return this._components.some(c => c.type === type);
+  }
+
+  /**
+   * Backward-compatible name-based lookup.
+   * @param {string} name
+   * @returns {ShipComponent|undefined}
+   */
+  getComponent(name) {
+    return this._components.find(c => c.name === name);
   }
 
   /**
    * @returns {ShipComponent[]} Components with currentHp > 0
    */
   getActiveComponents() {
-    return this.components.filter(c => c.currentHp > 0);
+    return this._components.filter(c => c.currentHp > 0);
+  }
+
+  /** @returns {boolean} True when all components are destroyed */
+  get isDestroyed() {
+    return this._components.length > 0 && this._components.every(c => c.destroyed);
   }
 
   /**
-   * @param {string} name - Component name
-   * @returns {ShipComponent|undefined}
+   * Backward-compatible components getter — returns the internal array.
+   * @returns {ShipComponent[]}
    */
-  getComponent(name) {
-    return this.components.find(c => c.name === name);
+  get components() {
+    return this._components;
+  }
+};
+
+/**
+ * Base ship with named components, using ComponentContainer mixin.
+ *
+ * Supports two constructor signatures for backward compatibility:
+ *   new Ship('name', [comp1, comp2])          — legacy array form
+ *   new Ship('name', { sizeLimit, components }) — new options form
+ */
+export class Ship extends ComponentContainer(Object) {
+  /**
+   * @param {string} name - Ship name
+   * @param {ShipComponent[]|{sizeLimit?: number, components?: ShipComponent[]}} [opts] - Components array or options object
+   */
+  constructor(name, opts) {
+    super();
+    this.name = name;
+
+    // Backward compat: if second arg is an array, treat as { components: arr, sizeLimit: Infinity }
+    let sizeLimit = Infinity;
+    let components = [];
+    if (Array.isArray(opts)) {
+      components = opts;
+    } else if (opts && typeof opts === 'object') {
+      sizeLimit = opts.sizeLimit ?? Infinity;
+      components = opts.components || [];
+    }
+
+    this.sizeLimit = sizeLimit;
+    for (const c of components) {
+      this.addComponent(c);
+    }
   }
 }
 
 /**
- * Player's ship with default components: Weapons (2 HP), Engines (2 HP), Bridge (2 HP).
+ * Player's ship with typed components and size budget.
+ * Default sizeLimit: 7, default components: size-2 weapon (4HP), size-2 engine (4HP), size-2 bridge (3HP).
  */
 export class PlayerShip extends Ship {
   /**
-   * @param {ShipComponent[]} [components] - Optional custom components
+   * @param {ShipComponent[]|{sizeLimit?: number, components?: ShipComponent[]}} [opts] - Legacy component array or options object
    */
-  constructor(components) {
+  constructor(opts) {
     const defaultComponents = [
-      new ShipComponent('Weapons', 2),
-      new ShipComponent('Engines', 2),
-      new ShipComponent('Bridge', 2),
+      new WeaponComponent('Weapons', 4, 2),
+      new EngineComponent('Engines', 4, 2),
+      new BridgeComponent('Bridge', 3, 2),
     ];
-    super('Player Ship', components || defaultComponents);
+
+    if (Array.isArray(opts)) {
+      // Legacy: PlayerShip([comp1, comp2]) — enforce sizeLimit 7
+      super('Player Ship', { sizeLimit: 7, components: opts });
+    } else if (opts && typeof opts === 'object') {
+      // New: PlayerShip({ sizeLimit, components })
+      super('Player Ship', {
+        sizeLimit: opts.sizeLimit ?? 7,
+        components: opts.components || defaultComponents,
+      });
+    } else {
+      // Default: PlayerShip() — use defaults with sizeLimit 7
+      super('Player Ship', {
+        sizeLimit: 7,
+        components: defaultComponents,
+      });
+    }
   }
 
-  /** @returns {boolean} False if Weapons component is destroyed — player cannot attack */
+  /** @returns {boolean} True if any weapon component is active (not destroyed) */
   get canAttack() {
-    const weapons = this.getComponent('Weapons');
-    return weapons ? !weapons.destroyed : false;
+    const weapons = this.getComponentsByType('weapon');
+    return weapons.some(w => !w.destroyed);
   }
 
-  /** @returns {boolean} True if Bridge component is destroyed */
+  /** @returns {boolean} True if the bridge component is destroyed */
   get isBridgeDestroyed() {
-    const bridge = this.getComponent('Bridge');
+    const bridge = this.getComponentsByType('bridge')[0];
     return bridge ? bridge.destroyed : false;
   }
 
-  /** @returns {boolean} True if Engines component is destroyed */
+  /** @returns {boolean} True if ALL engine components are destroyed */
   get isEngineDestroyed() {
-    const engines = this.getComponent('Engines');
-    return engines ? engines.destroyed : false;
+    const engines = this.getComponentsByType('engine');
+    if (engines.length === 0) return true;
+    return engines.every(e => e.destroyed);
   }
 }
 
 /**
- * Enemy ship with 1 HP per component and behavioral getters.
+ * Enemy ship with typed components and size budget.
+ * Default sizeLimit: 4, default components: size-1 weapon (1HP), size-1 engine (1HP), size-1 bridge (1HP).
  * Bridge destruction is the ONLY way to fully defeat an enemy.
  */
 export class EnemyShip extends Ship {
   /**
-   * @param {ShipComponent[]} [components] - Optional custom components
+   * @param {ShipComponent[]|{sizeLimit?: number, components?: ShipComponent[]}} [opts] - Legacy component array or options object
    */
-  constructor(components) {
+  constructor(opts) {
     const defaultComponents = [
-      new ShipComponent('Weapons', 1),
-      new ShipComponent('Engines', 1),
-      new ShipComponent('Bridge', 1),
+      new WeaponComponent('Weapons', 1, 1),
+      new EngineComponent('Engines', 1, 1),
+      new BridgeComponent('Bridge', 1, 1),
     ];
-    super('Enemy Ship', components || defaultComponents);
+
+    if (Array.isArray(opts)) {
+      // Legacy: EnemyShip([comp1, comp2]) — enforce sizeLimit 4
+      super('Enemy Ship', { sizeLimit: 4, components: opts });
+    } else if (opts && typeof opts === 'object') {
+      // New: EnemyShip({ sizeLimit, components })
+      super('Enemy Ship', {
+        sizeLimit: opts.sizeLimit ?? 4,
+        components: opts.components || defaultComponents,
+      });
+    } else {
+      // Default: EnemyShip() — use defaults with sizeLimit 4
+      super('Enemy Ship', {
+        sizeLimit: 4,
+        components: defaultComponents,
+      });
+    }
   }
 
-  /** @returns {boolean} False if Weapons component is destroyed — enemy auto-misses attacks */
+  /** @returns {boolean} True if any weapon component is active (not destroyed) */
   get canAttack() {
-    const weapons = this.getComponent('Weapons');
-    return weapons ? !weapons.destroyed : false;
+    const weapons = this.getComponentsByType('weapon');
+    return weapons.some(w => !w.destroyed);
   }
 
-  /** @returns {boolean} False if Engines component is destroyed */
+  /** @returns {boolean} True if any engine component is active */
   get canFlee() {
-    const engines = this.getComponent('Engines');
-    return engines ? !engines.destroyed : false;
+    const engines = this.getComponentsByType('engine');
+    return engines.some(e => !e.destroyed);
   }
 
-  /** @returns {boolean} True if Bridge component is destroyed — enemy fully defeated */
+  /** @returns {boolean} True if the bridge component is destroyed — enemy fully defeated */
   get isBridgeDestroyed() {
-    const bridge = this.getComponent('Bridge');
+    const bridge = this.getComponentsByType('bridge')[0];
     return bridge ? bridge.destroyed : false;
+  }
+
+  /** @returns {ShipComponent[]} Components that are not destroyed (HP > 0), available for salvage */
+  getSalvageableComponents() {
+    return this.components.filter(c => !c.destroyed);
   }
 }
 
@@ -305,6 +507,7 @@ export class CombatEngine {
 
   /**
    * Player targets a specific enemy component.
+   * Uses the first active weapon's accuracy and damage stats.
    * @param {string} targetComponentName
    * @returns {{ roll, isHit, targetComponent, destroyed, combatOver, result }}
    */
@@ -318,14 +521,19 @@ export class CombatEngine {
       return { roll: 0, isHit: false, targetComponent: targetComponentName, destroyed: false, combatOver: this.combatOver, result: this.result };
     }
 
+    // Get first active weapon for accuracy and damage
+    const weapon = this.playerShip.getComponentsByType('weapon').find(w => !w.destroyed);
+    const accuracy = weapon ? weapon.accuracy : this.hitThreshold;
+    const damage = weapon ? weapon.damage : 1;
+
     const { roll } = this.rollAttack();
-    const isHit = (roll + this.rollBonus) >= this.hitThreshold;
+    const isHit = (roll + this.rollBonus) >= accuracy;
     let destroyed = false;
 
     if (isHit) {
       const component = this.enemyShip.getComponent(targetComponentName);
       if (component && !component.destroyed) {
-        const dmgResult = component.takeDamage(1);
+        const dmgResult = component.takeDamage(damage);
         destroyed = dmgResult.destroyed;
       }
     }
@@ -376,16 +584,22 @@ export class CombatEngine {
       return { roll: 0, isHit: false, targetComponent: null, destroyed: false, combatOver: this.combatOver, result: this.result };
     }
 
+    // Get first active weapon for accuracy and damage
+    const weapon = this.enemyShip.getComponentsByType('weapon').find(w => !w.destroyed);
+    const accuracy = weapon ? weapon.accuracy : this.hitThreshold;
+    const damage = weapon ? weapon.damage : 1;
+
     // Pick random active player component
     const activeComponents = this.playerShip.getActiveComponents();
     const targetIndex = Math.floor(this.rng() * activeComponents.length);
     const target = activeComponents[targetIndex];
 
-    const { roll, isHit } = this.rollAttack();
+    const { roll } = this.rollAttack();
+    const isHit = roll >= accuracy;
     let destroyed = false;
 
     if (isHit) {
-      const dmgResult = target.takeDamage(1);
+      const dmgResult = target.takeDamage(damage);
       destroyed = dmgResult.destroyed;
     }
 

@@ -1,0 +1,178 @@
+{
+  "project": "Ship Component System Refactor",
+  "branchName": "ralph/ship-component-system",
+  "description": "Refactor the ship and combat system to use a composition-based architecture with a ComponentContainer mixin, a size_limit budget system, and typed components (WeaponComponent, EngineComponent, BridgeComponent) that track their own stats. Destroyed ships retain all components for future salvage.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Create typed component subclasses",
+      "description": "As a developer, I want WeaponComponent, EngineComponent, and BridgeComponent subclasses of ShipComponent so that each component type tracks its own type-specific stats.",
+      "background": "The current ShipComponent class in src/lib/game/combat.js is a flat class with only name, maxHp, currentHp, and a destroyed getter. All components are identical structurally — there is no way to distinguish a weapon from an engine or attach type-specific stats. The existing constructor is ShipComponent(name, maxHp). This story adds a size parameter and creates three typed subclasses. Size 1 variants have lower HP/stats than size 2 variants. Components must persist even at 0 HP — they are never auto-removed from a ship.",
+      "implementation": "Modify src/lib/game/combat.js. Add a size parameter to ShipComponent constructor: (name, maxHp, size) where size defaults to 1 for backward compatibility with existing tests. Create WeaponComponent extending ShipComponent with damage (default 1) and accuracy (default 4, the minimum d6 roll to hit). Create EngineComponent with speedBonus (default 0). Create BridgeComponent with evasionBonus (default 0). Each subclass has a type getter returning 'weapon', 'engine', or 'bridge'. Default stat values by size: WeaponComponent size 1 = 1HP/damage:1/accuracy:4, size 2 = 2HP/damage:1/accuracy:3. EngineComponent size 1 = 1HP/speedBonus:0, size 2 = 2HP/speedBonus:1. BridgeComponent size 1 = 1HP/evasionBonus:0, size 2 = 2HP/evasionBonus:1. Export all new classes. Non-goals: no salvage mechanics, no component repair. Keep size optional with default 1 on base class to minimize existing test churn.",
+      "acceptanceCriteria": [
+        "ShipComponent base class retains: name, maxHp, currentHp, destroyed getter, takeDamage(amount) and gains size property (default 1)",
+        "ShipComponent constructor accepts (name, maxHp, size) where size is the weight cost (integer >= 1)",
+        "WeaponComponent extends ShipComponent with: damage (number, default 1), accuracy (number 1-6, default 4)",
+        "EngineComponent extends ShipComponent with: speedBonus (number, default 0)",
+        "BridgeComponent extends ShipComponent with: evasionBonus (number, default 0)",
+        "Each subclass has a type getter returning 'weapon', 'engine', or 'bridge' respectively",
+        "Size 1 variants have lower HP/stats than size 2 variants per the FR-3 table",
+        "All existing tests pass (may need updates to use new constructors)",
+        "New unit tests cover each subclass's construction, type getter, and type-specific stats",
+        "Commit with message starting with US-001"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Create ComponentContainer mixin",
+      "description": "As a developer, I want a ComponentContainer mixin that provides shared component management logic so that both PlayerShip and EnemyShip use identical add/remove/query behavior without class hierarchy duplication.",
+      "background": "The current Ship class in src/lib/game/combat.js takes a components array in its constructor and provides getActiveComponents(), getComponent(name), and isDestroyed. There is no capacity management, no type-based queries, and no enforcement of component constraints. The mixin pattern allows sharing this logic across Ship and potentially other future container classes. Critical requirement: components must never be auto-removed when destroyed (0 HP) — they remain in the array with destroyed === true. Destroyed components still occupy space (count toward totalSize). removeComponent is an explicit action for future salvage/equip, never triggered by combat damage.",
+      "implementation": "Add to src/lib/game/combat.js. Use the standard JS mixin pattern: const ComponentContainer = (Base) => class extends Base { ... }. The mixin adds: sizeLimit property, _components internal array, addComponent(component) that validates size budget and bridge uniqueness, removeComponent(name) for explicit removal only, totalSize getter (sum of all component sizes including destroyed), remainingCapacity getter, getComponentsByType(type) returning array filtered by type getter, hasComponentType(type) returning boolean, getComponent(name) for backward compat name lookup, getActiveComponents() returning components with currentHp > 0, isDestroyed getter (all components destroyed). addComponent throws if totalSize + component.size > sizeLimit. addComponent throws if adding a second BridgeComponent. Export ComponentContainer. Non-goals: no auto-removal on damage, no salvage mechanics yet.",
+      "acceptanceCriteria": [
+        "ComponentContainer is a mixin function: ComponentContainer(Base) returns a class extending Base",
+        "The mixin adds a sizeLimit property (set via constructor option or setter)",
+        "addComponent(component) adds a component if totalSize + component.size <= sizeLimit, throws error otherwise",
+        "addComponent enforces exactly one BridgeComponent — throws if a second bridge is added",
+        "removeComponent(name) removes a component by name and returns it (or undefined) — explicit action only, never triggered by damage or destruction",
+        "Components are never auto-removed when destroyed (0 HP) — they remain in the array with destroyed === true",
+        "totalSize getter returns sum of all component sizes (including destroyed components — they still occupy space)",
+        "remainingCapacity getter returns sizeLimit - totalSize",
+        "getComponentsByType(type) returns array of components matching the given type string",
+        "hasComponentType(type) returns boolean",
+        "Existing getComponent(name), getActiveComponents(), isDestroyed behavior preserved",
+        "New unit tests for mixin: add/remove, capacity enforcement, bridge uniqueness, type queries",
+        "Commit with message starting with US-002"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Refactor Ship base class to use ComponentContainer mixin",
+      "description": "As a developer, I want the Ship base class to use the ComponentContainer mixin so all ships get component management for free.",
+      "background": "The current Ship class at src/lib/game/combat.js lines 41-70 takes (name, components) and stores them directly. It provides getActiveComponents(), getComponent(name), and isDestroyed. After this refactor, Ship should use ComponentContainer for all component logic. The components property must remain an array accessible by index and iterable by CombatScreen.svelte's .map() calls. isDestroyed is a read-only status check — it never triggers component removal or cleanup. A destroyed ship's components array is fully intact and iterable for future salvage.",
+      "implementation": "Refactor Ship in src/lib/game/combat.js. Define Ship as class Ship extends ComponentContainer(Object) or use a neutral base. Ship constructor accepts (name, { sizeLimit, components }) where components is optional array. If components provided, each is added via addComponent(). Ship retains a backward-compatible components getter that returns the internal _components array. For backward compat with existing code that calls new Ship('name', [comp1, comp2]), detect if second arg is an array and treat it as { components: arr, sizeLimit: Infinity } to avoid breaking existing tests. Existing Ship tests should pass with minimal changes. Non-goal: no cleanup on destruction.",
+      "acceptanceCriteria": [
+        "Ship is defined using ComponentContainer mixin (e.g., class Ship extends ComponentContainer(Object))",
+        "Ship constructor accepts (name, { sizeLimit, components }) where components is optional array",
+        "If components array provided, each is added via addComponent() (enforcing size constraints)",
+        "Ship retains backward-compatible components getter that returns the internal components array (always contains all components, even destroyed ones)",
+        "isDestroyed is a read-only status check — it never triggers component removal or cleanup",
+        "A destroyed ship's components array is fully intact and iterable (supports future salvage)",
+        "Existing Ship tests pass without modification (or with minimal constructor arg changes)",
+        "Commit with message starting with US-003"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Refactor PlayerShip to use sized components",
+      "description": "As a developer, I want PlayerShip to use the new typed components with a configurable sizeLimit so the player ship's loadout is constrained by its size budget.",
+      "background": "The current PlayerShip at src/lib/game/combat.js lines 75-105 extends Ship and hardcodes three ShipComponent instances with 2 HP each. It has canAttack, isBridgeDestroyed, and isEngineDestroyed getters that use getComponent(name). After refactor, these getters should use type-based queries (getComponentsByType) rather than name-based lookups. The player ship is generally larger than enemy ships (sizeLimit 7 vs 4). PlayerShip is stored in playerShipStore (a Svelte writable) and persists across combats within a board.",
+      "implementation": "Refactor PlayerShip in src/lib/game/combat.js. Constructor accepts optional { sizeLimit, components }. Default sizeLimit = 7. Default components: WeaponComponent('Weapons', 4, 2) (4HP size 2), EngineComponent('Engines', 4, 2) (4HP size 2), BridgeComponent('Bridge', 3, 2) (3HP size 2) — total size 6, leaving 1 spare capacity. canAttack uses getComponentsByType('weapon') to check if any weapon is active. isBridgeDestroyed uses getComponentsByType('bridge')[0]. isEngineDestroyed returns true only if ALL engine components are destroyed. getComponent('Weapons') etc. must still work for backward compat with CombatScreen.svelte and CombatEngine. FR-8: PlayerShip defaults sizeLimit=7, three size-2 components.",
+      "acceptanceCriteria": [
+        "PlayerShip constructor accepts optional { sizeLimit, components } config",
+        "Default sizeLimit is 7 (fits size-2 weapon + size-2 engine + size-2 bridge + 1 spare)",
+        "Default components: WeaponComponent('Weapons', 4, 2), EngineComponent('Engines', 4, 2), BridgeComponent('Bridge', 3, 2)",
+        "canAttack getter returns true if any weapon component is active (not just one named 'Weapons')",
+        "isBridgeDestroyed checks the bridge component (there is always exactly one)",
+        "isEngineDestroyed returns true if ALL engine components are destroyed",
+        "Custom components can be passed in to override defaults (for tests and future loadout customization)",
+        "Backward compatibility: getComponent('Weapons'), getComponent('Engines'), getComponent('Bridge') still work",
+        "All existing PlayerShip tests pass (update constructor calls as needed)",
+        "New tests: sizeLimit enforcement, multiple weapons, custom loadouts",
+        "Commit with message starting with US-004"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Refactor EnemyShip to use sized components",
+      "description": "As a developer, I want EnemyShip to use the new typed components with a variable sizeLimit so enemy ships scale with difficulty.",
+      "background": "The current EnemyShip at src/lib/game/combat.js lines 111-141 extends Ship with 1 HP components. It has canAttack, canFlee, and isBridgeDestroyed getters. Enemy ships persist damage via enemyObj.combatShip on the Enemy board object. Critical: when an enemy ship is destroyed (bridge destroyed), ALL components must remain in the components array — non-destroyed components retain their HP and stats for future salvage. The components array is never cleaned up on ship destruction.",
+      "implementation": "Refactor EnemyShip in src/lib/game/combat.js. Constructor accepts optional { sizeLimit, components }. Default sizeLimit = 4. Default components: WeaponComponent('Weapons', 1, 1), EngineComponent('Engines', 1, 1), BridgeComponent('Bridge', 1, 1) — total size 3, 1 spare. canAttack uses getComponentsByType('weapon'). canFlee uses getComponentsByType('engine') — true if any engine is active. isBridgeDestroyed uses getComponentsByType('bridge')[0]. Add getSalvageableComponents() to Ship base (or EnemyShip): returns components.filter(c => !c.destroyed). FR-9: EnemyShip defaults sizeLimit=4, three size-1 components. FR-13-16: destroyed components persist, getSalvageableComponents returns non-destroyed ones.",
+      "acceptanceCriteria": [
+        "EnemyShip constructor accepts optional { sizeLimit, components } config",
+        "Default sizeLimit is 4 (fits size-1 weapon + size-1 engine + size-1 bridge + 1 spare)",
+        "Default components: WeaponComponent('Weapons', 1, 1), EngineComponent('Engines', 1, 1), BridgeComponent('Bridge', 1, 1)",
+        "canAttack, canFlee, isBridgeDestroyed getters work with typed components",
+        "canFlee returns true if any engine component is active",
+        "When an enemy ship is destroyed (bridge destroyed), all components remain in components array — non-destroyed components retain their current HP and stats",
+        "getSalvageableComponents() returns components where destroyed === false (HP > 0)",
+        "All existing EnemyShip and CombatEngine tests pass",
+        "New tests: variable sizeLimit, scaled enemy ships, component persistence after ship destruction, salvageable component query",
+        "Commit with message starting with US-005"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Update CombatEngine for typed components",
+      "description": "As a developer, I want CombatEngine to use weapon stats (damage, accuracy) from WeaponComponent so combat respects component-level stats.",
+      "background": "The current CombatEngine at src/lib/game/combat.js lines 182-409 uses a hardcoded hitThreshold (default 4) and hardcoded damage of 1 per hit. rollAttack() generates a d6 roll. executePlayerAttack() checks roll >= hitThreshold and deals 1 damage. executeEnemyAttack() picks a random active player component and does the same. After refactor, attacks should read damage and accuracy from the attacker's active WeaponComponent. The hitThreshold constructor param should still work as a fallback for tests. Critical: when combat ends with playerWin, the enemy ship retains all components — no cleanup occurs.",
+      "implementation": "Modify CombatEngine in src/lib/game/combat.js. In executePlayerAttack(), get the first active weapon via playerShip.getComponentsByType('weapon').find(w => !w.destroyed). Use weapon.accuracy as hit threshold (fall back to this.hitThreshold if no weapon or for backward compat). On hit, deal weapon.damage instead of hardcoded 1. In executeEnemyAttack(), similarly get enemy's active weapon for accuracy and damage. If enemy has no active weapon (canAttack is false), existing auto-miss logic stays. rollAttack() remains unchanged (pure d6 roll). FR-10: CombatEngine reads damage and accuracy from WeaponComponent. Do not clean up enemy components on playerWin. Non-goal: no weapon selection UI for multi-weapon ships (use first active).",
+      "acceptanceCriteria": [
+        "Player attacks use the first active weapon's accuracy as the hit threshold (instead of engine-level hitThreshold)",
+        "Player attacks deal the active weapon's damage value (instead of hardcoded 1)",
+        "Enemy attacks use their first active weapon's accuracy and damage similarly",
+        "If a ship has multiple weapons, attacks use the first active one (future: let player choose)",
+        "hitThreshold constructor param still works as a fallback/override for tests",
+        "When combat ends with playerWin, the enemy ship object retains all components (destroyed and non-destroyed) — no cleanup occurs",
+        "All existing combat tests pass (update expectations where stat values changed)",
+        "New tests: weapons with different damage/accuracy values, multi-weapon ships, verify enemy components persist after combat win",
+        "Commit with message starting with US-006"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Update gameState.js ship creation",
+      "description": "As a developer, I want gameState.js to create ships using the new constructors so the game uses the refactored component system.",
+      "background": "gameState.js at src/lib/game/gameState.js imports PlayerShip and EnemyShip from combat.js. playerShipStore is a Svelte writable store initialized in initGame() (line 290). startCombat() (line 539) creates or reuses ships — PlayerShip from playerShipStore, EnemyShip from enemyObj.combatShip or new. resolveCombat() (line 579) handles combat outcomes. After playerWin, the enemyObj.combatShip must be retained (not nulled) so the defeated ship's components are available for future salvage. Engine damage movement penalty checks isEngineDestroyed (line 322).",
+      "implementation": "Update src/lib/game/gameState.js. In initGame(), create PlayerShip with default sizeLimit 7 (no constructor args needed if defaults are correct). In startCombat(), create EnemyShip with default sizeLimit 4. The existing pattern of reusing enemyObj.combatShip for damage persistence remains unchanged. In resolveCombat(), ensure that on playerWin result, enemyObj.combatShip is NOT set to null — the defeated ship with all its components must remain on the board object. The disarmed enemy check (line 628) should continue to work with the new canAttack getter. Engine damage movement penalty should work with new isEngineDestroyed. FR-16: enemyObj.combatShip preserved after playerWin.",
+      "acceptanceCriteria": [
+        "initGame() creates PlayerShip with appropriate sizeLimit (default 7)",
+        "startCombat() creates EnemyShip with sizeLimit that may vary (default 4)",
+        "playerShipStore continues to persist the PlayerShip across combats within a board",
+        "enemyObj.combatShip persistence still works (enemy damage carries between encounters)",
+        "After a playerWin combat result, enemyObj.combatShip is retained on the enemy board object with all components intact (not nulled or garbage collected)",
+        "Engine damage movement penalty (isEngineDestroyed) still functions in movement code",
+        "All existing gameState tests pass",
+        "Commit with message starting with US-007"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Update CombatScreen.svelte for typed components",
+      "description": "As a developer, I want the combat UI to work with the refactored component system so the player sees correct component stats.",
+      "background": "CombatScreen.svelte at src/lib/components/CombatScreen.svelte reads engine.playerShip.components and engine.enemyShip.components, mapping each to { name, currentHp, maxHp, destroyed }. It uses canAttack derived state and getComponent() for target selection. The UI displays HP bars, target buttons for enemy components, and escape button. All properties accessed (name, currentHp, maxHp, destroyed) remain on the ShipComponent base class, so no structural changes should be needed. However, HP values are now higher for player components (4HP weapons, 4HP engines, 3HP bridge vs old 2HP each), so HP bar rendering should scale correctly.",
+      "implementation": "Verify src/lib/components/CombatScreen.svelte works with new component system. The playerComponents and enemyComponents derived values map c.name, c.currentHp, c.maxHp, c.destroyed — all still on ShipComponent base. HP bars should already scale proportionally (currentHp/maxHp). Target buttons use engine.enemyShip.getComponent(componentName) which still works via backward-compat name lookup. canAttack derived checks engine.playerShip.canAttack which now uses type-based query. No code changes should be needed — this story is primarily verification. Run npm run dev and verify combat screen displays correctly. Non-goal: no new UI for component types or salvage.",
+      "acceptanceCriteria": [
+        "playerComponents and enemyComponents derived values still produce { name, currentHp, maxHp, destroyed } objects",
+        "HP bars display correctly for components with HP > 2 (the new default player HP values)",
+        "Target buttons for enemy components work with new component names",
+        "No UI regressions — combat screen looks and functions the same",
+        "Verify in browser using dev server (npm run dev)",
+        "Commit with message starting with US-008"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

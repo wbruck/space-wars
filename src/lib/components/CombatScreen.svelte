@@ -55,6 +55,17 @@
     return advantage && advantage.rollBonus > 0;
   });
 
+  let playerAccuracy = $derived.by(() => {
+    tick;
+    const weapon = engine?.playerShip?.getComponentsByType?.('weapon')?.find(w => !w.destroyed);
+    return weapon ? weapon.accuracy : 4;
+  });
+
+  let effectiveThreshold = $derived.by(() => {
+    const bonus = engine?.rollBonus ?? 0;
+    return Math.max(1, playerAccuracy - bonus);
+  });
+
   function animateDiceAndExecute(executeFn) {
     rolling = true;
     lastResult = null;
@@ -181,8 +192,14 @@
 
   <div class="combat-header">
     <div class="turn-info">Turn {currentTurn}</div>
-    <div class="approach-badge" class:rear_ambush={approachLabel === 'Rear Ambush'} class:vision={approachLabel === 'Vision'} class:simple={approachLabel === 'Simple'}>
-      {approachLabel} Approach
+    <div class="approach-info">
+      <div class="approach-badge" class:rear_ambush={approachLabel === 'Rear Ambush'} class:vision={approachLabel === 'Vision'} class:simple={approachLabel === 'Simple'}>
+        {approachLabel} Approach
+      </div>
+      <div class="hit-threshold">
+        Hits on {effectiveThreshold}+
+        {#if hasRollBonus} (base {playerAccuracy}+ with +{advantage.rollBonus} bonus){/if}
+      </div>
     </div>
     <div class="turn-indicator" class:player-turn={isPlayerTurn} class:enemy-turn={!isPlayerTurn}>
       {#if isPlayerTurn}
@@ -358,6 +375,19 @@
     border-radius: 4px;
     font-weight: 600;
     text-transform: uppercase;
+  }
+
+  .approach-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+  }
+
+  .hit-threshold {
+    font-size: 0.65rem;
+    color: #888;
+    font-weight: 500;
   }
 
   .approach-badge.rear_ambush { background: #e8f5e9; color: #2e7d32; }
@@ -623,6 +653,7 @@
   }
 
   @media (prefers-color-scheme: dark) {
+    .hit-threshold { color: #999; }
     .turn-info { color: #bbb; }
     .approach-badge.rear_ambush { background: #1b5e20; color: #a5d6a7; }
     .approach-badge.vision { background: #b71c1c; color: #ef9a9a; }

@@ -76,9 +76,20 @@ export function computePath(rays, direction, steps, obstacles, targetVertex, bla
 
     // Check for enemy kill zone (include vertex, then stop)
     if (enemyZones?.has(vid)) {
-      // Skip zones belonging to excluded enemy (stealth dive bypass)
-      const zoneInfo = enemyZoneMap?.get(vid);
-      if (excludeEnemyId && zoneInfo && zoneInfo.enemyId === excludeEnemyId) {
+      const zoneInfoRaw = enemyZoneMap?.get(vid);
+
+      // No enemyZoneMap provided — legacy instant-death behavior
+      if (!zoneInfoRaw) {
+        path.push(vid);
+        hitByEnemy = true;
+        break;
+      }
+
+      // Filter out excluded enemy (stealth dive bypass)
+      const relevant = zoneInfoRaw.filter(e => e.enemyId !== excludeEnemyId);
+
+      if (relevant.length === 0) {
+        // All entries belong to excluded enemy — treat as passable
         path.push(vid);
         if (vid === targetVertex) {
           reachedTarget = true;
@@ -86,13 +97,11 @@ export function computePath(rays, direction, steps, obstacles, targetVertex, bla
         }
         continue;
       }
+
       path.push(vid);
-      // If enemyZoneMap is provided, set engageEnemy instead of hitByEnemy
-      if (enemyZoneMap && zoneInfo) {
-        engageEnemy = { vertexIndex: path.length - 1, enemyId: zoneInfo.enemyId, zoneType: zoneInfo.zoneType };
-      } else {
-        hitByEnemy = true;
-      }
+      // Vision entry takes priority over proximity
+      const entry = relevant.find(e => e.zoneType === 'vision') || relevant[0];
+      engageEnemy = { vertexIndex: path.length - 1, enemyId: entry.enemyId, zoneType: entry.zoneType };
       break;
     }
 

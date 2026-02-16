@@ -858,7 +858,7 @@ describe('computePath engagement trigger (US-034)', () => {
     const longRay = rays.find((r) => r.vertices.length >= 3);
 
     const enemyZones = new Set([longRay.vertices[1]]);
-    const enemyZoneMap = new Map([[longRay.vertices[1], { enemyId: 'enemy:A', zoneType: 'vision' }]]);
+    const enemyZoneMap = new Map([[longRay.vertices[1], [{ enemyId: 'enemy:A', zoneType: 'vision' }]]]);
     const result = computePath(rays, longRay.direction, 5, new Set(), null, new Set(), enemyZones, enemyZoneMap);
 
     expect(result.engageEnemy).not.toBeNull();
@@ -909,7 +909,7 @@ describe('computePath engagement trigger (US-034)', () => {
 
     const zoneVertex = ray.vertices[0];
     const enemyZones = new Set([zoneVertex]);
-    const enemyZoneMap = new Map([[zoneVertex, { enemyId: 'enemy:B', zoneType: 'vision' }]]);
+    const enemyZoneMap = new Map([[zoneVertex, [{ enemyId: 'enemy:B', zoneType: 'vision' }]]]);
     const result = computePath(rays, ray.direction, 5, new Set(), null, new Set(), enemyZones, enemyZoneMap);
 
     expect(result.path).toContain(zoneVertex);
@@ -937,7 +937,7 @@ describe('computePath engagement trigger (US-034)', () => {
     const vertex = longRay.vertices[1];
     const obstacles = new Set([vertex]);
     const enemyZones = new Set([vertex]);
-    const enemyZoneMap = new Map([[vertex, { enemyId: 'enemy:C', zoneType: 'vision' }]]);
+    const enemyZoneMap = new Map([[vertex, [{ enemyId: 'enemy:C', zoneType: 'vision' }]]]);
     const result = computePath(rays, longRay.direction, 5, obstacles, null, new Set(), enemyZones, enemyZoneMap);
 
     expect(result.stoppedByObstacle).toBe(true);
@@ -957,10 +957,52 @@ describe('computePath engagement trigger (US-034)', () => {
     const vertex = longRay.vertices[1];
     const blackholes = new Set([vertex]);
     const enemyZones = new Set([vertex]);
-    const enemyZoneMap = new Map([[vertex, { enemyId: 'enemy:D', zoneType: 'vision' }]]);
+    const enemyZoneMap = new Map([[vertex, [{ enemyId: 'enemy:D', zoneType: 'vision' }]]]);
     const result = computePath(rays, longRay.direction, 5, new Set(), null, blackholes, enemyZones, enemyZoneMap);
 
     expect(result.hitBlackhole).toBe(true);
     expect(result.engageEnemy).toBeNull();
+  });
+
+  it('multi-enemy zone: vision entry takes priority', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 2);
+    });
+    const rays = grid.rays.get(vid);
+    const ray = rays.find((r) => r.vertices.length >= 2);
+
+    const zoneVertex = ray.vertices[0];
+    const enemyZones = new Set([zoneVertex]);
+    const enemyZoneMap = new Map([[zoneVertex, [
+      { enemyId: 'enemy:X', zoneType: 'proximity' },
+      { enemyId: 'enemy:Y', zoneType: 'vision' },
+    ]]]);
+    const result = computePath(rays, ray.direction, 5, new Set(), null, new Set(), enemyZones, enemyZoneMap);
+
+    expect(result.engageEnemy).not.toBeNull();
+    expect(result.engageEnemy.enemyId).toBe('enemy:Y');
+    expect(result.engageEnemy.zoneType).toBe('vision');
+  });
+
+  it('stealth dive excludes only the specified enemy from array', () => {
+    const vid = [...grid.vertices.keys()].find((id) => {
+      const rays = grid.rays.get(id);
+      return rays.some((r) => r.vertices.length >= 2);
+    });
+    const rays = grid.rays.get(vid);
+    const ray = rays.find((r) => r.vertices.length >= 2);
+
+    const zoneVertex = ray.vertices[0];
+    const enemyZones = new Set([zoneVertex]);
+    const enemyZoneMap = new Map([[zoneVertex, [
+      { enemyId: 'enemy:Excluded', zoneType: 'proximity' },
+      { enemyId: 'enemy:Other', zoneType: 'proximity' },
+    ]]]);
+    const result = computePath(rays, ray.direction, 5, new Set(), null, new Set(), enemyZones, enemyZoneMap, 'enemy:Excluded');
+
+    // Should still stop at the vertex due to enemy:Other
+    expect(result.engageEnemy).not.toBeNull();
+    expect(result.engageEnemy.enemyId).toBe('enemy:Other');
   });
 });
