@@ -12,11 +12,11 @@
     board, playerPos, gamePhase, visited,
     selectedDirection, previewPath, animatingPath, animationStep,
     galaxyState, currentBoardPos,
-    initGame, resetBoardState, selectDirection, executeMove,
+    initGame, resetBoardState, resetGame, selectDirection, executeMove,
     initGalaxySession,
   } from './lib/game/gameState.js';
   import { getAvailableDirections } from './lib/game/movement.js';
-  import { generateGalaxy, loadGalaxy, saveGalaxy, unlockAdjacentBoards, isGalaxyComplete } from './lib/game/galaxy.js';
+  import { generateGalaxy, loadGalaxy, saveGalaxy, clearGalaxy, unlockAdjacentBoards, isGalaxyComplete } from './lib/game/galaxy.js';
   import { onMount } from 'svelte';
 
   // Subscribe to stores
@@ -109,6 +109,14 @@
 
     resetBoardState();
   }
+
+  function handleResetGalaxy() {
+    clearGalaxy();
+    resetGame();
+    const newGalaxy = generateGalaxy();
+    galaxyState.set(newGalaxy);
+    initGalaxySession();
+  }
 </script>
 
 <main>
@@ -118,7 +126,7 @@
     <GalaxyComplete {galaxy} />
 
   {:else if phase === 'galaxy' && galaxy}
-    <GalaxySelection {galaxy} onSelectBoard={handleSelectBoard} />
+    <GalaxySelection {galaxy} onSelectBoard={handleSelectBoard} onReset={handleResetGalaxy} />
 
   {:else if phase === 'shipyard'}
     <Shipyard />

@@ -1,9 +1,26 @@
 <script>
   import { shipConfirmed, enterShipyard } from '../game/gameState.js';
 
-  let { galaxy, onSelectBoard } = $props();
+  let { galaxy, onSelectBoard, onReset } = $props();
 
   let confirmed = $derived($shipConfirmed);
+  let confirmingReset = $state(false);
+  let resetTimer = $state(null);
+
+  function handleReset() {
+    if (confirmingReset) {
+      clearTimeout(resetTimer);
+      confirmingReset = false;
+      resetTimer = null;
+      onReset();
+    } else {
+      confirmingReset = true;
+      resetTimer = setTimeout(() => {
+        confirmingReset = false;
+        resetTimer = null;
+      }, 3000);
+    }
+  }
 
   function handleSelect(row, col) {
     const board = galaxy[row][col];
@@ -72,6 +89,14 @@
       {/each}
     {/each}
   </div>
+
+  <button
+    class="reset-btn"
+    class:confirming={confirmingReset}
+    onclick={handleReset}
+  >
+    {confirmingReset ? 'Are you sure?' : 'Reset Galaxy'}
+  </button>
 </div>
 
 <style>
@@ -246,11 +271,48 @@
     }
   }
 
+  .reset-btn {
+    padding: 0.5rem 1.25rem;
+    min-height: 44px;
+    border: 2px solid #b71c1c;
+    border-radius: 8px;
+    background: transparent;
+    color: #c62828;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  }
+
+  .reset-btn:hover {
+    background: rgba(183, 28, 28, 0.1);
+  }
+
+  .reset-btn:active {
+    transform: scale(0.97);
+  }
+
+  .reset-btn:focus-visible {
+    outline: 2px solid #b71c1c;
+    outline-offset: 2px;
+  }
+
+  .reset-btn.confirming {
+    border-color: #e53935;
+    color: #e53935;
+    background: rgba(229, 57, 53, 0.15);
+  }
+
   @media (prefers-color-scheme: dark) {
     .title { color: #eee; }
     .shipyard-btn { background: #3a2a1a; border-color: #ff9800; color: #ffb74d; }
     .shipyard-btn:hover { background: #4a3a2a; }
     .gate-message { color: #ffb74d; }
+    .reset-btn { border-color: #c62828; color: #ef5350; }
+    .reset-btn:hover { background: rgba(229, 57, 53, 0.15); }
+    .reset-btn.confirming { border-color: #ef5350; color: #ef5350; background: rgba(229, 57, 53, 0.2); }
   }
 
   @media (min-width: 600px) {
