@@ -7,6 +7,9 @@ Started: Mon Feb 16 17:55:24 CST 2026
 - Constructor third param for WeaponComponent/EngineComponent/BridgeComponent is `powerCost` (1 or 2)
 - Ship options object uses `{ powerLimit, components }` — legacy array form also supported
 - Only combat.js and combat.test.js contain component power/sizing references — gameState.js and CombatScreen.svelte do not reference these properties directly
+- Component stats by powerCost: Weapon p1 (HP 1, dmg 1, acc 4), p2 (HP 2, dmg 1, acc 3). Engine p1 (HP 1, speed 0), p2 (HP 2, speed 1). Bridge p1 (HP 1, evasion 0), p2 (HP 2, evasion 1)
+- There is no `initGalaxy()` function — galaxy is generated in App.svelte onMount via generateGalaxy(). Use `initGalaxySession(seed?)` to set up component market and player ship
+- `generateComponentMarket(rng)` creates 5-6 components with guaranteed 1 of each type (weapon, engine, bridge)
 
 ---
 
@@ -18,4 +21,15 @@ Started: Mon Feb 16 17:55:24 CST 2026
   - CombatScreen.svelte doesn't reference size/sizeLimit properties directly
   - boardObjects.js has no component sizing references
   - All 601 tests pass after the rename
+---
+
+## 2026-02-16 18:10 - US-002
+- Added shipyard game phase, componentMarket store, shipConfirmed store
+- Added generateComponentMarket(rng), initGalaxySession(seed?), enterShipyard(), confirmShipBuild()
+- Files changed: src/lib/game/gameState.js, src/lib/game/gameState.test.js, CLAUDE.md
+- **Learnings for future iterations:**
+  - There's no `initGalaxy()` function — galaxy generation happens in App.svelte's onMount. Created `initGalaxySession(seed?)` as the integration point for market generation
+  - Component HP follows powerCost: power 1 → HP 1, power 2 → HP 2 for all component types
+  - The `resetGame()` function needs to clear all new stores — added componentMarket and shipConfirmed resets
+  - 617 tests pass (16 new tests for market generation + shipyard phase)
 ---

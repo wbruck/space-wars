@@ -16,6 +16,8 @@ import {
   previewPath,
   animatingPath,
   animationStep,
+  componentMarket,
+  shipConfirmed,
   initGame,
   resetGame,
   hasValidPath,
@@ -26,9 +28,14 @@ import {
   selectDirection,
   executeMove,
   resolveMovePath,
+  generateComponentMarket,
+  initGalaxySession,
+  enterShipyard,
+  confirmShipBuild,
 } from './gameState.js';
 import { isCenterVertex } from './hexGrid.js';
 import { Enemy } from './boardObjects.js';
+import { WeaponComponent, EngineComponent, BridgeComponent } from './combat.js';
 
 describe('initGame', () => {
   beforeEach(() => {
@@ -2412,5 +2419,171 @@ describe('stealth dive excludeEnemyId bypass', () => {
     // Should be in rolling or another valid state
     const phase = get(gamePhase);
     expect(phase).not.toBe('engagementChoice');
+  });
+});
+
+describe('generateComponentMarket', () => {
+  function makeRng(seed) {
+    let s = seed | 0;
+    if (s === 0) s = 1;
+    return function () {
+      s ^= s << 13;
+      s ^= s >> 17;
+      s ^= s << 5;
+      return (s >>> 0) / 4294967296;
+    };
+  }
+
+  it('generates 5 or 6 components', () => {
+    const rng = makeRng(42);
+    const market = generateComponentMarket(rng);
+    expect(market.length).toBeGreaterThanOrEqual(5);
+    expect(market.length).toBeLessThanOrEqual(6);
+  });
+
+  it('guarantees at least 1 weapon, 1 engine, 1 bridge', () => {
+    // Test with multiple seeds to ensure guarantee holds
+    for (const seed of [1, 42, 100, 999, 12345]) {
+      const rng = makeRng(seed);
+      const market = generateComponentMarket(rng);
+      const types = market.map(c => c.type);
+      expect(types).toContain('weapon');
+      expect(types).toContain('engine');
+      expect(types).toContain('bridge');
+    }
+  });
+
+  it('assigns powerCost 1 or 2 to each component', () => {
+    const rng = makeRng(42);
+    const market = generateComponentMarket(rng);
+    for (const comp of market) {
+      expect([1, 2]).toContain(comp.powerCost);
+    }
+  });
+
+  it('creates correct component types (WeaponComponent, EngineComponent, BridgeComponent)', () => {
+    const rng = makeRng(42);
+    const market = generateComponentMarket(rng);
+    for (const comp of market) {
+      if (comp.type === 'weapon') {
+        expect(comp).toBeInstanceOf(WeaponComponent);
+      } else if (comp.type === 'engine') {
+        expect(comp).toBeInstanceOf(EngineComponent);
+      } else if (comp.type === 'bridge') {
+        expect(comp).toBeInstanceOf(BridgeComponent);
+      }
+    }
+  });
+
+  it('is deterministic with the same seed', () => {
+    const market1 = generateComponentMarket(makeRng(42));
+    const market2 = generateComponentMarket(makeRng(42));
+    expect(market1.length).toBe(market2.length);
+    for (let i = 0; i < market1.length; i++) {
+      expect(market1[i].type).toBe(market2[i].type);
+      expect(market1[i].powerCost).toBe(market2[i].powerCost);
+      expect(market1[i].maxHp).toBe(market2[i].maxHp);
+    }
+  });
+
+  it('produces different results with different seeds', () => {
+    const market1 = generateComponentMarket(makeRng(42));
+    const market2 = generateComponentMarket(makeRng(999));
+    // At least one difference expected (could be count, types, or power costs)
+    const same = market1.length === market2.length &&
+      market1.every((c, i) => c.type === market2[i].type && c.powerCost === market2[i].powerCost);
+    expect(same).toBe(false);
+  });
+
+  it('weapon power 1 has accuracy 4, power 2 has accuracy 3', () => {
+    const rng = makeRng(42);
+    const market = generateComponentMarket(rng);
+    for (const comp of market) {
+      if (comp.type === 'weapon') {
+        if (comp.powerCost === 1) expect(comp.accuracy).toBe(4);
+        if (comp.powerCost === 2) expect(comp.accuracy).toBe(3);
+      }
+    }
+  });
+
+  it('engine power 1 has speedBonus 0, power 2 has speedBonus 1', () => {
+    const rng = makeRng(42);
+    const market = generateComponentMarket(rng);
+    for (const comp of market) {
+      if (comp.type === 'engine') {
+        if (comp.powerCost === 1) expect(comp.speedBonus).toBe(0);
+        if (comp.powerCost === 2) expect(comp.speedBonus).toBe(1);
+      }
+    }
+  });
+
+  it('bridge power 1 has evasionBonus 0, power 2 has evasionBonus 1', () => {
+    const rng = makeRng(42);
+    const market = generateComponentMarket(rng);
+    for (const comp of market) {
+      if (comp.type === 'bridge') {
+        if (comp.powerCost === 1) expect(comp.evasionBonus).toBe(0);
+        if (comp.powerCost === 2) expect(comp.evasionBonus).toBe(1);
+      }
+    }
+  });
+});
+
+describe('shipyard phase and stores', () => {
+  beforeEach(() => {
+    resetGame();
+  });
+
+  it('componentMarket starts empty after reset', () => {
+    expect(get(componentMarket)).toEqual([]);
+  });
+
+  it('shipConfirmed starts false after reset', () => {
+    expect(get(shipConfirmed)).toBe(false);
+  });
+
+  it('enterShipyard sets gamePhase to shipyard', () => {
+    enterShipyard();
+    expect(get(gamePhase)).toBe('shipyard');
+  });
+
+  it('confirmShipBuild sets shipConfirmed to true and returns to galaxy', () => {
+    enterShipyard();
+    confirmShipBuild();
+    expect(get(shipConfirmed)).toBe(true);
+    expect(get(gamePhase)).toBe('galaxy');
+  });
+
+  it('initGalaxySession generates market and resets ship state', () => {
+    initGalaxySession(42);
+    const market = get(componentMarket);
+    expect(market.length).toBeGreaterThanOrEqual(5);
+    expect(market.length).toBeLessThanOrEqual(6);
+    expect(get(shipConfirmed)).toBe(false);
+    expect(get(playerShipStore)).not.toBeNull();
+  });
+
+  it('initGalaxySession is deterministic with seed', () => {
+    initGalaxySession(42);
+    const market1 = get(componentMarket);
+    const types1 = market1.map(c => ({ type: c.type, powerCost: c.powerCost }));
+
+    resetGame();
+    initGalaxySession(42);
+    const market2 = get(componentMarket);
+    const types2 = market2.map(c => ({ type: c.type, powerCost: c.powerCost }));
+
+    expect(types1).toEqual(types2);
+  });
+
+  it('resetGame clears componentMarket and shipConfirmed', () => {
+    initGalaxySession(42);
+    confirmShipBuild();
+    expect(get(shipConfirmed)).toBe(true);
+    expect(get(componentMarket).length).toBeGreaterThan(0);
+
+    resetGame();
+    expect(get(componentMarket)).toEqual([]);
+    expect(get(shipConfirmed)).toBe(false);
   });
 });

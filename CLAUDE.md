@@ -26,7 +26,7 @@ Single-player hex vertex board game built with **Svelte 5** (runes syntax) + **V
 `App.svelte` routes screens based on the `gamePhase` store:
 
 ```
-setup → SetupScreen (pick board size)
+galaxy → shipyard → galaxy (ship build confirmed) → board selection
 rolling → selectingDirection → moving → rolling (gameplay loop)
 won | lost → GameOver (stats + play again)
 ```
@@ -35,9 +35,9 @@ Gameplay phases show `Board` + `Dice` + `HUD` together.
 
 ### Game State (`src/lib/game/gameState.js`)
 
-Centralized Svelte writable stores: `board`, `playerPos`, `movementPool`, `diceValue`, `gamePhase`, `visited`, `movesMade`, `selectedDirection`, `previewPath`, `animatingPath`, `animationStep`.
+Centralized Svelte writable stores: `board`, `playerPos`, `movementPool`, `diceValue`, `gamePhase`, `visited`, `movesMade`, `selectedDirection`, `previewPath`, `animatingPath`, `animationStep`, `componentMarket`, `shipConfirmed`.
 
-Key exports: `initGame(cols, rows, seed?, difficulty?)`, `rollDice()`, `selectDirection(dir)`, `executeMove(callback?)`, `resetGame()`, `hasValidPath()`.
+Key exports: `initGame(cols, rows, seed?, difficulty?)`, `rollDice()`, `selectDirection(dir)`, `executeMove(callback?)`, `resetGame()`, `hasValidPath()`, `generateComponentMarket(rng)`, `initGalaxySession(seed?)`, `enterShipyard()`, `confirmShipBuild()`.
 
 - `initGame` accepts cols/rows for board dimensions, an optional seed for deterministic tests (xorshift32 RNG), and optional difficulty (1-10, default 5)
 - `boardData` includes `boardObjects` (all BoardObject instances), `powerUps` (PowerUp[]), and `obstacles` (Set<string> for backward compatibility)
@@ -45,6 +45,7 @@ Key exports: `initGame(cols, rows, seed?, difficulty?)`, `rollDice()`, `selectDi
 - `executeMove` animates step-by-step with setTimeout (150ms/step), then checks win/lose/trapped
 - Movement pool deduction happens AFTER the move completes, using actual steps taken (not dice value)
 - **Win/lose check flow:** `rollDice()` checks trapped *before* rolling (start-of-turn trap). `executeMove()` checks win (target reached), lose (pool exhausted), lose (trapped) *after* move completes.
+- **Shipyard stores:** `componentMarket` (writable, array of component instances), `shipConfirmed` (writable, boolean). `generateComponentMarket(rng)` creates 5-6 components with guaranteed 1 weapon, 1 engine, 1 bridge. `initGalaxySession(seed?)` generates the market and resets ship state. `enterShipyard()` sets phase to 'shipyard'. `confirmShipBuild()` sets shipConfirmed=true and returns to galaxy.
 
 ### Hex Grid (`src/lib/game/hexGrid.js`)
 

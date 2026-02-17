@@ -2,7 +2,7 @@ import { writable, get } from 'svelte/store';
 import { generateGrid } from './hexGrid.js';
 import { computePath, isTrapped } from './movement.js';
 import { generateBoardObjects } from './boardObjects.js';
-import { CombatEngine, PlayerShip, EnemyShip, getApproachAdvantage } from './combat.js';
+import { CombatEngine, PlayerShip, EnemyShip, getApproachAdvantage, WeaponComponent, EngineComponent, BridgeComponent } from './combat.js';
 
 // --- Svelte stores ---
 
@@ -18,7 +18,7 @@ export const movementPool = writable(0);
 /** Current dice roll (1-6 or null) */
 export const diceValue = writable(null);
 
-/** Game phase: 'galaxy' | 'rolling' | 'selectingDirection' | 'moving' | 'combat' | 'engagementChoice' | 'won' | 'lost' | 'galaxyComplete' */
+/** Game phase: 'galaxy' | 'shipyard' | 'rolling' | 'selectingDirection' | 'moving' | 'combat' | 'engagementChoice' | 'won' | 'lost' | 'galaxyComplete' */
 export const gamePhase = writable('galaxy');
 
 /** Set of visited vertex IDs */
@@ -59,6 +59,12 @@ export const pendingEngagement = writable(null);
 
 /** Whether the player is performing a stealth dive (avoided enemy, continuing movement) */
 export const stealthDive = writable(false);
+
+/** Component market: array of component instances available for installation */
+export const componentMarket = writable([]);
+
+/** Whether the player has confirmed their ship build */
+export const shipConfirmed = writable(false);
 
 // --- Helper functions ---
 
@@ -936,6 +942,78 @@ export function declineEngagement(onAnimationComplete) {
 }
 
 /**
+ * Generate a component market with 5-6 random components.
+ * Guarantees at least 1 WeaponComponent, 1 EngineComponent, and 1 BridgeComponent.
+ * Each component is randomly assigned powerCost 1 or 2 with matching stats.
+ *
+ * @param {() => number} rng - RNG function returning 0-1
+ * @returns {import('./combat.js').ShipComponent[]} Array of component instances
+ */
+export function generateComponentMarket(rng) {
+  const count = 5 + Math.floor(rng() * 2); // 5 or 6
+
+  function makeComponent(type, powerCost) {
+    if (type === 'weapon') {
+      const hp = powerCost >= 2 ? 2 : 1;
+      return new WeaponComponent('Weapons', hp, powerCost);
+    } else if (type === 'engine') {
+      const hp = powerCost >= 2 ? 2 : 1;
+      return new EngineComponent('Engines', hp, powerCost);
+    } else {
+      const hp = powerCost >= 2 ? 2 : 1;
+      return new BridgeComponent('Bridge', hp, powerCost);
+    }
+  }
+
+  const types = ['weapon', 'engine', 'bridge'];
+  const components = [];
+
+  // Guaranteed 1 of each type
+  for (const type of types) {
+    const powerCost = rng() < 0.5 ? 1 : 2;
+    components.push(makeComponent(type, powerCost));
+  }
+
+  // Fill remaining slots randomly
+  for (let i = components.length; i < count; i++) {
+    const type = types[Math.floor(rng() * types.length)];
+    const powerCost = rng() < 0.5 ? 1 : 2;
+    components.push(makeComponent(type, powerCost));
+  }
+
+  return components;
+}
+
+/**
+ * Initialize the galaxy session: generate the component market and reset ship state.
+ * Called once when a new galaxy is created or loaded.
+ *
+ * @param {number} [seed] - Optional seed for deterministic market generation
+ */
+export function initGalaxySession(seed) {
+  const rng = seed != null ? makeRng(seed) : Math.random.bind(Math);
+  const market = generateComponentMarket(rng);
+  componentMarket.set(market);
+  shipConfirmed.set(false);
+  playerShipStore.set(new PlayerShip());
+}
+
+/**
+ * Enter the shipyard screen.
+ */
+export function enterShipyard() {
+  gamePhase.set('shipyard');
+}
+
+/**
+ * Confirm the ship build and return to galaxy.
+ */
+export function confirmShipBuild() {
+  shipConfirmed.set(true);
+  gamePhase.set('galaxy');
+}
+
+/**
  * Reset game to setup phase.
  */
 export function resetGame() {
@@ -956,4 +1034,6 @@ export function resetGame() {
   currentBoardPos.set(null);
   pendingEngagement.set(null);
   stealthDive.set(false);
+  componentMarket.set([]);
+  shipConfirmed.set(false);
 }

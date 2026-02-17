@@ -42,7 +42,7 @@
         "Commit with message starting with 'feat: US-002'"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
