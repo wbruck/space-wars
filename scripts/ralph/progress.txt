@@ -10,6 +10,9 @@ Started: Mon Feb 16 17:55:24 CST 2026
 - Component stats by powerCost: Weapon p1 (HP 1, dmg 1, acc 4), p2 (HP 2, dmg 1, acc 3). Engine p1 (HP 1, speed 0), p2 (HP 2, speed 1). Bridge p1 (HP 1, evasion 0), p2 (HP 2, evasion 1)
 - There is no `initGalaxy()` function — galaxy is generated in App.svelte onMount via generateGalaxy(). Use `initGalaxySession(seed?)` to set up component market and player ship
 - `generateComponentMarket(rng)` creates 5-6 components with guaranteed 1 of each type (weapon, engine, bridge)
+- `installComponent(index)` and `removeComponent(name)` manage market↔ship transfers; both update stores reactively
+- `removeComponent` repairs HP (currentHp = maxHp) before returning component to market
+- PlayerShip defaults have total power 6/7 — tests that install from market need to use empty ship (`new PlayerShip({ powerLimit: 7, components: [] })`) to avoid exceeding power budget
 
 ---
 
@@ -32,4 +35,17 @@ Started: Mon Feb 16 17:55:24 CST 2026
   - Component HP follows powerCost: power 1 → HP 1, power 2 → HP 2 for all component types
   - The `resetGame()` function needs to clear all new stores — added componentMarket and shipConfirmed resets
   - 617 tests pass (16 new tests for market generation + shipyard phase)
+---
+
+## 2026-02-16 18:12 - US-003
+- Added installComponent(componentIndex) and removeComponent(componentName) functions to gameState.js
+- installComponent: reads from componentMarket by index, calls ship.addComponent(), returns false on power/bridge rejection
+- removeComponent: removes from ship, repairs HP to maxHp, returns component to market
+- Both functions update componentMarket and playerShipStore stores reactively
+- Files changed: src/lib/game/gameState.js, src/lib/game/gameState.test.js
+- **Learnings for future iterations:**
+  - PlayerShip defaults have total power 6/7, so tests installing components need empty ships to avoid exceeding power budget
+  - ComponentContainer.addComponent() throws on failure (insufficient power, bridge conflict) — catch and return false for installComponent
+  - Components in market share instances with ship — same object reference is used throughout
+  - 628 tests pass (11 new tests for install/remove)
 ---

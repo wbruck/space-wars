@@ -32,10 +32,12 @@ import {
   initGalaxySession,
   enterShipyard,
   confirmShipBuild,
+  installComponent,
+  removeComponent,
 } from './gameState.js';
 import { isCenterVertex } from './hexGrid.js';
 import { Enemy } from './boardObjects.js';
-import { WeaponComponent, EngineComponent, BridgeComponent } from './combat.js';
+import { WeaponComponent, EngineComponent, BridgeComponent, PlayerShip } from './combat.js';
 
 describe('initGame', () => {
   beforeEach(() => {
@@ -2585,5 +2587,173 @@ describe('shipyard phase and stores', () => {
     resetGame();
     expect(get(componentMarket)).toEqual([]);
     expect(get(shipConfirmed)).toBe(false);
+  });
+});
+
+describe('installComponent / removeComponent', () => {
+  beforeEach(() => {
+    resetGame();
+    initGalaxySession(42);
+  });
+
+  it('installComponent moves a component from market to player ship', () => {
+    // Start with an empty ship so we have full power budget
+    playerShipStore.set(new PlayerShip({ powerLimit: 7, components: [] }));
+
+    const marketBefore = get(componentMarket);
+    const countBefore = marketBefore.length;
+    const component = marketBefore[0];
+
+    const result = installComponent(0);
+    expect(result).toBe(true);
+
+    const marketAfter = get(componentMarket);
+    expect(marketAfter.length).toBe(countBefore - 1);
+    expect(marketAfter).not.toContain(component);
+
+    const ship = get(playerShipStore);
+    expect(ship.components).toContain(component);
+  });
+
+  it('installComponent returns false for out-of-bounds index', () => {
+    expect(installComponent(-1)).toBe(false);
+    expect(installComponent(100)).toBe(false);
+  });
+
+  it('installComponent returns false when insufficient power', () => {
+    // Fill up the ship to exhaust power budget (powerLimit = 7)
+    const market = get(componentMarket);
+    let installed = 0;
+    for (let i = 0; i < market.length; i++) {
+      const ship = get(playerShipStore);
+      const comp = get(componentMarket)[0]; // always index 0 since market shrinks
+      if (ship.remainingPower >= comp.powerCost && !(comp.type === 'bridge' && ship.hasComponentType('bridge'))) {
+        installComponent(0);
+        installed++;
+      } else {
+        break;
+      }
+    }
+
+    // Now try to add a component that exceeds remaining power
+    // Create a scenario where we know power is exceeded
+    const ship = get(playerShipStore);
+    const remaining = ship.remainingPower;
+
+    // Find a component in market that exceeds remaining power
+    const currentMarket = get(componentMarket);
+    const tooBig = currentMarket.findIndex(c => c.powerCost > remaining);
+    if (tooBig !== -1) {
+      const result = installComponent(tooBig);
+      expect(result).toBe(false);
+    }
+  });
+
+  it('installComponent returns false when adding second bridge', () => {
+    // First, install a bridge
+    const market = get(componentMarket);
+    const bridgeIndex = market.findIndex(c => c.type === 'bridge');
+    expect(bridgeIndex).toBeGreaterThanOrEqual(0);
+
+    installComponent(bridgeIndex);
+
+    // Now try to install another bridge
+    const marketAfter = get(componentMarket);
+    const secondBridgeIndex = marketAfter.findIndex(c => c.type === 'bridge');
+    if (secondBridgeIndex !== -1) {
+      const result = installComponent(secondBridgeIndex);
+      expect(result).toBe(false);
+      // Market should be unchanged
+      expect(get(componentMarket).length).toBe(marketAfter.length);
+    }
+  });
+
+  it('removeComponent moves a component from ship back to market', () => {
+    // Install a component first
+    const market = get(componentMarket);
+    const component = market[0];
+    const componentName = component.name;
+    installComponent(0);
+
+    const marketAfterInstall = get(componentMarket);
+    const marketCountAfterInstall = marketAfterInstall.length;
+
+    // Now remove it
+    const result = removeComponent(componentName);
+    expect(result).toBe(true);
+
+    const ship = get(playerShipStore);
+    expect(ship.getComponent(componentName)).toBeUndefined();
+
+    const marketAfterRemove = get(componentMarket);
+    expect(marketAfterRemove.length).toBe(marketCountAfterInstall + 1);
+    expect(marketAfterRemove).toContain(component);
+  });
+
+  it('removeComponent returns false for non-existent component', () => {
+    const result = removeComponent('NonExistentComponent');
+    expect(result).toBe(false);
+  });
+
+  it('removeComponent repairs component HP before returning to market', () => {
+    // Start with empty ship for clean test
+    playerShipStore.set(new PlayerShip({ powerLimit: 7, components: [] }));
+
+    // Install a component
+    const market = get(componentMarket);
+    const component = market[0];
+    installComponent(0);
+
+    // Damage the component
+    component.takeDamage(1);
+    expect(component.currentHp).toBeLessThan(component.maxHp);
+
+    // Remove it — should be repaired
+    removeComponent(component.name);
+
+    const marketAfter = get(componentMarket);
+    const returned = marketAfter.find(c => c === component);
+    expect(returned).toBeDefined();
+    expect(returned.currentHp).toBe(returned.maxHp);
+  });
+
+  it('both stores update reactively after install', () => {
+    // Start with empty ship for clean test
+    playerShipStore.set(new PlayerShip({ powerLimit: 7, components: [] }));
+
+    const market = get(componentMarket);
+    const initialMarketLen = market.length;
+    const ship = get(playerShipStore);
+    const initialShipLen = ship.components.length;
+
+    installComponent(0);
+
+    expect(get(componentMarket).length).toBe(initialMarketLen - 1);
+    expect(get(playerShipStore).components.length).toBe(initialShipLen + 1);
+  });
+
+  it('both stores update reactively after remove', () => {
+    // Install first
+    const component = get(componentMarket)[0];
+    installComponent(0);
+
+    const marketAfterInstall = get(componentMarket).length;
+    const shipAfterInstall = get(playerShipStore).components.length;
+
+    // Remove
+    removeComponent(component.name);
+
+    expect(get(componentMarket).length).toBe(marketAfterInstall + 1);
+    expect(get(playerShipStore).components.length).toBe(shipAfterInstall - 1);
+  });
+
+  it('installComponent returns false when playerShipStore is null', () => {
+    playerShipStore.set(null);
+    expect(installComponent(0)).toBe(false);
+  });
+
+  it('removeComponent returns false when playerShipStore is null', () => {
+    playerShipStore.set(null);
+    expect(removeComponent('Weapons')).toBe(false);
   });
 });

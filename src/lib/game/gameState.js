@@ -1014,6 +1014,61 @@ export function confirmShipBuild() {
 }
 
 /**
+ * Install a component from the market onto the player's ship.
+ * Removes the component from componentMarket and adds it to the player ship.
+ *
+ * @param {number} componentIndex - Index into the componentMarket array
+ * @returns {boolean} True if installed successfully, false if rejected (insufficient power or bridge conflict)
+ */
+export function installComponent(componentIndex) {
+  const market = get(componentMarket);
+  if (componentIndex < 0 || componentIndex >= market.length) return false;
+
+  const component = market[componentIndex];
+  const ship = get(playerShipStore);
+  if (!ship) return false;
+
+  try {
+    ship.addComponent(component);
+  } catch {
+    return false;
+  }
+
+  // Remove from market and update both stores
+  const newMarket = [...market];
+  newMarket.splice(componentIndex, 1);
+  componentMarket.set(newMarket);
+  playerShipStore.set(ship);
+
+  return true;
+}
+
+/**
+ * Remove a component from the player's ship and return it to the market.
+ * Repairs the component (resets HP to maxHp) before returning it.
+ *
+ * @param {string} componentName - Name of the component to remove
+ * @returns {boolean} True if removed successfully, false if component not found
+ */
+export function removeComponent(componentName) {
+  const ship = get(playerShipStore);
+  if (!ship) return false;
+
+  const component = ship.removeComponent(componentName);
+  if (!component) return false;
+
+  // Repair the component before returning to market
+  component.currentHp = component.maxHp;
+
+  // Add back to market and update both stores
+  const market = get(componentMarket);
+  componentMarket.set([...market, component]);
+  playerShipStore.set(ship);
+
+  return true;
+}
+
+/**
  * Reset game to setup phase.
  */
 export function resetGame() {
