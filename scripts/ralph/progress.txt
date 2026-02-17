@@ -13,6 +13,10 @@ Started: Mon Feb 16 17:55:24 CST 2026
 - `installComponent(index)` and `removeComponent(name)` manage market↔ship transfers; both update stores reactively
 - `removeComponent` repairs HP (currentHp = maxHp) before returning component to market
 - PlayerShip defaults have total power 6/7 — tests that install from market need to use empty ship (`new PlayerShip({ powerLimit: 7, components: [] })`) to avoid exceeding power budget
+- Shipyard.svelte subscribes to `playerShipStore` and `componentMarket` stores via `$derived()`. Uses `removeComponent(name)` and `confirmShipBuild()` from gameState.js
+- Bonus text by type/powerCost: Weapon p2 → '+1 Accuracy (hits 3+)', Engine p2 → '+1 Speed', Bridge p2 → '+1 Evasion', any p1 → 'No bonus'
+- App.svelte routing order: galaxyComplete → galaxy → shipyard → won/lost → combat → boardData (gameplay). New phases go between galaxy and won/lost
+- `initGalaxySession()` must be called in App.svelte onMount after galaxy load — it generates the component market and resets player ship
 
 ---
 
@@ -48,4 +52,65 @@ Started: Mon Feb 16 17:55:24 CST 2026
   - ComponentContainer.addComponent() throws on failure (insufficient power, bridge conflict) — catch and return false for installComponent
   - Components in market share instances with ship — same object reference is used throughout
   - 628 tests pass (11 new tests for install/remove)
+---
+
+## 2026-02-16 18:15 - US-004
+- Created Shipyard.svelte component with ship display, power bar, and installed components list
+- Header shows 'Shipyard' title and power bar with totalPower/powerLimit
+- Power bar color coding: Red (low usage/underpowered), Yellow (moderate), Green (nearly full/ready)
+- Installed components show name, type badge, power cost, HP, and bonus stat text
+- Each component has Remove button calling removeComponent(name)
+- Confirm Build button calls confirmShipBuild(), disabled unless ship has weapon + engine + bridge
+- Files changed: src/lib/components/Shipyard.svelte (new)
+- **Learnings for future iterations:**
+  - Svelte 5 $derived() works well for subscribing to stores (playerShipStore, componentMarket)
+  - Component type labels and bonus text can be derived from component.type and component.powerCost
+  - CombatScreen.svelte provides good reference for dark mode styling patterns
+  - GalaxySelection.svelte provides good reference for touch-target sizing (44px min) and mobile patterns
+  - Cannot verify shipyard in browser until US-007 wires it into App.svelte routing
+  - 628 tests pass (no new tests — this is a pure UI component)
+---
+
+## 2026-02-16 18:16 - US-005
+- Added Available Components market section to Shipyard.svelte
+- Market displays components from componentMarket store with same format as installed list (name, type, power, HP, bonus)
+- Each market component has Install button calling installComponent(index)
+- Install disabled when component.powerCost > remainingPower or bridge conflict (bridge already installed)
+- Empty market shows 'No components available' message
+- Added install-btn styles with dark mode support, matching existing button patterns
+- Files changed: src/lib/components/Shipyard.svelte
+- **Learnings for future iterations:**
+  - `isInstallDisabled(comp)` function pattern works well for reactive disable checks in Svelte 5 — called inline in the template
+  - Market and installed sections share the same component-row/comp-info layout classes — no need for separate styling
+  - Browser verification not possible without Chrome extension connected; manual verification needed after US-007
+  - 628 tests pass, build compiles cleanly (no new tests — pure UI addition)
+---
+
+## 2026-02-16 18:17 - US-006
+- Added Shipyard button and gating logic to GalaxySelection.svelte
+- Shipyard button (orange-themed) always visible, calls enterShipyard()
+- When shipConfirmed is false: grid gets `gated` class (opacity 0.4, pointer-events none), "Confirm your ship build first" message shown
+- When shipConfirmed is true: grid functions normally, unlocked boards clickable
+- Unlocked boards when not confirmed render as non-interactive (no role=button/tabindex) showing "Ready" status text
+- handleSelect also guards against !confirmed as a safety check
+- Files changed: src/lib/components/GalaxySelection.svelte
+- **Learnings for future iterations:**
+  - GalaxySelection uses `$props()` for galaxy data and onSelectBoard callback — store subscriptions added via `$derived($storeName)` pattern
+  - The `class:gated={!confirmed}` Svelte directive works well for conditional CSS class application
+  - Gating via CSS (opacity + pointer-events) is simpler and more maintainable than conditionally rendering different cell structures
+  - Browser verification not possible without Chrome extension connected; needs manual verification after US-007
+  - 628 tests pass, build compiles cleanly (no new tests — pure UI change)
+---
+
+## 2026-02-16 18:20 - US-007
+- Wired shipyard into App.svelte routing: imported Shipyard component, added `{:else if phase === 'shipyard'}` routing block
+- Called `initGalaxySession()` in onMount to generate the component market on galaxy init
+- Added Back button to Shipyard.svelte for returning to galaxy without confirming build
+- Files changed: src/App.svelte, src/lib/components/Shipyard.svelte
+- **Learnings for future iterations:**
+  - `initGalaxySession()` must be called in App.svelte onMount after galaxy load/generate — it sets up the component market and resets ship state
+  - Shipyard routing goes between galaxy and won/lost in the `{#if}` chain — order matters for fallthrough to the boardData block
+  - Back button sets `gamePhase.set('galaxy')` directly rather than creating a dedicated function — keeps it simple
+  - Browser verification not possible without Chrome extension connected; needs manual verification
+  - 628 tests pass, build compiles cleanly (no new tests — routing is UI integration)
 ---

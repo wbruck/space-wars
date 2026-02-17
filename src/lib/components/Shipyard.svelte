@@ -1,5 +1,5 @@
 <script>
-  import { playerShipStore, componentMarket, confirmShipBuild, removeComponent, installComponent } from '../game/gameState.js';
+  import { playerShipStore, componentMarket, confirmShipBuild, removeComponent, installComponent, gamePhase } from '../game/gameState.js';
 
   let ship = $derived($playerShipStore);
   let market = $derived($componentMarket);
@@ -52,13 +52,20 @@
     return comp.powerCost > remainingPower || (comp.type === 'bridge' && hasBridge);
   }
 
+  function handleBack() {
+    gamePhase.set('galaxy');
+  }
+
   function handleConfirm() {
     confirmShipBuild();
   }
 </script>
 
 <div class="shipyard-screen">
-  <h2 class="title">Shipyard</h2>
+  <div class="header-row">
+    <button class="back-btn" onclick={handleBack}>Back</button>
+    <h2 class="title">Shipyard</h2>
+  </div>
 
   <!-- Power bar -->
   <div class="power-section">
@@ -151,6 +158,39 @@
     margin: 0 auto;
     padding: 0.75rem;
     font-family: system-ui, -apple-system, sans-serif;
+  }
+
+  .header-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .back-btn {
+    padding: 0.35rem 0.7rem;
+    min-width: 44px;
+    min-height: 44px;
+    border: 2px solid #666;
+    border-radius: 6px;
+    background: #f5f5f5;
+    color: #333;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, transform 0.1s;
+    flex-shrink: 0;
+  }
+
+  .back-btn:hover {
+    background: #e0e0e0;
+    transform: scale(1.03);
+  }
+
+  .back-btn:active {
+    transform: scale(0.97);
   }
 
   .title {
@@ -370,6 +410,8 @@
 
   @media (prefers-color-scheme: dark) {
     .title { color: #eee; }
+    .back-btn { background: #333; border-color: #666; color: #ccc; }
+    .back-btn:hover { background: #444; }
     .power-label { color: #bbb; }
     .power-bar-container { background: #444; }
     .section-title { color: #aaa; }

@@ -83,7 +83,7 @@
         "Commit with message starting with 'feat: US-004'"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -104,7 +104,7 @@
         "Commit with message starting with 'feat: US-005'"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -123,7 +123,7 @@
         "Commit with message starting with 'feat: US-006'"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -142,7 +142,7 @@
         "Commit with message starting with 'feat: US-007'"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

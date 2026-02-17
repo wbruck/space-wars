@@ -7,11 +7,13 @@
   import GalaxySelection from './lib/components/GalaxySelection.svelte';
   import GalaxyComplete from './lib/components/GalaxyComplete.svelte';
   import EngagementModal from './lib/components/EngagementModal.svelte';
+  import Shipyard from './lib/components/Shipyard.svelte';
   import {
     board, playerPos, gamePhase, visited,
     selectedDirection, previewPath, animatingPath, animationStep,
     galaxyState, currentBoardPos,
     initGame, resetGame, selectDirection, executeMove,
+    initGalaxySession,
   } from './lib/game/gameState.js';
   import { getAvailableDirections } from './lib/game/movement.js';
   import { generateGalaxy, loadGalaxy, saveGalaxy, unlockAdjacentBoards, isGalaxyComplete } from './lib/game/galaxy.js';
@@ -28,7 +30,7 @@
   let animStep = $derived($animationStep);
   let galaxy = $derived($galaxyState);
 
-  // On mount, load or generate galaxy
+  // On mount, load or generate galaxy and initialize shipyard market
   onMount(() => {
     const saved = loadGalaxy();
     if (saved) {
@@ -36,6 +38,7 @@
     } else {
       galaxyState.set(generateGalaxy());
     }
+    initGalaxySession();
   });
 
   // Construct enemy render data from boardData
@@ -116,6 +119,9 @@
 
   {:else if phase === 'galaxy' && galaxy}
     <GalaxySelection {galaxy} onSelectBoard={handleSelectBoard} />
+
+  {:else if phase === 'shipyard'}
+    <Shipyard />
 
   {:else if phase === 'won' || phase === 'lost'}
     <GameOver onPlayAgain={handleContinue} />
