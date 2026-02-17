@@ -12,7 +12,7 @@
     board, playerPos, gamePhase, visited,
     selectedDirection, previewPath, animatingPath, animationStep,
     galaxyState, currentBoardPos,
-    initGame, resetGame, selectDirection, executeMove,
+    initGame, resetBoardState, selectDirection, executeMove,
     initGalaxySession,
   } from './lib/game/gameState.js';
   import { getAvailableDirections } from './lib/game/movement.js';
@@ -107,7 +107,7 @@
       }
     }
 
-    resetGame();
+    resetBoardState();
   }
 </script>
 

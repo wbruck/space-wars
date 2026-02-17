@@ -34,6 +34,7 @@ import {
   confirmShipBuild,
   installComponent,
   removeComponent,
+  resetBoardState,
 } from './gameState.js';
 import { isCenterVertex } from './hexGrid.js';
 import { Enemy } from './boardObjects.js';
@@ -2453,7 +2454,7 @@ describe('generateComponentMarket', () => {
     expect(market.length).toBeLessThanOrEqual(6);
   });
 
-  it('guarantees at least 1 weapon, 1 engine, 1 bridge', () => {
+  it('guarantees at least 1 weapon, 1 engine, and exactly 2 bridges', () => {
     // Test with multiple seeds to ensure guarantee holds
     for (const seed of [1, 42, 100, 999, 12345]) {
       const rng = makeRng(seed);
@@ -2461,7 +2462,18 @@ describe('generateComponentMarket', () => {
       const types = market.map(c => c.type);
       expect(types).toContain('weapon');
       expect(types).toContain('engine');
-      expect(types).toContain('bridge');
+      const bridges = market.filter(c => c.type === 'bridge');
+      expect(bridges).toHaveLength(2);
+    }
+  });
+
+  it('generates exactly one power-1 bridge and one power-2 bridge', () => {
+    for (const seed of [1, 42, 100, 999, 12345]) {
+      const rng = makeRng(seed);
+      const market = generateComponentMarket(rng);
+      const bridges = market.filter(c => c.type === 'bridge');
+      const powers = bridges.map(b => b.powerCost).sort();
+      expect(powers).toEqual([1, 2]);
     }
   });
 
@@ -2597,6 +2609,50 @@ describe('shipyard phase and stores', () => {
     resetGame();
     expect(get(componentMarket)).toEqual([]);
     expect(get(shipConfirmed)).toBe(false);
+  });
+
+  it('resetBoardState preserves playerShipStore, componentMarket, and shipConfirmed', () => {
+    initGalaxySession(42);
+    installComponent(0);
+    confirmShipBuild();
+
+    const shipBefore = get(playerShipStore);
+    const marketBefore = get(componentMarket);
+    const confirmedBefore = get(shipConfirmed);
+
+    // Simulate starting a board
+    initGame(5, 4, 99);
+    expect(get(gamePhase)).toBe('rolling');
+
+    // Simulate board completion — resetBoardState instead of resetGame
+    resetBoardState();
+
+    expect(get(gamePhase)).toBe('galaxy');
+    expect(get(playerShipStore)).toBe(shipBefore);
+    expect(get(componentMarket)).toBe(marketBefore);
+    expect(get(shipConfirmed)).toBe(confirmedBefore);
+  });
+
+  it('resetBoardState clears board-specific stores', () => {
+    initGalaxySession(42);
+    initGame(5, 4, 99);
+
+    // Board-specific stores should be populated
+    expect(get(board)).not.toBeNull();
+    expect(get(playerPos)).not.toBeNull();
+    expect(get(movementPool)).toBeGreaterThan(0);
+
+    resetBoardState();
+
+    expect(get(board)).toBeNull();
+    expect(get(playerPos)).toBeNull();
+    expect(get(movementPool)).toBe(0);
+    expect(get(diceValue)).toBeNull();
+    expect(get(gamePhase)).toBe('galaxy');
+    expect(get(visited).size).toBe(0);
+    expect(get(movesMade)).toBe(0);
+    expect(get(loseReason)).toBeNull();
+    expect(get(combatState)).toBeNull();
   });
 });
 

@@ -1,18 +1,23 @@
 <script>
   import { playerShipStore, componentMarket, confirmShipBuild, removeComponent, installComponent, gamePhase } from '../game/gameState.js';
 
-  let ship = $derived($playerShipStore);
   let market = $derived($componentMarket);
 
-  let totalPower = $derived(ship?.totalPower ?? 0);
-  let powerLimit = $derived(ship?.powerLimit ?? 7);
-  let remainingPower = $derived(ship?.remainingPower ?? 7);
+  // Access store properties directly — avoids Svelte 5 $derived memoization
+  // skipping updates when the same object reference is set back into the store.
+  let totalPower = $derived($playerShipStore?.totalPower ?? 0);
+  let powerLimit = $derived($playerShipStore?.powerLimit ?? 7);
+  let remainingPower = $derived($playerShipStore?.remainingPower ?? 7);
 
-  let installedComponents = $derived(ship?.components ?? []);
+  // Spread to create a new array reference so $derived detects the change
+  let installedComponents = $derived.by(() => {
+    const s = $playerShipStore;
+    return s ? [...s.components] : [];
+  });
 
-  let hasWeapon = $derived(ship?.hasComponentType('weapon') ?? false);
-  let hasEngine = $derived(ship?.hasComponentType('engine') ?? false);
-  let hasBridge = $derived(ship?.hasComponentType('bridge') ?? false);
+  let hasWeapon = $derived($playerShipStore?.hasComponentType('weapon') ?? false);
+  let hasEngine = $derived($playerShipStore?.hasComponentType('engine') ?? false);
+  let hasBridge = $derived($playerShipStore?.hasComponentType('bridge') ?? false);
   let canConfirm = $derived(hasWeapon && hasEngine && hasBridge);
 
   let powerRatio = $derived(powerLimit > 0 ? totalPower / powerLimit : 0);

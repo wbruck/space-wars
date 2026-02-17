@@ -968,18 +968,22 @@ export function generateComponentMarket(rng) {
     }
   }
 
-  const types = ['weapon', 'engine', 'bridge'];
   const components = [];
 
-  // Guaranteed 1 of each type
-  for (const type of types) {
+  // Exactly 2 bridges: one power-1, one power-2
+  components.push(makeComponent('bridge', 1));
+  components.push(makeComponent('bridge', 2));
+
+  // Guaranteed 1 weapon, 1 engine
+  for (const type of ['weapon', 'engine']) {
     const powerCost = rng() < 0.5 ? 1 : 2;
     components.push(makeComponent(type, powerCost));
   }
 
-  // Fill remaining slots randomly
+  // Fill remaining slots randomly from weapon/engine only (no more bridges)
+  const fillTypes = ['weapon', 'engine'];
   for (let i = components.length; i < count; i++) {
-    const type = types[Math.floor(rng() * types.length)];
+    const type = fillTypes[Math.floor(rng() * fillTypes.length)];
     const powerCost = rng() < 0.5 ? 1 : 2;
     components.push(makeComponent(type, powerCost));
   }
@@ -1072,9 +1076,11 @@ export function removeComponent(componentName) {
 }
 
 /**
- * Reset game to setup phase.
+ * Reset only board-specific state, preserving galaxy-level state
+ * (playerShipStore, componentMarket, shipConfirmed).
+ * Used when returning to galaxy after completing a board.
  */
-export function resetGame() {
+export function resetBoardState() {
   board.set(null);
   playerPos.set(null);
   movementPool.set(0);
@@ -1088,10 +1094,17 @@ export function resetGame() {
   animationStep.set(-1);
   loseReason.set(null);
   combatState.set(null);
-  playerShipStore.set(null);
   currentBoardPos.set(null);
   pendingEngagement.set(null);
   stealthDive.set(false);
+}
+
+/**
+ * Reset game to setup phase.
+ */
+export function resetGame() {
+  resetBoardState();
+  playerShipStore.set(null);
   componentMarket.set([]);
   shipConfirmed.set(false);
 }
