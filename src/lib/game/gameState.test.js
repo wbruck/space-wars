@@ -16,6 +16,8 @@ import {
   previewPath,
   animatingPath,
   animationStep,
+  componentMarket,
+  shipConfirmed,
   initGame,
   resetGame,
   hasValidPath,
@@ -26,9 +28,17 @@ import {
   selectDirection,
   executeMove,
   resolveMovePath,
+  generateComponentMarket,
+  initGalaxySession,
+  enterShipyard,
+  confirmShipBuild,
+  installComponent,
+  removeComponent,
+  resetBoardState,
 } from './gameState.js';
 import { isCenterVertex } from './hexGrid.js';
 import { Enemy } from './boardObjects.js';
+import { WeaponComponent, EngineComponent, BridgeComponent, PlayerShip } from './combat.js';
 
 describe('initGame', () => {
   beforeEach(() => {
@@ -1799,16 +1809,25 @@ describe('combat board integration (US-036)', () => {
   });
 
   describe('player ship health persistence (US-039)', () => {
-    it('initGame creates a fresh PlayerShip with full HP', () => {
+    /** Equip the player ship with standard components for combat tests */
+    function equipStandardLoadout() {
+      const ship = get(playerShipStore);
+      ship.addComponent(new WeaponComponent('Weapons', 4, 2));
+      ship.addComponent(new EngineComponent('Engines', 4, 2));
+      ship.addComponent(new BridgeComponent('Bridge', 3, 2));
+      playerShipStore.set(ship);
+    }
+
+    it('initGame creates an empty PlayerShip when none exists', () => {
       const ship = get(playerShipStore);
       expect(ship).not.toBeNull();
       expect(ship.name).toBe('Player Ship');
-      expect(ship.getComponent('Weapons').currentHp).toBe(4);
-      expect(ship.getComponent('Engines').currentHp).toBe(4);
-      expect(ship.getComponent('Bridge').currentHp).toBe(3);
+      expect(ship.components).toHaveLength(0);
+      expect(ship.powerLimit).toBe(7);
     });
 
     it('startCombat reuses the persistent PlayerShip instance', () => {
+      equipStandardLoadout();
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
       const shipBefore = get(playerShipStore);
@@ -1823,6 +1842,7 @@ describe('combat board integration (US-036)', () => {
     });
 
     it('player ship damage persists across multiple combat encounters', () => {
+      equipStandardLoadout();
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
@@ -1845,6 +1865,7 @@ describe('combat board integration (US-036)', () => {
     });
 
     it('player ship damage accumulates across encounters', () => {
+      equipStandardLoadout();
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
@@ -1866,7 +1887,8 @@ describe('combat board integration (US-036)', () => {
       expect(ship.getComponent('Engines').destroyed).toBe(true);
     });
 
-    it('initGame resets player ship to full HP after damage', () => {
+    it('initGame preserves existing player ship', () => {
+      equipStandardLoadout();
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
@@ -1882,15 +1904,12 @@ describe('combat board integration (US-036)', () => {
       const damagedShip = get(playerShipStore);
       expect(damagedShip.getComponent('Weapons').currentHp).toBe(0);
 
-      // Start a new game
+      // Start a new game — ship is preserved since it already exists
       initGame(5, 4, 99);
 
-      // Player ship should be fresh
-      const freshShip = get(playerShipStore);
-      expect(freshShip).not.toBe(damagedShip);
-      expect(freshShip.getComponent('Weapons').currentHp).toBe(4);
-      expect(freshShip.getComponent('Engines').currentHp).toBe(4);
-      expect(freshShip.getComponent('Bridge').currentHp).toBe(3);
+      const sameShip = get(playerShipStore);
+      expect(sameShip).toBe(damagedShip);
+      expect(sameShip.getComponent('Weapons').currentHp).toBe(0);
     });
 
     it('resetGame clears the player ship store', () => {
@@ -1903,6 +1922,7 @@ describe('combat board integration (US-036)', () => {
     });
 
     it('undamaged components retain full HP between encounters', () => {
+      equipStandardLoadout();
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
@@ -2412,5 +2432,394 @@ describe('stealth dive excludeEnemyId bypass', () => {
     // Should be in rolling or another valid state
     const phase = get(gamePhase);
     expect(phase).not.toBe('engagementChoice');
+  });
+});
+
+describe('generateComponentMarket', () => {
+  function makeRng(seed) {
+    let s = seed | 0;
+    if (s === 0) s = 1;
+    return function () {
+      s ^= s << 13;
+      s ^= s >> 17;
+      s ^= s << 5;
+      return (s >>> 0) / 4294967296;
+    };
+  }
+
+  it('generates 5 or 6 components', () => {
+    const rng = makeRng(42);
+    const market = generateComponentMarket(rng);
+    expect(market.length).toBeGreaterThanOrEqual(5);
+    expect(market.length).toBeLessThanOrEqual(6);
+  });
+
+  it('guarantees at least 1 weapon, 1 engine, and exactly 2 bridges', () => {
+    // Test with multiple seeds to ensure guarantee holds
+    for (const seed of [1, 42, 100, 999, 12345]) {
+      const rng = makeRng(seed);
+      const market = generateComponentMarket(rng);
+      const types = market.map(c => c.type);
+      expect(types).toContain('weapon');
+      expect(types).toContain('engine');
+      const bridges = market.filter(c => c.type === 'bridge');
+      expect(bridges).toHaveLength(2);
+    }
+  });
+
+  it('generates exactly one power-1 bridge and one power-2 bridge', () => {
+    for (const seed of [1, 42, 100, 999, 12345]) {
+      const rng = makeRng(seed);
+      const market = generateComponentMarket(rng);
+      const bridges = market.filter(c => c.type === 'bridge');
+      const powers = bridges.map(b => b.powerCost).sort();
+      expect(powers).toEqual([1, 2]);
+    }
+  });
+
+  it('assigns powerCost 1 or 2 to each component', () => {
+    const rng = makeRng(42);
+    const market = generateComponentMarket(rng);
+    for (const comp of market) {
+      expect([1, 2]).toContain(comp.powerCost);
+    }
+  });
+
+  it('creates correct component types (WeaponComponent, EngineComponent, BridgeComponent)', () => {
+    const rng = makeRng(42);
+    const market = generateComponentMarket(rng);
+    for (const comp of market) {
+      if (comp.type === 'weapon') {
+        expect(comp).toBeInstanceOf(WeaponComponent);
+      } else if (comp.type === 'engine') {
+        expect(comp).toBeInstanceOf(EngineComponent);
+      } else if (comp.type === 'bridge') {
+        expect(comp).toBeInstanceOf(BridgeComponent);
+      }
+    }
+  });
+
+  it('is deterministic with the same seed', () => {
+    const market1 = generateComponentMarket(makeRng(42));
+    const market2 = generateComponentMarket(makeRng(42));
+    expect(market1.length).toBe(market2.length);
+    for (let i = 0; i < market1.length; i++) {
+      expect(market1[i].type).toBe(market2[i].type);
+      expect(market1[i].powerCost).toBe(market2[i].powerCost);
+      expect(market1[i].maxHp).toBe(market2[i].maxHp);
+    }
+  });
+
+  it('produces different results with different seeds', () => {
+    const market1 = generateComponentMarket(makeRng(42));
+    const market2 = generateComponentMarket(makeRng(999));
+    // At least one difference expected (could be count, types, or power costs)
+    const same = market1.length === market2.length &&
+      market1.every((c, i) => c.type === market2[i].type && c.powerCost === market2[i].powerCost);
+    expect(same).toBe(false);
+  });
+
+  it('weapon power 1 has accuracy 4, power 2 has accuracy 3', () => {
+    const rng = makeRng(42);
+    const market = generateComponentMarket(rng);
+    for (const comp of market) {
+      if (comp.type === 'weapon') {
+        if (comp.powerCost === 1) expect(comp.accuracy).toBe(4);
+        if (comp.powerCost === 2) expect(comp.accuracy).toBe(3);
+      }
+    }
+  });
+
+  it('engine power 1 has speedBonus 0, power 2 has speedBonus 1', () => {
+    const rng = makeRng(42);
+    const market = generateComponentMarket(rng);
+    for (const comp of market) {
+      if (comp.type === 'engine') {
+        if (comp.powerCost === 1) expect(comp.speedBonus).toBe(0);
+        if (comp.powerCost === 2) expect(comp.speedBonus).toBe(1);
+      }
+    }
+  });
+
+  it('bridge power 1 has evasionBonus 0, power 2 has evasionBonus 1', () => {
+    const rng = makeRng(42);
+    const market = generateComponentMarket(rng);
+    for (const comp of market) {
+      if (comp.type === 'bridge') {
+        if (comp.powerCost === 1) expect(comp.evasionBonus).toBe(0);
+        if (comp.powerCost === 2) expect(comp.evasionBonus).toBe(1);
+      }
+    }
+  });
+});
+
+describe('shipyard phase and stores', () => {
+  beforeEach(() => {
+    resetGame();
+  });
+
+  it('componentMarket starts empty after reset', () => {
+    expect(get(componentMarket)).toEqual([]);
+  });
+
+  it('shipConfirmed starts false after reset', () => {
+    expect(get(shipConfirmed)).toBe(false);
+  });
+
+  it('enterShipyard sets gamePhase to shipyard', () => {
+    enterShipyard();
+    expect(get(gamePhase)).toBe('shipyard');
+  });
+
+  it('confirmShipBuild sets shipConfirmed to true and returns to galaxy', () => {
+    enterShipyard();
+    confirmShipBuild();
+    expect(get(shipConfirmed)).toBe(true);
+    expect(get(gamePhase)).toBe('galaxy');
+  });
+
+  it('initGalaxySession generates market and resets ship state', () => {
+    initGalaxySession(42);
+    const market = get(componentMarket);
+    expect(market.length).toBeGreaterThanOrEqual(5);
+    expect(market.length).toBeLessThanOrEqual(6);
+    expect(get(shipConfirmed)).toBe(false);
+    expect(get(playerShipStore)).not.toBeNull();
+  });
+
+  it('initGalaxySession is deterministic with seed', () => {
+    initGalaxySession(42);
+    const market1 = get(componentMarket);
+    const types1 = market1.map(c => ({ type: c.type, powerCost: c.powerCost }));
+
+    resetGame();
+    initGalaxySession(42);
+    const market2 = get(componentMarket);
+    const types2 = market2.map(c => ({ type: c.type, powerCost: c.powerCost }));
+
+    expect(types1).toEqual(types2);
+  });
+
+  it('resetGame clears componentMarket and shipConfirmed', () => {
+    initGalaxySession(42);
+    confirmShipBuild();
+    expect(get(shipConfirmed)).toBe(true);
+    expect(get(componentMarket).length).toBeGreaterThan(0);
+
+    resetGame();
+    expect(get(componentMarket)).toEqual([]);
+    expect(get(shipConfirmed)).toBe(false);
+  });
+
+  it('resetBoardState preserves playerShipStore, componentMarket, and shipConfirmed', () => {
+    initGalaxySession(42);
+    installComponent(0);
+    confirmShipBuild();
+
+    const shipBefore = get(playerShipStore);
+    const marketBefore = get(componentMarket);
+    const confirmedBefore = get(shipConfirmed);
+
+    // Simulate starting a board
+    initGame(5, 4, 99);
+    expect(get(gamePhase)).toBe('rolling');
+
+    // Simulate board completion — resetBoardState instead of resetGame
+    resetBoardState();
+
+    expect(get(gamePhase)).toBe('galaxy');
+    expect(get(playerShipStore)).toBe(shipBefore);
+    expect(get(componentMarket)).toBe(marketBefore);
+    expect(get(shipConfirmed)).toBe(confirmedBefore);
+  });
+
+  it('resetBoardState clears board-specific stores', () => {
+    initGalaxySession(42);
+    initGame(5, 4, 99);
+
+    // Board-specific stores should be populated
+    expect(get(board)).not.toBeNull();
+    expect(get(playerPos)).not.toBeNull();
+    expect(get(movementPool)).toBeGreaterThan(0);
+
+    resetBoardState();
+
+    expect(get(board)).toBeNull();
+    expect(get(playerPos)).toBeNull();
+    expect(get(movementPool)).toBe(0);
+    expect(get(diceValue)).toBeNull();
+    expect(get(gamePhase)).toBe('galaxy');
+    expect(get(visited).size).toBe(0);
+    expect(get(movesMade)).toBe(0);
+    expect(get(loseReason)).toBeNull();
+    expect(get(combatState)).toBeNull();
+  });
+});
+
+describe('installComponent / removeComponent', () => {
+  beforeEach(() => {
+    resetGame();
+    initGalaxySession(42);
+  });
+
+  it('installComponent moves a component from market to player ship', () => {
+    // Start with an empty ship so we have full power budget
+    playerShipStore.set(new PlayerShip({ powerLimit: 7, components: [] }));
+
+    const marketBefore = get(componentMarket);
+    const countBefore = marketBefore.length;
+    const component = marketBefore[0];
+
+    const result = installComponent(0);
+    expect(result).toBe(true);
+
+    const marketAfter = get(componentMarket);
+    expect(marketAfter.length).toBe(countBefore - 1);
+    expect(marketAfter).not.toContain(component);
+
+    const ship = get(playerShipStore);
+    expect(ship.components).toContain(component);
+  });
+
+  it('installComponent returns false for out-of-bounds index', () => {
+    expect(installComponent(-1)).toBe(false);
+    expect(installComponent(100)).toBe(false);
+  });
+
+  it('installComponent returns false when insufficient power', () => {
+    // Fill up the ship to exhaust power budget (powerLimit = 7)
+    const market = get(componentMarket);
+    let installed = 0;
+    for (let i = 0; i < market.length; i++) {
+      const ship = get(playerShipStore);
+      const comp = get(componentMarket)[0]; // always index 0 since market shrinks
+      if (ship.remainingPower >= comp.powerCost && !(comp.type === 'bridge' && ship.hasComponentType('bridge'))) {
+        installComponent(0);
+        installed++;
+      } else {
+        break;
+      }
+    }
+
+    // Now try to add a component that exceeds remaining power
+    // Create a scenario where we know power is exceeded
+    const ship = get(playerShipStore);
+    const remaining = ship.remainingPower;
+
+    // Find a component in market that exceeds remaining power
+    const currentMarket = get(componentMarket);
+    const tooBig = currentMarket.findIndex(c => c.powerCost > remaining);
+    if (tooBig !== -1) {
+      const result = installComponent(tooBig);
+      expect(result).toBe(false);
+    }
+  });
+
+  it('installComponent returns false when adding second bridge', () => {
+    // First, install a bridge
+    const market = get(componentMarket);
+    const bridgeIndex = market.findIndex(c => c.type === 'bridge');
+    expect(bridgeIndex).toBeGreaterThanOrEqual(0);
+
+    installComponent(bridgeIndex);
+
+    // Now try to install another bridge
+    const marketAfter = get(componentMarket);
+    const secondBridgeIndex = marketAfter.findIndex(c => c.type === 'bridge');
+    if (secondBridgeIndex !== -1) {
+      const result = installComponent(secondBridgeIndex);
+      expect(result).toBe(false);
+      // Market should be unchanged
+      expect(get(componentMarket).length).toBe(marketAfter.length);
+    }
+  });
+
+  it('removeComponent moves a component from ship back to market', () => {
+    // Install a component first
+    const market = get(componentMarket);
+    const component = market[0];
+    const componentName = component.name;
+    installComponent(0);
+
+    const marketAfterInstall = get(componentMarket);
+    const marketCountAfterInstall = marketAfterInstall.length;
+
+    // Now remove it
+    const result = removeComponent(componentName);
+    expect(result).toBe(true);
+
+    const ship = get(playerShipStore);
+    expect(ship.getComponent(componentName)).toBeUndefined();
+
+    const marketAfterRemove = get(componentMarket);
+    expect(marketAfterRemove.length).toBe(marketCountAfterInstall + 1);
+    expect(marketAfterRemove).toContain(component);
+  });
+
+  it('removeComponent returns false for non-existent component', () => {
+    const result = removeComponent('NonExistentComponent');
+    expect(result).toBe(false);
+  });
+
+  it('removeComponent repairs component HP before returning to market', () => {
+    // Start with empty ship for clean test
+    playerShipStore.set(new PlayerShip({ powerLimit: 7, components: [] }));
+
+    // Install a component
+    const market = get(componentMarket);
+    const component = market[0];
+    installComponent(0);
+
+    // Damage the component
+    component.takeDamage(1);
+    expect(component.currentHp).toBeLessThan(component.maxHp);
+
+    // Remove it — should be repaired
+    removeComponent(component.name);
+
+    const marketAfter = get(componentMarket);
+    const returned = marketAfter.find(c => c === component);
+    expect(returned).toBeDefined();
+    expect(returned.currentHp).toBe(returned.maxHp);
+  });
+
+  it('both stores update reactively after install', () => {
+    // Start with empty ship for clean test
+    playerShipStore.set(new PlayerShip({ powerLimit: 7, components: [] }));
+
+    const market = get(componentMarket);
+    const initialMarketLen = market.length;
+    const ship = get(playerShipStore);
+    const initialShipLen = ship.components.length;
+
+    installComponent(0);
+
+    expect(get(componentMarket).length).toBe(initialMarketLen - 1);
+    expect(get(playerShipStore).components.length).toBe(initialShipLen + 1);
+  });
+
+  it('both stores update reactively after remove', () => {
+    // Install first
+    const component = get(componentMarket)[0];
+    installComponent(0);
+
+    const marketAfterInstall = get(componentMarket).length;
+    const shipAfterInstall = get(playerShipStore).components.length;
+
+    // Remove
+    removeComponent(component.name);
+
+    expect(get(componentMarket).length).toBe(marketAfterInstall + 1);
+    expect(get(playerShipStore).components.length).toBe(shipAfterInstall - 1);
+  });
+
+  it('installComponent returns false when playerShipStore is null', () => {
+    playerShipStore.set(null);
+    expect(installComponent(0)).toBe(false);
+  });
+
+  it('removeComponent returns false when playerShipStore is null', () => {
+    playerShipStore.set(null);
+    expect(removeComponent('Weapons')).toBe(false);
   });
 });

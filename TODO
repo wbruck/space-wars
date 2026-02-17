@@ -1,7 +1,4 @@
-- player ship is too large, it is getting more than 7 size
-- player is scoring hits on rolls of 3 and above on a simple approach.  This must be 4 or above, or is there some other modifier in play?
-- when 2 enemy ships are directly beside each other the engagment system breaks.  Even after the first enemy is destoryed, the 2nd enemy can not be engaged no mater how much movement around it happens.
-- player
+
 
 Combat system:
 The 

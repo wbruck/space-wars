@@ -1,6 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import { ShipComponent, WeaponComponent, EngineComponent, BridgeComponent, ComponentContainer, Ship, PlayerShip, EnemyShip, CombatEngine, getApproachAdvantage, getApproachPosition } from './combat.js';
 
+/** Standard PlayerShip loadout (the old defaults) for tests that need a fully equipped ship. */
+function standardPlayerShip() {
+  return new PlayerShip({
+    powerLimit: 7,
+    components: [
+      new WeaponComponent('Weapons', 4, 2),
+      new EngineComponent('Engines', 4, 2),
+      new BridgeComponent('Bridge', 3, 2),
+    ],
+  });
+}
+
 describe('ShipComponent', () => {
   it('constructs with correct properties', () => {
     const comp = new ShipComponent('Weapons', 3);
@@ -67,15 +79,15 @@ describe('ShipComponent', () => {
   });
 });
 
-describe('ShipComponent size property', () => {
-  it('defaults size to 1', () => {
+describe('ShipComponent powerCost property', () => {
+  it('defaults powerCost to 1', () => {
     const comp = new ShipComponent('Test', 2);
-    expect(comp.size).toBe(1);
+    expect(comp.powerCost).toBe(1);
   });
 
-  it('accepts custom size', () => {
+  it('accepts custom powerCost', () => {
     const comp = new ShipComponent('Test', 2, 3);
-    expect(comp.size).toBe(3);
+    expect(comp.powerCost).toBe(3);
   });
 });
 
@@ -90,25 +102,25 @@ describe('WeaponComponent', () => {
     expect(w.type).toBe('weapon');
   });
 
-  it('size 1 defaults: damage 1, accuracy 4', () => {
+  it('powerCost 1 defaults: damage 1, accuracy 4', () => {
     const w = new WeaponComponent('Laser', 1, 1);
     expect(w.damage).toBe(1);
     expect(w.accuracy).toBe(4);
     expect(w.maxHp).toBe(1);
-    expect(w.size).toBe(1);
+    expect(w.powerCost).toBe(1);
   });
 
-  it('size 2 defaults: damage 1, accuracy 3', () => {
+  it('powerCost 2 defaults: damage 1, accuracy 3', () => {
     const w = new WeaponComponent('Laser', 2, 2);
     expect(w.damage).toBe(1);
     expect(w.accuracy).toBe(3);
     expect(w.maxHp).toBe(2);
-    expect(w.size).toBe(2);
+    expect(w.powerCost).toBe(2);
   });
 
-  it('defaults size to 1 when omitted', () => {
+  it('defaults powerCost to 1 when omitted', () => {
     const w = new WeaponComponent('Laser', 1);
-    expect(w.size).toBe(1);
+    expect(w.powerCost).toBe(1);
     expect(w.accuracy).toBe(4);
   });
 
@@ -131,23 +143,23 @@ describe('EngineComponent', () => {
     expect(e.type).toBe('engine');
   });
 
-  it('size 1 defaults: speedBonus 0', () => {
+  it('powerCost 1 defaults: speedBonus 0', () => {
     const e = new EngineComponent('Thrusters', 1, 1);
     expect(e.speedBonus).toBe(0);
     expect(e.maxHp).toBe(1);
-    expect(e.size).toBe(1);
+    expect(e.powerCost).toBe(1);
   });
 
-  it('size 2 defaults: speedBonus 1', () => {
+  it('powerCost 2 defaults: speedBonus 1', () => {
     const e = new EngineComponent('Thrusters', 2, 2);
     expect(e.speedBonus).toBe(1);
     expect(e.maxHp).toBe(2);
-    expect(e.size).toBe(2);
+    expect(e.powerCost).toBe(2);
   });
 
-  it('defaults size to 1 when omitted', () => {
+  it('defaults powerCost to 1 when omitted', () => {
     const e = new EngineComponent('Thrusters', 1);
-    expect(e.size).toBe(1);
+    expect(e.powerCost).toBe(1);
     expect(e.speedBonus).toBe(0);
   });
 
@@ -170,23 +182,23 @@ describe('BridgeComponent', () => {
     expect(b.type).toBe('bridge');
   });
 
-  it('size 1 defaults: evasionBonus 0', () => {
+  it('powerCost 1 defaults: evasionBonus 0', () => {
     const b = new BridgeComponent('Command', 1, 1);
     expect(b.evasionBonus).toBe(0);
     expect(b.maxHp).toBe(1);
-    expect(b.size).toBe(1);
+    expect(b.powerCost).toBe(1);
   });
 
-  it('size 2 defaults: evasionBonus 1', () => {
+  it('powerCost 2 defaults: evasionBonus 1', () => {
     const b = new BridgeComponent('Command', 3, 2);
     expect(b.evasionBonus).toBe(1);
     expect(b.maxHp).toBe(3);
-    expect(b.size).toBe(2);
+    expect(b.powerCost).toBe(2);
   });
 
-  it('defaults size to 1 when omitted', () => {
+  it('defaults powerCost to 1 when omitted', () => {
     const b = new BridgeComponent('Command', 1);
-    expect(b.size).toBe(1);
+    expect(b.powerCost).toBe(1);
     expect(b.evasionBonus).toBe(0);
   });
 
@@ -203,9 +215,9 @@ describe('ComponentContainer mixin', () => {
   class TestBase {}
   const TestContainer = ComponentContainer(TestBase);
 
-  function makeContainer(sizeLimit = 10) {
+  function makeContainer(powerLimit = 10) {
     const container = new TestContainer();
-    container.sizeLimit = sizeLimit;
+    container.powerLimit = powerLimit;
     return container;
   }
 
@@ -220,10 +232,10 @@ describe('ComponentContainer mixin', () => {
       expect(container).toBeInstanceOf(TestBase);
     });
 
-    it('starts with empty components and Infinity sizeLimit', () => {
+    it('starts with empty components and Infinity powerLimit', () => {
       const container = new TestContainer();
       expect(container.components).toEqual([]);
-      expect(container.sizeLimit).toBe(Infinity);
+      expect(container.powerLimit).toBe(Infinity);
     });
   });
 
@@ -242,31 +254,31 @@ describe('ComponentContainer mixin', () => {
       container.addComponent(new EngineComponent('Thrusters', 2, 2));
       container.addComponent(new BridgeComponent('Bridge', 1, 1));
       expect(container.components).toHaveLength(3);
-      expect(container.totalSize).toBe(4);
+      expect(container.totalPower).toBe(4);
     });
 
-    it('throws when adding would exceed sizeLimit', () => {
+    it('throws when adding would exceed powerLimit', () => {
       const container = makeContainer(2);
       container.addComponent(new WeaponComponent('Laser', 2, 2));
       expect(() => {
         container.addComponent(new EngineComponent('Thrusters', 1, 1));
-      }).toThrow(/exceed sizeLimit/);
+      }).toThrow(/exceed powerLimit/);
     });
 
-    it('throws when adding exactly exceeds sizeLimit', () => {
+    it('throws when adding exactly exceeds powerLimit', () => {
       const container = makeContainer(3);
       container.addComponent(new WeaponComponent('Laser', 2, 2));
       expect(() => {
         container.addComponent(new EngineComponent('Thrusters', 1, 2));
-      }).toThrow(/exceed sizeLimit/);
+      }).toThrow(/exceed powerLimit/);
     });
 
-    it('allows adding up to exact sizeLimit', () => {
+    it('allows adding up to exact powerLimit', () => {
       const container = makeContainer(3);
       container.addComponent(new WeaponComponent('Laser', 2, 2));
       container.addComponent(new EngineComponent('Thrusters', 1, 1));
-      expect(container.totalSize).toBe(3);
-      expect(container.remainingCapacity).toBe(0);
+      expect(container.totalPower).toBe(3);
+      expect(container.remainingPower).toBe(0);
     });
 
     it('throws when adding a second BridgeComponent', () => {
@@ -316,12 +328,12 @@ describe('ComponentContainer mixin', () => {
       expect(container.removeComponent('Nonexistent')).toBeUndefined();
     });
 
-    it('frees capacity after removal', () => {
+    it('frees power after removal', () => {
       const container = makeContainer(3);
       container.addComponent(new WeaponComponent('Laser', 2, 2));
-      expect(container.remainingCapacity).toBe(1);
+      expect(container.remainingPower).toBe(1);
       container.removeComponent('Laser');
-      expect(container.remainingCapacity).toBe(3);
+      expect(container.remainingPower).toBe(3);
     });
 
     it('only removes the first matching component', () => {
@@ -334,33 +346,33 @@ describe('ComponentContainer mixin', () => {
     });
   });
 
-  describe('totalSize and remainingCapacity', () => {
-    it('totalSize is 0 when empty', () => {
+  describe('totalPower and remainingPower', () => {
+    it('totalPower is 0 when empty', () => {
       const container = makeContainer(10);
-      expect(container.totalSize).toBe(0);
+      expect(container.totalPower).toBe(0);
     });
 
-    it('totalSize sums all component sizes', () => {
+    it('totalPower sums all component power costs', () => {
       const container = makeContainer(10);
       container.addComponent(new WeaponComponent('W', 1, 2));
       container.addComponent(new EngineComponent('E', 1, 3));
-      expect(container.totalSize).toBe(5);
+      expect(container.totalPower).toBe(5);
     });
 
-    it('totalSize includes destroyed components', () => {
+    it('totalPower includes destroyed components', () => {
       const container = makeContainer(10);
       const w = new WeaponComponent('W', 1, 2);
       container.addComponent(w);
       w.takeDamage(1); // destroy it
       expect(w.destroyed).toBe(true);
-      expect(container.totalSize).toBe(2);
+      expect(container.totalPower).toBe(2);
     });
 
-    it('remainingCapacity reflects sizeLimit - totalSize', () => {
+    it('remainingPower reflects powerLimit - totalPower', () => {
       const container = makeContainer(7);
       container.addComponent(new WeaponComponent('W', 1, 2));
       container.addComponent(new EngineComponent('E', 1, 2));
-      expect(container.remainingCapacity).toBe(3);
+      expect(container.remainingPower).toBe(3);
     });
   });
 
@@ -562,36 +574,36 @@ describe('Ship', () => {
     expect(typeof ship.hasComponentType).toBe('function');
   });
 
-  it('accepts options object with sizeLimit and components', () => {
+  it('accepts options object with powerLimit and components', () => {
     const ship = new Ship('Custom', {
-      sizeLimit: 5,
+      powerLimit: 5,
       components: [
         new WeaponComponent('Laser', 2, 2),
         new EngineComponent('Thrusters', 1, 1),
       ],
     });
     expect(ship.name).toBe('Custom');
-    expect(ship.sizeLimit).toBe(5);
+    expect(ship.powerLimit).toBe(5);
     expect(ship.components).toHaveLength(2);
-    expect(ship.totalSize).toBe(3);
-    expect(ship.remainingCapacity).toBe(2);
+    expect(ship.totalPower).toBe(3);
+    expect(ship.remainingPower).toBe(2);
   });
 
-  it('options form enforces sizeLimit', () => {
+  it('options form enforces powerLimit', () => {
     expect(() => {
       new Ship('Overloaded', {
-        sizeLimit: 2,
+        powerLimit: 2,
         components: [
           new WeaponComponent('Laser', 2, 2),
           new EngineComponent('Thrusters', 1, 1),
         ],
       });
-    }).toThrow(/exceed sizeLimit/);
+    }).toThrow(/exceed powerLimit/);
   });
 
-  it('legacy array form defaults sizeLimit to Infinity', () => {
+  it('legacy array form defaults powerLimit to Infinity', () => {
     const ship = makeShip();
-    expect(ship.sizeLimit).toBe(Infinity);
+    expect(ship.powerLimit).toBe(Infinity);
   });
 
   it('destroyed components remain in array (never auto-removed)', () => {
@@ -615,53 +627,53 @@ describe('Ship', () => {
 });
 
 describe('PlayerShip', () => {
-  it('creates with default components', () => {
+  it('creates with empty components by default', () => {
     const ship = new PlayerShip();
     expect(ship.name).toBe('Player Ship');
-    expect(ship.components).toHaveLength(3);
+    expect(ship.components).toHaveLength(0);
   });
 
-  it('default sizeLimit is 7', () => {
+  it('default powerLimit is 7', () => {
     const ship = new PlayerShip();
-    expect(ship.sizeLimit).toBe(7);
+    expect(ship.powerLimit).toBe(7);
   });
 
-  it('default totalSize is 6 (three size-2 components)', () => {
+  it('default totalPower is 0 (no components)', () => {
     const ship = new PlayerShip();
-    expect(ship.totalSize).toBe(6);
-    expect(ship.remainingCapacity).toBe(1);
+    expect(ship.totalPower).toBe(0);
+    expect(ship.remainingPower).toBe(7);
   });
 
-  it('default Weapons is a WeaponComponent with 4 HP, size 2', () => {
-    const ship = new PlayerShip();
+  it('standardPlayerShip has correct Weapons', () => {
+    const ship = standardPlayerShip();
     const weapons = ship.getComponent('Weapons');
     expect(weapons).toBeInstanceOf(WeaponComponent);
     expect(weapons.maxHp).toBe(4);
     expect(weapons.currentHp).toBe(4);
-    expect(weapons.size).toBe(2);
+    expect(weapons.powerCost).toBe(2);
     expect(weapons.type).toBe('weapon');
     expect(weapons.damage).toBe(1);
     expect(weapons.accuracy).toBe(3);
   });
 
-  it('default Engines is an EngineComponent with 4 HP, size 2', () => {
-    const ship = new PlayerShip();
+  it('standardPlayerShip has correct Engines', () => {
+    const ship = standardPlayerShip();
     const engines = ship.getComponent('Engines');
     expect(engines).toBeInstanceOf(EngineComponent);
     expect(engines.maxHp).toBe(4);
     expect(engines.currentHp).toBe(4);
-    expect(engines.size).toBe(2);
+    expect(engines.powerCost).toBe(2);
     expect(engines.type).toBe('engine');
     expect(engines.speedBonus).toBe(1);
   });
 
-  it('default Bridge is a BridgeComponent with 3 HP, size 2', () => {
-    const ship = new PlayerShip();
+  it('standardPlayerShip has correct Bridge', () => {
+    const ship = standardPlayerShip();
     const bridge = ship.getComponent('Bridge');
     expect(bridge).toBeInstanceOf(BridgeComponent);
     expect(bridge.maxHp).toBe(3);
     expect(bridge.currentHp).toBe(3);
-    expect(bridge.size).toBe(2);
+    expect(bridge.powerCost).toBe(2);
     expect(bridge.type).toBe('bridge');
     expect(bridge.evasionBonus).toBe(1);
   });
@@ -682,7 +694,7 @@ describe('PlayerShip', () => {
     expect(ship.getComponent('Shield').maxHp).toBe(3);
   });
 
-  it('legacy custom components override defaults', () => {
+  it('legacy custom components work with empty default', () => {
     const custom = [new ShipComponent('Weapons', 10)];
     const ship = new PlayerShip(custom);
     expect(ship.components).toHaveLength(1);
@@ -690,42 +702,41 @@ describe('PlayerShip', () => {
     expect(ship.getComponent('Engines')).toBeUndefined();
   });
 
-  it('accepts options object with sizeLimit and components', () => {
+  it('accepts options object with powerLimit and components', () => {
     const ship = new PlayerShip({
-      sizeLimit: 5,
+      powerLimit: 5,
       components: [
         new WeaponComponent('Laser', 2, 1),
         new EngineComponent('Thrusters', 2, 1),
         new BridgeComponent('Bridge', 1, 1),
       ],
     });
-    expect(ship.sizeLimit).toBe(5);
+    expect(ship.powerLimit).toBe(5);
     expect(ship.components).toHaveLength(3);
-    expect(ship.totalSize).toBe(3);
-    expect(ship.remainingCapacity).toBe(2);
+    expect(ship.totalPower).toBe(3);
+    expect(ship.remainingPower).toBe(2);
   });
 
-  it('options object defaults to sizeLimit 7 and default components', () => {
+  it('options object defaults to powerLimit 7 and empty components', () => {
     const ship = new PlayerShip({});
-    expect(ship.sizeLimit).toBe(7);
-    expect(ship.components).toHaveLength(3);
-    expect(ship.getComponent('Weapons')).toBeInstanceOf(WeaponComponent);
+    expect(ship.powerLimit).toBe(7);
+    expect(ship.components).toHaveLength(0);
   });
 
   // isBridgeDestroyed getter
-  it('isBridgeDestroyed is false when Bridge is active', () => {
+  it('isBridgeDestroyed is false when no Bridge installed', () => {
     const ship = new PlayerShip();
     expect(ship.isBridgeDestroyed).toBe(false);
   });
 
   it('isBridgeDestroyed is true when Bridge is destroyed', () => {
-    const ship = new PlayerShip();
+    const ship = standardPlayerShip();
     ship.getComponent('Bridge').takeDamage(3);
     expect(ship.isBridgeDestroyed).toBe(true);
   });
 
   it('isBridgeDestroyed is false when Bridge is damaged but not destroyed', () => {
-    const ship = new PlayerShip();
+    const ship = standardPlayerShip();
     ship.getComponent('Bridge').takeDamage(1);
     expect(ship.isBridgeDestroyed).toBe(false);
   });
@@ -737,18 +748,18 @@ describe('PlayerShip', () => {
 
   // canAttack getter — uses type-based query
   it('canAttack is true when Weapons is active', () => {
-    const ship = new PlayerShip();
+    const ship = standardPlayerShip();
     expect(ship.canAttack).toBe(true);
   });
 
   it('canAttack is false when all weapons are destroyed', () => {
-    const ship = new PlayerShip();
+    const ship = standardPlayerShip();
     ship.getComponent('Weapons').takeDamage(4);
     expect(ship.canAttack).toBe(false);
   });
 
   it('canAttack is true when Weapons is damaged but not destroyed', () => {
-    const ship = new PlayerShip();
+    const ship = standardPlayerShip();
     ship.getComponent('Weapons').takeDamage(1);
     expect(ship.canAttack).toBe(true);
   });
@@ -758,14 +769,19 @@ describe('PlayerShip', () => {
     expect(ship.canAttack).toBe(false);
   });
 
+  it('canAttack returns false for empty ship', () => {
+    const ship = new PlayerShip();
+    expect(ship.canAttack).toBe(false);
+  });
+
   // isEngineDestroyed getter — uses type-based query, checks ALL engines
   it('isEngineDestroyed is false when Engines is active', () => {
-    const ship = new PlayerShip();
+    const ship = standardPlayerShip();
     expect(ship.isEngineDestroyed).toBe(false);
   });
 
   it('isEngineDestroyed is true when all engines are destroyed', () => {
-    const ship = new PlayerShip();
+    const ship = standardPlayerShip();
     ship.getComponent('Engines').takeDamage(4);
     expect(ship.isEngineDestroyed).toBe(true);
   });
@@ -775,23 +791,28 @@ describe('PlayerShip', () => {
     expect(ship.isEngineDestroyed).toBe(true);
   });
 
-  // US-004: sizeLimit enforcement
-  it('enforces sizeLimit — cannot exceed budget', () => {
+  it('isEngineDestroyed returns true for empty ship', () => {
+    const ship = new PlayerShip();
+    expect(ship.isEngineDestroyed).toBe(true);
+  });
+
+  // US-004: powerLimit enforcement
+  it('enforces powerLimit — cannot exceed budget', () => {
     expect(() => {
       new PlayerShip({
-        sizeLimit: 3,
+        powerLimit: 3,
         components: [
           new WeaponComponent('W', 2, 2),
           new EngineComponent('E', 2, 2),
         ],
       });
-    }).toThrow(/exceed sizeLimit/);
+    }).toThrow(/exceed powerLimit/);
   });
 
   // US-004: multiple weapons
   it('canAttack is true when one of multiple weapons is active', () => {
     const ship = new PlayerShip({
-      sizeLimit: 10,
+      powerLimit: 10,
       components: [
         new WeaponComponent('Laser', 2, 1),
         new WeaponComponent('Missiles', 2, 1),
@@ -806,7 +827,7 @@ describe('PlayerShip', () => {
 
   it('canAttack is false only when ALL weapons are destroyed', () => {
     const ship = new PlayerShip({
-      sizeLimit: 10,
+      powerLimit: 10,
       components: [
         new WeaponComponent('Laser', 1, 1),
         new WeaponComponent('Missiles', 1, 1),
@@ -822,7 +843,7 @@ describe('PlayerShip', () => {
   // US-004: multiple engines — isEngineDestroyed checks ALL
   it('isEngineDestroyed is false when one of multiple engines is active', () => {
     const ship = new PlayerShip({
-      sizeLimit: 10,
+      powerLimit: 10,
       components: [
         new WeaponComponent('Weapons', 2, 1),
         new EngineComponent('Main Engine', 1, 1),
@@ -836,7 +857,7 @@ describe('PlayerShip', () => {
 
   it('isEngineDestroyed is true only when ALL engines are destroyed', () => {
     const ship = new PlayerShip({
-      sizeLimit: 10,
+      powerLimit: 10,
       components: [
         new WeaponComponent('Weapons', 2, 1),
         new EngineComponent('Main Engine', 1, 1),
@@ -849,34 +870,34 @@ describe('PlayerShip', () => {
     expect(ship.isEngineDestroyed).toBe(true);
   });
 
-  // US-004: backward compat — getComponent still works
-  it('backward compat: getComponent("Weapons") returns the weapon', () => {
-    const ship = new PlayerShip();
+  // getComponent works with explicitly added components
+  it('getComponent("Weapons") returns the weapon', () => {
+    const ship = standardPlayerShip();
     const w = ship.getComponent('Weapons');
     expect(w).toBeDefined();
     expect(w.name).toBe('Weapons');
   });
 
-  it('backward compat: getComponent("Engines") returns the engine', () => {
-    const ship = new PlayerShip();
+  it('getComponent("Engines") returns the engine', () => {
+    const ship = standardPlayerShip();
     const e = ship.getComponent('Engines');
     expect(e).toBeDefined();
     expect(e.name).toBe('Engines');
   });
 
-  it('backward compat: getComponent("Bridge") returns the bridge', () => {
-    const ship = new PlayerShip();
+  it('getComponent("Bridge") returns the bridge', () => {
+    const ship = standardPlayerShip();
     const b = ship.getComponent('Bridge');
     expect(b).toBeDefined();
     expect(b.name).toBe('Bridge');
   });
 
-  it('legacy array form sets sizeLimit to 7', () => {
+  it('legacy array form sets powerLimit to 7', () => {
     const ship = new PlayerShip([new ShipComponent('Test', 1)]);
-    expect(ship.sizeLimit).toBe(7);
+    expect(ship.powerLimit).toBe(7);
   });
 
-  it('legacy array form enforces sizeLimit 7', () => {
+  it('legacy array form enforces powerLimit 7', () => {
     expect(() => {
       new PlayerShip([
         new WeaponComponent('W', 2, 2),
@@ -884,7 +905,7 @@ describe('PlayerShip', () => {
         new EngineComponent('E2', 2, 2),
         new BridgeComponent('B', 3, 2),
       ]);
-    }).toThrow(/exceed sizeLimit/);
+    }).toThrow(/exceed powerLimit/);
   });
 });
 
@@ -1027,92 +1048,92 @@ describe('EnemyShip', () => {
     expect(ship.isBridgeDestroyed).toBe(false);
   });
 
-  // US-005: typed components and sizeLimit
-  it('default sizeLimit is 4', () => {
+  // US-005: typed components and powerLimit
+  it('default powerLimit is 4', () => {
     const ship = new EnemyShip();
-    expect(ship.sizeLimit).toBe(4);
+    expect(ship.powerLimit).toBe(4);
   });
 
-  it('default totalSize is 3 (three size-1 components)', () => {
+  it('default totalPower is 3 (three power-1 components)', () => {
     const ship = new EnemyShip();
-    expect(ship.totalSize).toBe(3);
-    expect(ship.remainingCapacity).toBe(1);
+    expect(ship.totalPower).toBe(3);
+    expect(ship.remainingPower).toBe(1);
   });
 
-  it('default Weapons is a WeaponComponent with 1 HP, size 1', () => {
+  it('default Weapons is a WeaponComponent with 1 HP, powerCost 1', () => {
     const ship = new EnemyShip();
     const weapons = ship.getComponent('Weapons');
     expect(weapons).toBeInstanceOf(WeaponComponent);
     expect(weapons.maxHp).toBe(1);
-    expect(weapons.size).toBe(1);
+    expect(weapons.powerCost).toBe(1);
     expect(weapons.type).toBe('weapon');
     expect(weapons.damage).toBe(1);
     expect(weapons.accuracy).toBe(4);
   });
 
-  it('default Engines is an EngineComponent with 1 HP, size 1', () => {
+  it('default Engines is an EngineComponent with 1 HP, powerCost 1', () => {
     const ship = new EnemyShip();
     const engines = ship.getComponent('Engines');
     expect(engines).toBeInstanceOf(EngineComponent);
     expect(engines.maxHp).toBe(1);
-    expect(engines.size).toBe(1);
+    expect(engines.powerCost).toBe(1);
     expect(engines.type).toBe('engine');
     expect(engines.speedBonus).toBe(0);
   });
 
-  it('default Bridge is a BridgeComponent with 1 HP, size 1', () => {
+  it('default Bridge is a BridgeComponent with 1 HP, powerCost 1', () => {
     const ship = new EnemyShip();
     const bridge = ship.getComponent('Bridge');
     expect(bridge).toBeInstanceOf(BridgeComponent);
     expect(bridge.maxHp).toBe(1);
-    expect(bridge.size).toBe(1);
+    expect(bridge.powerCost).toBe(1);
     expect(bridge.type).toBe('bridge');
     expect(bridge.evasionBonus).toBe(0);
   });
 
   // US-005: options object constructor
-  it('accepts options object with sizeLimit and components', () => {
+  it('accepts options object with powerLimit and components', () => {
     const ship = new EnemyShip({
-      sizeLimit: 6,
+      powerLimit: 6,
       components: [
         new WeaponComponent('Laser', 2, 2),
         new EngineComponent('Thrusters', 2, 2),
         new BridgeComponent('Bridge', 1, 1),
       ],
     });
-    expect(ship.sizeLimit).toBe(6);
+    expect(ship.powerLimit).toBe(6);
     expect(ship.components).toHaveLength(3);
-    expect(ship.totalSize).toBe(5);
-    expect(ship.remainingCapacity).toBe(1);
+    expect(ship.totalPower).toBe(5);
+    expect(ship.remainingPower).toBe(1);
   });
 
-  it('options object defaults to sizeLimit 4 and default components', () => {
+  it('options object defaults to powerLimit 4 and default components', () => {
     const ship = new EnemyShip({});
-    expect(ship.sizeLimit).toBe(4);
+    expect(ship.powerLimit).toBe(4);
     expect(ship.components).toHaveLength(3);
     expect(ship.getComponent('Weapons')).toBeInstanceOf(WeaponComponent);
   });
 
-  it('enforces sizeLimit — cannot exceed budget', () => {
+  it('enforces powerLimit — cannot exceed budget', () => {
     expect(() => {
       new EnemyShip({
-        sizeLimit: 3,
+        powerLimit: 3,
         components: [
           new WeaponComponent('W', 1, 2),
           new EngineComponent('E', 1, 2),
         ],
       });
-    }).toThrow(/exceed sizeLimit/);
+    }).toThrow(/exceed powerLimit/);
   });
 
-  // US-005: variable sizeLimit for difficulty scaling
-  it('supports variable sizeLimit for scaled enemy ships', () => {
-    const weakEnemy = new EnemyShip({ sizeLimit: 3 });
-    expect(weakEnemy.sizeLimit).toBe(3);
-    expect(weakEnemy.totalSize).toBe(3); // default components fit exactly
+  // US-005: variable powerLimit for difficulty scaling
+  it('supports variable powerLimit for scaled enemy ships', () => {
+    const weakEnemy = new EnemyShip({ powerLimit: 3 });
+    expect(weakEnemy.powerLimit).toBe(3);
+    expect(weakEnemy.totalPower).toBe(3); // default components fit exactly
 
     const strongEnemy = new EnemyShip({
-      sizeLimit: 8,
+      powerLimit: 8,
       components: [
         new WeaponComponent('Heavy Laser', 3, 2),
         new WeaponComponent('Missiles', 2, 2),
@@ -1120,15 +1141,15 @@ describe('EnemyShip', () => {
         new BridgeComponent('Bridge', 2, 1),
       ],
     });
-    expect(strongEnemy.sizeLimit).toBe(8);
-    expect(strongEnemy.totalSize).toBe(7);
-    expect(strongEnemy.remainingCapacity).toBe(1);
+    expect(strongEnemy.powerLimit).toBe(8);
+    expect(strongEnemy.totalPower).toBe(7);
+    expect(strongEnemy.remainingPower).toBe(1);
   });
 
   // US-005: canAttack with multiple weapons
   it('canAttack is true when one of multiple weapons is active', () => {
     const ship = new EnemyShip({
-      sizeLimit: 10,
+      powerLimit: 10,
       components: [
         new WeaponComponent('Laser', 1, 1),
         new WeaponComponent('Missiles', 1, 1),
@@ -1142,7 +1163,7 @@ describe('EnemyShip', () => {
 
   it('canAttack is false only when ALL weapons are destroyed', () => {
     const ship = new EnemyShip({
-      sizeLimit: 10,
+      powerLimit: 10,
       components: [
         new WeaponComponent('Laser', 1, 1),
         new WeaponComponent('Missiles', 1, 1),
@@ -1158,7 +1179,7 @@ describe('EnemyShip', () => {
   // US-005: canFlee with multiple engines
   it('canFlee is true when one of multiple engines is active', () => {
     const ship = new EnemyShip({
-      sizeLimit: 10,
+      powerLimit: 10,
       components: [
         new WeaponComponent('Weapons', 1, 1),
         new EngineComponent('Main Engine', 1, 1),
@@ -1172,7 +1193,7 @@ describe('EnemyShip', () => {
 
   it('canFlee is false only when ALL engines are destroyed', () => {
     const ship = new EnemyShip({
-      sizeLimit: 10,
+      powerLimit: 10,
       components: [
         new WeaponComponent('Weapons', 1, 1),
         new EngineComponent('Main Engine', 1, 1),
@@ -1200,7 +1221,7 @@ describe('EnemyShip', () => {
 
   it('non-destroyed components retain HP after ship destruction', () => {
     const ship = new EnemyShip({
-      sizeLimit: 6,
+      powerLimit: 6,
       components: [
         new WeaponComponent('Weapons', 3, 2),
         new EngineComponent('Engines', 2, 2),
@@ -1247,7 +1268,7 @@ describe('EnemyShip', () => {
 
   it('getSalvageableComponents returns components with partial HP', () => {
     const ship = new EnemyShip({
-      sizeLimit: 6,
+      powerLimit: 6,
       components: [
         new WeaponComponent('Weapons', 3, 2),
         new EngineComponent('Engines', 2, 2),
@@ -1285,20 +1306,20 @@ describe('EnemyShip', () => {
     expect(b.name).toBe('Bridge');
   });
 
-  // US-005: legacy array form enforces sizeLimit 4
-  it('legacy array form sets sizeLimit to 4', () => {
+  // US-005: legacy array form enforces powerLimit 4
+  it('legacy array form sets powerLimit to 4', () => {
     const ship = new EnemyShip([new WeaponComponent('Test', 1, 1)]);
-    expect(ship.sizeLimit).toBe(4);
+    expect(ship.powerLimit).toBe(4);
   });
 
-  it('legacy array form enforces sizeLimit 4', () => {
+  it('legacy array form enforces powerLimit 4', () => {
     expect(() => {
       new EnemyShip([
         new WeaponComponent('W', 2, 2),
         new EngineComponent('E', 2, 2),
         new BridgeComponent('B', 1, 1),
       ]);
-    }).toThrow(/exceed sizeLimit/);
+    }).toThrow(/exceed powerLimit/);
   });
 });
 
@@ -1323,7 +1344,7 @@ function makeRng(rolls) {
 /** Helper: creates a standard combat engine with seeded RNG */
 function makeEngine(rolls, opts = {}) {
   return new CombatEngine({
-    playerShip: opts.playerShip || new PlayerShip(),
+    playerShip: opts.playerShip || standardPlayerShip(),
     enemyShip: opts.enemyShip || new EnemyShip(),
     maxTurns: opts.maxTurns ?? 5,
     hitThreshold: opts.hitThreshold ?? 4,
@@ -1351,7 +1372,7 @@ describe('CombatEngine', () => {
     });
 
     it('stores player and enemy ships', () => {
-      const player = new PlayerShip();
+      const player = standardPlayerShip();
       const enemy = new EnemyShip();
       const engine = new CombatEngine({
         playerShip: player,
@@ -1473,7 +1494,7 @@ describe('CombatEngine', () => {
     });
 
     it('refuses to attack when player weapons are destroyed', () => {
-      const player = new PlayerShip();
+      const player = standardPlayerShip();
       player.getComponent('Weapons').takeDamage(4); // destroy weapons (4 HP default)
       const engine = new CombatEngine({
         playerShip: player,
@@ -1489,7 +1510,7 @@ describe('CombatEngine', () => {
     });
 
     it('does not advance turn or log when player weapons destroyed', () => {
-      const player = new PlayerShip();
+      const player = standardPlayerShip();
       player.getComponent('Weapons').takeDamage(4);
       const engine = new CombatEngine({
         playerShip: player,
@@ -1772,7 +1793,7 @@ describe('CombatEngine', () => {
     it('ends combat when Weapons destroyed but Engines still intact', () => {
       // Destroying Weapons alone triggers flee (enemy can't attack but can still run)
       const engine = new CombatEngine({
-        playerShip: new PlayerShip(),
+        playerShip: standardPlayerShip(),
         enemyShip: new EnemyShip(),
         rng: makeRng([4]),
       });
@@ -1788,7 +1809,7 @@ describe('CombatEngine', () => {
     it('does NOT trigger flee when Engines also destroyed', () => {
       // If both Weapons and Engines are destroyed, enemy can't flee
       const engine = new CombatEngine({
-        playerShip: new PlayerShip(),
+        playerShip: standardPlayerShip(),
         enemyShip: new EnemyShip(),
         rng: makeRng([4, 4]),
       });
@@ -1814,7 +1835,7 @@ describe('CombatEngine', () => {
       expect(enemyShip.canFlee).toBe(true);
 
       const engine = new CombatEngine({
-        playerShip: new PlayerShip(),
+        playerShip: standardPlayerShip(),
         enemyShip,
         rng: makeRng([1]),
       });
@@ -1834,7 +1855,7 @@ describe('CombatEngine', () => {
       enemyShip.getComponent('Weapons').takeDamage(1);
 
       const engine = new CombatEngine({
-        playerShip: new PlayerShip(),
+        playerShip: standardPlayerShip(),
         enemyShip,
         rng: makeRng([1, 2]), // enemy target+roll (auto-miss skips), player rolls 2 (miss)
       });
@@ -2008,7 +2029,7 @@ describe('CombatEngine', () => {
     it('simulates combat where player destroys Weapons causing flee', () => {
       // Destroying Weapons alone triggers flee (enemy can still move but can't fight)
       const engine = new CombatEngine({
-        playerShip: new PlayerShip(),
+        playerShip: standardPlayerShip(),
         enemyShip: new EnemyShip(),
         rng: makeRng([4]),
       });
@@ -2026,7 +2047,7 @@ describe('CombatEngine', () => {
       let called = false;
       const customRng = () => { called = true; return 0.5; }; // roll = floor(0.5*6)+1 = 4
       const engine = new CombatEngine({
-        playerShip: new PlayerShip(),
+        playerShip: standardPlayerShip(),
         enemyShip: new EnemyShip(),
         rng: customRng,
       });
@@ -2245,7 +2266,7 @@ describe('getApproachAdvantage', () => {
   describe('weapon stats in combat (US-006)', () => {
     describe('player weapon accuracy', () => {
       it('player attack uses weapon accuracy instead of hitThreshold', () => {
-        // Default player weapon is size-2 with accuracy 3
+        // Default player weapon is power-2 with accuracy 3
         // hitThreshold is 4, but weapon accuracy 3 should be used
         const engine = makeEngine([3]); // roll 3
         const result = engine.executePlayerAttack('Bridge');
@@ -2253,11 +2274,11 @@ describe('getApproachAdvantage', () => {
         expect(result.isHit).toBe(true); // 3 >= accuracy 3, even though 3 < hitThreshold 4
       });
 
-      it('size-1 weapon with accuracy 4 misses on roll of 3', () => {
+      it('power-1 weapon with accuracy 4 misses on roll of 3', () => {
         const player = new PlayerShip({
-          sizeLimit: 10,
+          powerLimit: 10,
           components: [
-            new WeaponComponent('Weapons', 2, 1), // size 1, accuracy 4
+            new WeaponComponent('Weapons', 2, 1), // power 1, accuracy 4
             new EngineComponent('Engines', 2, 1),
             new BridgeComponent('Bridge', 2, 1),
           ],
@@ -2272,11 +2293,11 @@ describe('getApproachAdvantage', () => {
         expect(result.isHit).toBe(false); // 3 < accuracy 4
       });
 
-      it('size-2 weapon with accuracy 3 hits on roll of 3', () => {
+      it('power-2 weapon with accuracy 3 hits on roll of 3', () => {
         const player = new PlayerShip({
-          sizeLimit: 10,
+          powerLimit: 10,
           components: [
-            new WeaponComponent('Weapons', 4, 2), // size 2, accuracy 3
+            new WeaponComponent('Weapons', 4, 2), // power 2, accuracy 3
             new EngineComponent('Engines', 2, 1),
             new BridgeComponent('Bridge', 2, 1),
           ],
@@ -2302,7 +2323,7 @@ describe('getApproachAdvantage', () => {
 
       it('player attack with custom high-damage weapon deals correct damage', () => {
         const player = new PlayerShip({
-          sizeLimit: 10,
+          powerLimit: 10,
           components: [
             new WeaponComponent('Big Gun', 4, 2),
             new EngineComponent('Engines', 2, 1),
@@ -2313,7 +2334,7 @@ describe('getApproachAdvantage', () => {
         player.getComponent('Big Gun').damage = 3;
 
         const enemy = new EnemyShip({
-          sizeLimit: 10,
+          powerLimit: 10,
           components: [
             new WeaponComponent('Weapons', 1, 1),
             new EngineComponent('Engines', 5, 1),
@@ -2332,7 +2353,7 @@ describe('getApproachAdvantage', () => {
 
     describe('enemy weapon accuracy', () => {
       it('enemy attack uses weapon accuracy instead of hitThreshold', () => {
-        // Default enemy weapon is size-1 with accuracy 4
+        // Default enemy weapon is power-1 with accuracy 4
         // Roll 4 should hit (4 >= accuracy 4)
         const engine = makeEngine([1, 4]); // target selection + roll 4
         engine.setFirstAttacker('enemy');
@@ -2341,8 +2362,8 @@ describe('getApproachAdvantage', () => {
         expect(result.isHit).toBe(true);
       });
 
-      it('enemy with size-1 weapon misses on roll of 3', () => {
-        // Default enemy weapon accuracy is 4 (size 1)
+      it('enemy with power-1 weapon misses on roll of 3', () => {
+        // Default enemy weapon accuracy is 4 (power 1)
         const engine = makeEngine([1, 3]); // target selection + roll 3
         engine.setFirstAttacker('enemy');
         const result = engine.executeEnemyAttack();
@@ -2350,17 +2371,17 @@ describe('getApproachAdvantage', () => {
         expect(result.isHit).toBe(false); // 3 < accuracy 4
       });
 
-      it('enemy with size-2 weapon (accuracy 3) hits on roll of 3', () => {
+      it('enemy with power-2 weapon (accuracy 3) hits on roll of 3', () => {
         const enemy = new EnemyShip({
-          sizeLimit: 10,
+          powerLimit: 10,
           components: [
-            new WeaponComponent('Weapons', 2, 2), // size 2, accuracy 3
+            new WeaponComponent('Weapons', 2, 2), // power 2, accuracy 3
             new EngineComponent('Engines', 1, 1),
             new BridgeComponent('Bridge', 1, 1),
           ],
         });
         const engine = new CombatEngine({
-          playerShip: new PlayerShip(),
+          playerShip: standardPlayerShip(),
           enemyShip: enemy,
           rng: makeRng([1, 3]), // target selection + roll 3
         });
@@ -2374,7 +2395,7 @@ describe('getApproachAdvantage', () => {
     describe('enemy weapon damage', () => {
       it('enemy attack deals weapon damage to player component', () => {
         // Default enemy weapon damage is 1
-        const player = new PlayerShip();
+        const player = standardPlayerShip();
         const startHp = player.getComponent('Weapons').currentHp; // 4
         const engine = new CombatEngine({
           playerShip: player,
@@ -2388,7 +2409,7 @@ describe('getApproachAdvantage', () => {
 
       it('enemy with high-damage weapon deals correct damage', () => {
         const enemy = new EnemyShip({
-          sizeLimit: 10,
+          powerLimit: 10,
           components: [
             new WeaponComponent('Weapons', 2, 1),
             new EngineComponent('Engines', 1, 1),
@@ -2397,7 +2418,7 @@ describe('getApproachAdvantage', () => {
         });
         enemy.getComponent('Weapons').damage = 2;
 
-        const player = new PlayerShip();
+        const player = standardPlayerShip();
         const startHp = player.getComponent('Weapons').currentHp; // 4
         const engine = new CombatEngine({
           playerShip: player,
@@ -2413,7 +2434,7 @@ describe('getApproachAdvantage', () => {
     describe('multi-weapon ships', () => {
       it('uses first active weapon when ship has multiple weapons', () => {
         const player = new PlayerShip({
-          sizeLimit: 10,
+          powerLimit: 10,
           components: [
             new WeaponComponent('Laser', 2, 1),   // accuracy 4
             new WeaponComponent('Cannon', 4, 2),   // accuracy 3
@@ -2434,7 +2455,7 @@ describe('getApproachAdvantage', () => {
 
       it('falls back to second weapon when first is destroyed', () => {
         const player = new PlayerShip({
-          sizeLimit: 10,
+          powerLimit: 10,
           components: [
             new WeaponComponent('Laser', 2, 1),   // accuracy 4
             new WeaponComponent('Cannon', 4, 2),   // accuracy 3
@@ -2484,7 +2505,7 @@ describe('getApproachAdvantage', () => {
       it('enemy ship retains all components after bridge destruction', () => {
         const enemy = new EnemyShip();
         const engine = new CombatEngine({
-          playerShip: new PlayerShip(),
+          playerShip: standardPlayerShip(),
           enemyShip: enemy,
           rng: makeRng([4]),
         });
@@ -2501,7 +2522,7 @@ describe('getApproachAdvantage', () => {
 
       it('non-destroyed enemy components retain HP after playerWin', () => {
         const enemy = new EnemyShip({
-          sizeLimit: 10,
+          powerLimit: 10,
           components: [
             new WeaponComponent('Weapons', 3, 1),
             new EngineComponent('Engines', 3, 1),
@@ -2509,7 +2530,7 @@ describe('getApproachAdvantage', () => {
           ],
         });
         const engine = new CombatEngine({
-          playerShip: new PlayerShip(),
+          playerShip: standardPlayerShip(),
           enemyShip: enemy,
           rng: makeRng([4]),
         });
@@ -2525,7 +2546,7 @@ describe('getApproachAdvantage', () => {
       it('salvageable components available after playerWin', () => {
         const enemy = new EnemyShip();
         const engine = new CombatEngine({
-          playerShip: new PlayerShip(),
+          playerShip: standardPlayerShip(),
           enemyShip: enemy,
           rng: makeRng([4]),
         });

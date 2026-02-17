@@ -2,7 +2,7 @@ import { writable, get } from 'svelte/store';
 import { generateGrid } from './hexGrid.js';
 import { computePath, isTrapped } from './movement.js';
 import { generateBoardObjects } from './boardObjects.js';
-import { CombatEngine, PlayerShip, EnemyShip, getApproachAdvantage } from './combat.js';
+import { CombatEngine, PlayerShip, EnemyShip, getApproachAdvantage, WeaponComponent, EngineComponent, BridgeComponent } from './combat.js';
 
 // --- Svelte stores ---
 
@@ -18,7 +18,7 @@ export const movementPool = writable(0);
 /** Current dice roll (1-6 or null) */
 export const diceValue = writable(null);
 
-/** Game phase: 'galaxy' | 'rolling' | 'selectingDirection' | 'moving' | 'combat' | 'engagementChoice' | 'won' | 'lost' | 'galaxyComplete' */
+/** Game phase: 'galaxy' | 'shipyard' | 'rolling' | 'selectingDirection' | 'moving' | 'combat' | 'engagementChoice' | 'won' | 'lost' | 'galaxyComplete' */
 export const gamePhase = writable('galaxy');
 
 /** Set of visited vertex IDs */
@@ -59,6 +59,12 @@ export const pendingEngagement = writable(null);
 
 /** Whether the player is performing a stealth dive (avoided enemy, continuing movement) */
 export const stealthDive = writable(false);
+
+/** Component market: array of component instances available for installation */
+export const componentMarket = writable([]);
+
+/** Whether the player has confirmed their ship build */
+export const shipConfirmed = writable(false);
 
 // --- Helper functions ---
 
@@ -287,7 +293,10 @@ export function initGame(cols, rows, seed, difficulty = 5) {
   gamePhase.set('rolling');
   visited.set(new Set([startVertex]));
   movesMade.set(0);
-  playerShipStore.set(new PlayerShip());
+  // Preserve existing ship from shipyard; create empty one as fallback
+  if (!get(playerShipStore)) {
+    playerShipStore.set(new PlayerShip());
+  }
 
   return boardData;
 }
@@ -936,9 +945,142 @@ export function declineEngagement(onAnimationComplete) {
 }
 
 /**
- * Reset game to setup phase.
+ * Generate a component market with 5-6 random components.
+ * Guarantees at least 1 WeaponComponent, 1 EngineComponent, and 1 BridgeComponent.
+ * Each component is randomly assigned powerCost 1 or 2 with matching stats.
+ *
+ * @param {() => number} rng - RNG function returning 0-1
+ * @returns {import('./combat.js').ShipComponent[]} Array of component instances
  */
-export function resetGame() {
+export function generateComponentMarket(rng) {
+  const count = 5 + Math.floor(rng() * 2); // 5 or 6
+
+  function makeComponent(type, powerCost) {
+    if (type === 'weapon') {
+      const hp = powerCost >= 2 ? 2 : 1;
+      return new WeaponComponent('Weapons', hp, powerCost);
+    } else if (type === 'engine') {
+      const hp = powerCost >= 2 ? 2 : 1;
+      return new EngineComponent('Engines', hp, powerCost);
+    } else {
+      const hp = powerCost >= 2 ? 2 : 1;
+      return new BridgeComponent('Bridge', hp, powerCost);
+    }
+  }
+
+  const components = [];
+
+  // Exactly 2 bridges: one power-1, one power-2
+  components.push(makeComponent('bridge', 1));
+  components.push(makeComponent('bridge', 2));
+
+  // Guaranteed 1 weapon, 1 engine
+  for (const type of ['weapon', 'engine']) {
+    const powerCost = rng() < 0.5 ? 1 : 2;
+    components.push(makeComponent(type, powerCost));
+  }
+
+  // Fill remaining slots randomly from weapon/engine only (no more bridges)
+  const fillTypes = ['weapon', 'engine'];
+  for (let i = components.length; i < count; i++) {
+    const type = fillTypes[Math.floor(rng() * fillTypes.length)];
+    const powerCost = rng() < 0.5 ? 1 : 2;
+    components.push(makeComponent(type, powerCost));
+  }
+
+  return components;
+}
+
+/**
+ * Initialize the galaxy session: generate the component market and reset ship state.
+ * Called once when a new galaxy is created or loaded.
+ *
+ * @param {number} [seed] - Optional seed for deterministic market generation
+ */
+export function initGalaxySession(seed) {
+  const rng = seed != null ? makeRng(seed) : Math.random.bind(Math);
+  const market = generateComponentMarket(rng);
+  componentMarket.set(market);
+  shipConfirmed.set(false);
+  playerShipStore.set(new PlayerShip());
+}
+
+/**
+ * Enter the shipyard screen.
+ */
+export function enterShipyard() {
+  gamePhase.set('shipyard');
+}
+
+/**
+ * Confirm the ship build and return to galaxy.
+ */
+export function confirmShipBuild() {
+  shipConfirmed.set(true);
+  gamePhase.set('galaxy');
+}
+
+/**
+ * Install a component from the market onto the player's ship.
+ * Removes the component from componentMarket and adds it to the player ship.
+ *
+ * @param {number} componentIndex - Index into the componentMarket array
+ * @returns {boolean} True if installed successfully, false if rejected (insufficient power or bridge conflict)
+ */
+export function installComponent(componentIndex) {
+  const market = get(componentMarket);
+  if (componentIndex < 0 || componentIndex >= market.length) return false;
+
+  const component = market[componentIndex];
+  const ship = get(playerShipStore);
+  if (!ship) return false;
+
+  try {
+    ship.addComponent(component);
+  } catch {
+    return false;
+  }
+
+  // Remove from market and update both stores
+  const newMarket = [...market];
+  newMarket.splice(componentIndex, 1);
+  componentMarket.set(newMarket);
+  playerShipStore.set(ship);
+
+  return true;
+}
+
+/**
+ * Remove a component from the player's ship and return it to the market.
+ * Repairs the component (resets HP to maxHp) before returning it.
+ *
+ * @param {string} componentName - Name of the component to remove
+ * @returns {boolean} True if removed successfully, false if component not found
+ */
+export function removeComponent(componentName) {
+  const ship = get(playerShipStore);
+  if (!ship) return false;
+
+  const component = ship.removeComponent(componentName);
+  if (!component) return false;
+
+  // Repair the component before returning to market
+  component.currentHp = component.maxHp;
+
+  // Add back to market and update both stores
+  const market = get(componentMarket);
+  componentMarket.set([...market, component]);
+  playerShipStore.set(ship);
+
+  return true;
+}
+
+/**
+ * Reset only board-specific state, preserving galaxy-level state
+ * (playerShipStore, componentMarket, shipConfirmed).
+ * Used when returning to galaxy after completing a board.
+ */
+export function resetBoardState() {
   board.set(null);
   playerPos.set(null);
   movementPool.set(0);
@@ -952,8 +1094,17 @@ export function resetGame() {
   animationStep.set(-1);
   loseReason.set(null);
   combatState.set(null);
-  playerShipStore.set(null);
   currentBoardPos.set(null);
   pendingEngagement.set(null);
   stealthDive.set(false);
+}
+
+/**
+ * Reset game to setup phase.
+ */
+export function resetGame() {
+  resetBoardState();
+  playerShipStore.set(null);
+  componentMarket.set([]);
+  shipConfirmed.set(false);
 }

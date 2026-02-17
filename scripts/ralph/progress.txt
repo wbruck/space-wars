@@ -1,0 +1,135 @@
+# Ralph Progress Log
+Started: Mon Feb 16 17:55:24 CST 2026
+---
+
+## Codebase Patterns
+- Ship component sizing uses `powerCost` (on ShipComponent), `powerLimit` (on ComponentContainer/Ship), `totalPower`, and `remainingPower` — renamed from size/sizeLimit/totalSize/remainingCapacity
+- Constructor third param for WeaponComponent/EngineComponent/BridgeComponent is `powerCost` (1 or 2)
+- Ship options object uses `{ powerLimit, components }` — legacy array form also supported
+- Only combat.js and combat.test.js contain component power/sizing references — gameState.js and CombatScreen.svelte do not reference these properties directly
+- Component stats by powerCost: Weapon p1 (HP 1, dmg 1, acc 4), p2 (HP 2, dmg 1, acc 3). Engine p1 (HP 1, speed 0), p2 (HP 2, speed 1). Bridge p1 (HP 1, evasion 0), p2 (HP 2, evasion 1)
+- There is no `initGalaxy()` function — galaxy is generated in App.svelte onMount via generateGalaxy(). Use `initGalaxySession(seed?)` to set up component market and player ship
+- `generateComponentMarket(rng)` creates 5-6 components with guaranteed 1 of each type (weapon, engine, bridge)
+- `installComponent(index)` and `removeComponent(name)` manage market↔ship transfers; both update stores reactively
+- `removeComponent` repairs HP (currentHp = maxHp) before returning component to market
+- `new PlayerShip()` creates an empty ship (no default components, powerLimit=7). Tests needing equipped ships should use `standardPlayerShip()` helper or explicit `new PlayerShip({ components: [...] })`
+- `initGame()` preserves the existing player ship (from shipyard); only creates empty PlayerShip as fallback if none exists
+- Shipyard.svelte subscribes to `playerShipStore` and `componentMarket` stores via `$derived()`. Uses `removeComponent(name)` and `confirmShipBuild()` from gameState.js
+- Bonus text by type/powerCost: Weapon p2 → '+1 Accuracy (hits 3+)', Engine p2 → '+1 Speed', Bridge p2 → '+1 Evasion', any p1 → 'No bonus'
+- App.svelte routing order: galaxyComplete → galaxy → shipyard → won/lost → combat → boardData (gameplay). New phases go between galaxy and won/lost
+- `initGalaxySession()` must be called in App.svelte onMount after galaxy load — it generates the component market and resets player ship
+
+---
+
+## 2026-02-16 18:03 - US-001
+- Renamed size/sizeLimit terminology to power/powerLimit across the codebase
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js, CLAUDE.md
+- **Learnings for future iterations:**
+  - The rename was isolated to combat.js and combat.test.js — gameState.js uses `size` only for board size (not component sizing)
+  - CombatScreen.svelte doesn't reference size/sizeLimit properties directly
+  - boardObjects.js has no component sizing references
+  - All 601 tests pass after the rename
+---
+
+## 2026-02-16 18:10 - US-002
+- Added shipyard game phase, componentMarket store, shipConfirmed store
+- Added generateComponentMarket(rng), initGalaxySession(seed?), enterShipyard(), confirmShipBuild()
+- Files changed: src/lib/game/gameState.js, src/lib/game/gameState.test.js, CLAUDE.md
+- **Learnings for future iterations:**
+  - There's no `initGalaxy()` function — galaxy generation happens in App.svelte's onMount. Created `initGalaxySession(seed?)` as the integration point for market generation
+  - Component HP follows powerCost: power 1 → HP 1, power 2 → HP 2 for all component types
+  - The `resetGame()` function needs to clear all new stores — added componentMarket and shipConfirmed resets
+  - 617 tests pass (16 new tests for market generation + shipyard phase)
+---
+
+## 2026-02-16 18:12 - US-003
+- Added installComponent(componentIndex) and removeComponent(componentName) functions to gameState.js
+- installComponent: reads from componentMarket by index, calls ship.addComponent(), returns false on power/bridge rejection
+- removeComponent: removes from ship, repairs HP to maxHp, returns component to market
+- Both functions update componentMarket and playerShipStore stores reactively
+- Files changed: src/lib/game/gameState.js, src/lib/game/gameState.test.js
+- **Learnings for future iterations:**
+  - PlayerShip defaults have total power 6/7, so tests installing components need empty ships to avoid exceeding power budget
+  - ComponentContainer.addComponent() throws on failure (insufficient power, bridge conflict) — catch and return false for installComponent
+  - Components in market share instances with ship — same object reference is used throughout
+  - 628 tests pass (11 new tests for install/remove)
+---
+
+## 2026-02-16 18:15 - US-004
+- Created Shipyard.svelte component with ship display, power bar, and installed components list
+- Header shows 'Shipyard' title and power bar with totalPower/powerLimit
+- Power bar color coding: Red (low usage/underpowered), Yellow (moderate), Green (nearly full/ready)
+- Installed components show name, type badge, power cost, HP, and bonus stat text
+- Each component has Remove button calling removeComponent(name)
+- Confirm Build button calls confirmShipBuild(), disabled unless ship has weapon + engine + bridge
+- Files changed: src/lib/components/Shipyard.svelte (new)
+- **Learnings for future iterations:**
+  - Svelte 5 $derived() works well for subscribing to stores (playerShipStore, componentMarket)
+  - Component type labels and bonus text can be derived from component.type and component.powerCost
+  - CombatScreen.svelte provides good reference for dark mode styling patterns
+  - GalaxySelection.svelte provides good reference for touch-target sizing (44px min) and mobile patterns
+  - Cannot verify shipyard in browser until US-007 wires it into App.svelte routing
+  - 628 tests pass (no new tests — this is a pure UI component)
+---
+
+## 2026-02-16 18:16 - US-005
+- Added Available Components market section to Shipyard.svelte
+- Market displays components from componentMarket store with same format as installed list (name, type, power, HP, bonus)
+- Each market component has Install button calling installComponent(index)
+- Install disabled when component.powerCost > remainingPower or bridge conflict (bridge already installed)
+- Empty market shows 'No components available' message
+- Added install-btn styles with dark mode support, matching existing button patterns
+- Files changed: src/lib/components/Shipyard.svelte
+- **Learnings for future iterations:**
+  - `isInstallDisabled(comp)` function pattern works well for reactive disable checks in Svelte 5 — called inline in the template
+  - Market and installed sections share the same component-row/comp-info layout classes — no need for separate styling
+  - Browser verification not possible without Chrome extension connected; manual verification needed after US-007
+  - 628 tests pass, build compiles cleanly (no new tests — pure UI addition)
+---
+
+## 2026-02-16 18:17 - US-006
+- Added Shipyard button and gating logic to GalaxySelection.svelte
+- Shipyard button (orange-themed) always visible, calls enterShipyard()
+- When shipConfirmed is false: grid gets `gated` class (opacity 0.4, pointer-events none), "Confirm your ship build first" message shown
+- When shipConfirmed is true: grid functions normally, unlocked boards clickable
+- Unlocked boards when not confirmed render as non-interactive (no role=button/tabindex) showing "Ready" status text
+- handleSelect also guards against !confirmed as a safety check
+- Files changed: src/lib/components/GalaxySelection.svelte
+- **Learnings for future iterations:**
+  - GalaxySelection uses `$props()` for galaxy data and onSelectBoard callback — store subscriptions added via `$derived($storeName)` pattern
+  - The `class:gated={!confirmed}` Svelte directive works well for conditional CSS class application
+  - Gating via CSS (opacity + pointer-events) is simpler and more maintainable than conditionally rendering different cell structures
+  - Browser verification not possible without Chrome extension connected; needs manual verification after US-007
+  - 628 tests pass, build compiles cleanly (no new tests — pure UI change)
+---
+
+## 2026-02-16 18:20 - US-007
+- Wired shipyard into App.svelte routing: imported Shipyard component, added `{:else if phase === 'shipyard'}` routing block
+- Called `initGalaxySession()` in onMount to generate the component market on galaxy init
+- Added Back button to Shipyard.svelte for returning to galaxy without confirming build
+- Files changed: src/App.svelte, src/lib/components/Shipyard.svelte
+- **Learnings for future iterations:**
+  - `initGalaxySession()` must be called in App.svelte onMount after galaxy load/generate — it sets up the component market and resets ship state
+  - Shipyard routing goes between galaxy and won/lost in the `{#if}` chain — order matters for fallthrough to the boardData block
+  - Back button sets `gamePhase.set('galaxy')` directly rather than creating a dedicated function — keeps it simple
+  - Browser verification not possible without Chrome extension connected; needs manual verification
+  - 628 tests pass, build compiles cleanly (no new tests — routing is UI integration)
+---
+
+## 2026-02-16 18:42 - US-008
+- Updated PlayerShip constructor to start with no default components (empty ship, powerLimit=7)
+- Updated `initGame()` to preserve existing player ship from shipyard instead of creating a new one
+- Added `standardPlayerShip()` test helper in combat.test.js for tests that need a fully equipped ship
+- Updated `makeEngine()` test helper to use `standardPlayerShip()` instead of `new PlayerShip()`
+- Updated 54 failing tests across combat.test.js and gameState.test.js
+- PlayerShip "default" tests now verify empty ship behavior; component-specific tests use `standardPlayerShip()`
+- Ship persistence test updated: `initGame` now preserves damaged ship (since shipyard flow means ship persists)
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js, src/lib/game/gameState.js, src/lib/game/gameState.test.js, CLAUDE.md
+- **Learnings for future iterations:**
+  - `new PlayerShip()` now creates an empty ship — any test needing components must explicitly provide them
+  - The `standardPlayerShip()` helper in combat.test.js creates the old default loadout (W:4HP/p2, E:4HP/p2, B:3HP/p2)
+  - `initGame()` now preserves the existing playerShipStore if non-null — important for the shipyard→board flow
+  - CombatEngine tests are the most impacted since `makeEngine()` creates ships — fixing the helper fixed most tests
+  - gameState persistence tests needed `equipStandardLoadout()` helper to add components before testing combat damage
+  - 630 tests pass, build compiles cleanly
+---

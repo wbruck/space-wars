@@ -11,13 +11,13 @@ export class ShipComponent {
   /**
    * @param {string} name - Component name (e.g. 'Weapons', 'Engines', 'Bridge')
    * @param {number} maxHp - Maximum hit points
-   * @param {number} [size=1] - Size/weight cost (integer >= 1)
+   * @param {number} [powerCost=1] - Power cost (integer >= 1)
    */
-  constructor(name, maxHp, size = 1) {
+  constructor(name, maxHp, powerCost = 1) {
     this.name = name;
     this.maxHp = maxHp;
     this.currentHp = maxHp;
-    this.size = size;
+    this.powerCost = powerCost;
   }
 
   /** @returns {boolean} True when currentHp <= 0 */
@@ -44,13 +44,13 @@ export class WeaponComponent extends ShipComponent {
   /**
    * @param {string} name
    * @param {number} maxHp
-   * @param {number} [size=1]
+   * @param {number} [powerCost=1]
    */
-  constructor(name, maxHp, size = 1) {
-    super(name, maxHp, size);
-    // Size 2: damage 1, accuracy 3. Size 1 (default): damage 1, accuracy 4.
+  constructor(name, maxHp, powerCost = 1) {
+    super(name, maxHp, powerCost);
+    // Power 2: damage 1, accuracy 3. Power 1 (default): damage 1, accuracy 4.
     this.damage = 1;
-    this.accuracy = size >= 2 ? 3 : 4;
+    this.accuracy = powerCost >= 2 ? 3 : 4;
   }
 
   /** @returns {'weapon'} */
@@ -64,12 +64,12 @@ export class EngineComponent extends ShipComponent {
   /**
    * @param {string} name
    * @param {number} maxHp
-   * @param {number} [size=1]
+   * @param {number} [powerCost=1]
    */
-  constructor(name, maxHp, size = 1) {
-    super(name, maxHp, size);
-    // Size 2: speedBonus 1. Size 1 (default): speedBonus 0.
-    this.speedBonus = size >= 2 ? 1 : 0;
+  constructor(name, maxHp, powerCost = 1) {
+    super(name, maxHp, powerCost);
+    // Power 2: speedBonus 1. Power 1 (default): speedBonus 0.
+    this.speedBonus = powerCost >= 2 ? 1 : 0;
   }
 
   /** @returns {'engine'} */
@@ -83,12 +83,12 @@ export class BridgeComponent extends ShipComponent {
   /**
    * @param {string} name
    * @param {number} maxHp
-   * @param {number} [size=1]
+   * @param {number} [powerCost=1]
    */
-  constructor(name, maxHp, size = 1) {
-    super(name, maxHp, size);
-    // Size 2: evasionBonus 1. Size 1 (default): evasionBonus 0.
-    this.evasionBonus = size >= 2 ? 1 : 0;
+  constructor(name, maxHp, powerCost = 1) {
+    super(name, maxHp, powerCost);
+    // Power 2: evasionBonus 1. Power 1 (default): evasionBonus 0.
+    this.evasionBonus = powerCost >= 2 ? 1 : 0;
   }
 
   /** @returns {'bridge'} */
@@ -105,25 +105,25 @@ export class BridgeComponent extends ShipComponent {
 export const ComponentContainer = (Base) => class extends Base {
   /**
    * @param  {...any} args - Arguments passed to Base constructor.
-   *   If the last arg is an object with sizeLimit, it is consumed as options.
+   *   If the last arg is an object with powerLimit, it is consumed as options.
    */
   constructor(...args) {
     super(...args);
     /** @type {ShipComponent[]} */
     this._components = [];
     /** @type {number} */
-    this.sizeLimit = Infinity;
+    this.powerLimit = Infinity;
   }
 
   /**
-   * Add a component, enforcing size budget and bridge uniqueness.
+   * Add a component, enforcing power budget and bridge uniqueness.
    * @param {ShipComponent} component
-   * @throws {Error} If adding would exceed sizeLimit
+   * @throws {Error} If adding would exceed powerLimit
    * @throws {Error} If adding a second BridgeComponent
    */
   addComponent(component) {
-    if (this.totalSize + component.size > this.sizeLimit) {
-      throw new Error(`Cannot add component "${component.name}": would exceed sizeLimit (${this.totalSize + component.size} > ${this.sizeLimit})`);
+    if (this.totalPower + component.powerCost > this.powerLimit) {
+      throw new Error(`Cannot add component "${component.name}": would exceed powerLimit (${this.totalPower + component.powerCost} > ${this.powerLimit})`);
     }
     if (component.type === 'bridge' && this.hasComponentType('bridge')) {
       throw new Error('Cannot add a second BridgeComponent — only one bridge allowed');
@@ -142,14 +142,14 @@ export const ComponentContainer = (Base) => class extends Base {
     return this._components.splice(idx, 1)[0];
   }
 
-  /** @returns {number} Sum of all component sizes (including destroyed) */
-  get totalSize() {
-    return this._components.reduce((sum, c) => sum + c.size, 0);
+  /** @returns {number} Sum of all component power costs (including destroyed) */
+  get totalPower() {
+    return this._components.reduce((sum, c) => sum + c.powerCost, 0);
   }
 
-  /** @returns {number} sizeLimit - totalSize */
-  get remainingCapacity() {
-    return this.sizeLimit - this.totalSize;
+  /** @returns {number} powerLimit - totalPower */
+  get remainingPower() {
+    return this.powerLimit - this.totalPower;
   }
 
   /**
@@ -203,28 +203,28 @@ export const ComponentContainer = (Base) => class extends Base {
  *
  * Supports two constructor signatures for backward compatibility:
  *   new Ship('name', [comp1, comp2])          — legacy array form
- *   new Ship('name', { sizeLimit, components }) — new options form
+ *   new Ship('name', { powerLimit, components }) — new options form
  */
 export class Ship extends ComponentContainer(Object) {
   /**
    * @param {string} name - Ship name
-   * @param {ShipComponent[]|{sizeLimit?: number, components?: ShipComponent[]}} [opts] - Components array or options object
+   * @param {ShipComponent[]|{powerLimit?: number, components?: ShipComponent[]}} [opts] - Components array or options object
    */
   constructor(name, opts) {
     super();
     this.name = name;
 
-    // Backward compat: if second arg is an array, treat as { components: arr, sizeLimit: Infinity }
-    let sizeLimit = Infinity;
+    // Backward compat: if second arg is an array, treat as { components: arr, powerLimit: Infinity }
+    let powerLimit = Infinity;
     let components = [];
     if (Array.isArray(opts)) {
       components = opts;
     } else if (opts && typeof opts === 'object') {
-      sizeLimit = opts.sizeLimit ?? Infinity;
+      powerLimit = opts.powerLimit ?? Infinity;
       components = opts.components || [];
     }
 
-    this.sizeLimit = sizeLimit;
+    this.powerLimit = powerLimit;
     for (const c of components) {
       this.addComponent(c);
     }
@@ -232,34 +232,28 @@ export class Ship extends ComponentContainer(Object) {
 }
 
 /**
- * Player's ship with typed components and size budget.
- * Default sizeLimit: 7, default components: size-2 weapon (4HP), size-2 engine (4HP), size-2 bridge (3HP).
+ * Player's ship with typed components and power budget.
+ * Default powerLimit: 7, starts with no components (player builds ship in shipyard).
  */
 export class PlayerShip extends Ship {
   /**
-   * @param {ShipComponent[]|{sizeLimit?: number, components?: ShipComponent[]}} [opts] - Legacy component array or options object
+   * @param {ShipComponent[]|{powerLimit?: number, components?: ShipComponent[]}} [opts] - Legacy component array or options object
    */
   constructor(opts) {
-    const defaultComponents = [
-      new WeaponComponent('Weapons', 4, 2),
-      new EngineComponent('Engines', 4, 2),
-      new BridgeComponent('Bridge', 3, 2),
-    ];
-
     if (Array.isArray(opts)) {
-      // Legacy: PlayerShip([comp1, comp2]) — enforce sizeLimit 7
-      super('Player Ship', { sizeLimit: 7, components: opts });
+      // Legacy: PlayerShip([comp1, comp2]) — enforce powerLimit 7
+      super('Player Ship', { powerLimit: 7, components: opts });
     } else if (opts && typeof opts === 'object') {
-      // New: PlayerShip({ sizeLimit, components })
+      // New: PlayerShip({ powerLimit, components })
       super('Player Ship', {
-        sizeLimit: opts.sizeLimit ?? 7,
-        components: opts.components || defaultComponents,
+        powerLimit: opts.powerLimit ?? 7,
+        components: opts.components || [],
       });
     } else {
-      // Default: PlayerShip() — use defaults with sizeLimit 7
+      // Default: PlayerShip() — empty ship with powerLimit 7
       super('Player Ship', {
-        sizeLimit: 7,
-        components: defaultComponents,
+        powerLimit: 7,
+        components: [],
       });
     }
   }
@@ -285,13 +279,13 @@ export class PlayerShip extends Ship {
 }
 
 /**
- * Enemy ship with typed components and size budget.
- * Default sizeLimit: 4, default components: size-1 weapon (1HP), size-1 engine (1HP), size-1 bridge (1HP).
+ * Enemy ship with typed components and power budget.
+ * Default powerLimit: 4, default components: power-1 weapon (1HP), power-1 engine (1HP), power-1 bridge (1HP).
  * Bridge destruction is the ONLY way to fully defeat an enemy.
  */
 export class EnemyShip extends Ship {
   /**
-   * @param {ShipComponent[]|{sizeLimit?: number, components?: ShipComponent[]}} [opts] - Legacy component array or options object
+   * @param {ShipComponent[]|{powerLimit?: number, components?: ShipComponent[]}} [opts] - Legacy component array or options object
    */
   constructor(opts) {
     const defaultComponents = [
@@ -301,18 +295,18 @@ export class EnemyShip extends Ship {
     ];
 
     if (Array.isArray(opts)) {
-      // Legacy: EnemyShip([comp1, comp2]) — enforce sizeLimit 4
-      super('Enemy Ship', { sizeLimit: 4, components: opts });
+      // Legacy: EnemyShip([comp1, comp2]) — enforce powerLimit 4
+      super('Enemy Ship', { powerLimit: 4, components: opts });
     } else if (opts && typeof opts === 'object') {
-      // New: EnemyShip({ sizeLimit, components })
+      // New: EnemyShip({ powerLimit, components })
       super('Enemy Ship', {
-        sizeLimit: opts.sizeLimit ?? 4,
+        powerLimit: opts.powerLimit ?? 4,
         components: opts.components || defaultComponents,
       });
     } else {
-      // Default: EnemyShip() — use defaults with sizeLimit 4
+      // Default: EnemyShip() — use defaults with powerLimit 4
       super('Enemy Ship', {
-        sizeLimit: 4,
+        powerLimit: 4,
         components: defaultComponents,
       });
     }

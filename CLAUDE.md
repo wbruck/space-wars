@@ -26,7 +26,7 @@ Single-player hex vertex board game built with **Svelte 5** (runes syntax) + **V
 `App.svelte` routes screens based on the `gamePhase` store:
 
 ```
-setup → SetupScreen (pick board size)
+galaxy → shipyard → galaxy (ship build confirmed) → board selection
 rolling → selectingDirection → moving → rolling (gameplay loop)
 won | lost → GameOver (stats + play again)
 ```
@@ -35,16 +35,17 @@ Gameplay phases show `Board` + `Dice` + `HUD` together.
 
 ### Game State (`src/lib/game/gameState.js`)
 
-Centralized Svelte writable stores: `board`, `playerPos`, `movementPool`, `diceValue`, `gamePhase`, `visited`, `movesMade`, `selectedDirection`, `previewPath`, `animatingPath`, `animationStep`.
+Centralized Svelte writable stores: `board`, `playerPos`, `movementPool`, `diceValue`, `gamePhase`, `visited`, `movesMade`, `selectedDirection`, `previewPath`, `animatingPath`, `animationStep`, `componentMarket`, `shipConfirmed`.
 
-Key exports: `initGame(cols, rows, seed?, difficulty?)`, `rollDice()`, `selectDirection(dir)`, `executeMove(callback?)`, `resetGame()`, `hasValidPath()`.
+Key exports: `initGame(cols, rows, seed?, difficulty?)`, `rollDice()`, `selectDirection(dir)`, `executeMove(callback?)`, `resetGame()`, `hasValidPath()`, `generateComponentMarket(rng)`, `initGalaxySession(seed?)`, `enterShipyard()`, `confirmShipBuild()`, `installComponent(index)`, `removeComponent(name)`.
 
-- `initGame` accepts cols/rows for board dimensions, an optional seed for deterministic tests (xorshift32 RNG), and optional difficulty (1-10, default 5)
+- `initGame` accepts cols/rows for board dimensions, an optional seed for deterministic tests (xorshift32 RNG), and optional difficulty (1-10, default 5). Preserves the existing player ship from shipyard; only creates an empty PlayerShip as fallback if none exists
 - `boardData` includes `boardObjects` (all BoardObject instances), `powerUps` (PowerUp[]), and `obstacles` (Set<string> for backward compatibility)
 - Movement pool formula: `(cols + rows) * 5`
 - `executeMove` animates step-by-step with setTimeout (150ms/step), then checks win/lose/trapped
 - Movement pool deduction happens AFTER the move completes, using actual steps taken (not dice value)
 - **Win/lose check flow:** `rollDice()` checks trapped *before* rolling (start-of-turn trap). `executeMove()` checks win (target reached), lose (pool exhausted), lose (trapped) *after* move completes.
+- **Shipyard stores:** `componentMarket` (writable, array of component instances), `shipConfirmed` (writable, boolean). `generateComponentMarket(rng)` creates 5-6 components with guaranteed 1 weapon, 1 engine, 1 bridge. `initGalaxySession(seed?)` generates the market and resets ship state. `enterShipyard()` sets phase to 'shipyard'. `confirmShipBuild()` sets shipConfirmed=true and returns to galaxy. `installComponent(index)` moves component from market to ship (returns false on power/bridge rejection). `removeComponent(name)` moves component from ship back to market (repairs HP first).
 
 ### Hex Grid (`src/lib/game/hexGrid.js`)
 
@@ -68,14 +69,14 @@ Path computation uses **rays** (not adjacency). Remaining steps after hitting an
 
 Ship component system using composition-based architecture with a `ComponentContainer` mixin.
 
-**Components:** `ShipComponent` base class with typed subclasses: `WeaponComponent` (damage, accuracy), `EngineComponent` (speedBonus), `BridgeComponent` (evasionBonus). Each has a `type` getter (`'weapon'`, `'engine'`, `'bridge'`). Constructor: `ShipComponent(name, maxHp, size=1)` — size defaults to 1 for backward compat. Size 1 vs size 2 variants have different stats (e.g., weapon accuracy 4 vs 3).
+**Components:** `ShipComponent` base class with typed subclasses: `WeaponComponent` (damage, accuracy), `EngineComponent` (speedBonus), `BridgeComponent` (evasionBonus). Each has a `type` getter (`'weapon'`, `'engine'`, `'bridge'`). Constructor: `ShipComponent(name, maxHp, powerCost=1)` — powerCost defaults to 1 for backward compat. Power 1 vs power 2 variants have different stats (e.g., weapon accuracy 4 vs 3).
 
-**ComponentContainer mixin:** `ComponentContainer(Base)` returns a class with component management: `addComponent()` (enforces sizeLimit budget and bridge uniqueness), `removeComponent()` (explicit only, never triggered by damage), `totalSize`, `remainingCapacity`, `getComponentsByType(type)`, `hasComponentType(type)`, `getComponent(name)` (backward compat), `getActiveComponents()`, `isDestroyed`. Destroyed components (0 HP) remain in the array permanently — never auto-removed.
+**ComponentContainer mixin:** `ComponentContainer(Base)` returns a class with component management: `addComponent()` (enforces powerLimit budget and bridge uniqueness), `removeComponent()` (explicit only, never triggered by damage), `totalPower`, `remainingPower`, `getComponentsByType(type)`, `hasComponentType(type)`, `getComponent(name)` (backward compat), `getActiveComponents()`, `isDestroyed`. Destroyed components (0 HP) remain in the array permanently — never auto-removed.
 
-**Ships:** `Ship` extends `ComponentContainer(Object)`. Constructors support legacy array form `Ship('name', [comps])` (sizeLimit=Infinity) and new options form `Ship('name', { sizeLimit, components })`.
+**Ships:** `Ship` extends `ComponentContainer(Object)`. Constructors support legacy array form `Ship('name', [comps])` (powerLimit=Infinity) and new options form `Ship('name', { powerLimit, components })`.
 
-- `PlayerShip`: sizeLimit=7, defaults: WeaponComponent('Weapons', 4, 2), EngineComponent('Engines', 4, 2), BridgeComponent('Bridge', 3, 2). Getters use type-based queries (`canAttack` = any weapon active, `isEngineDestroyed` = ALL engines destroyed).
-- `EnemyShip`: sizeLimit=4, defaults: WeaponComponent('Weapons', 1, 1), EngineComponent('Engines', 1, 1), BridgeComponent('Bridge', 1, 1). Has `getSalvageableComponents()` returning non-destroyed components.
+- `PlayerShip`: powerLimit=7, starts with no default components (empty ship — player builds in shipyard). Getters use type-based queries (`canAttack` = any weapon active, `isEngineDestroyed` = ALL engines destroyed).
+- `EnemyShip`: powerLimit=4, defaults: WeaponComponent('Weapons', 1, 1), EngineComponent('Engines', 1, 1), BridgeComponent('Bridge', 1, 1). Has `getSalvageableComponents()` returning non-destroyed components.
 
 **CombatEngine:** Turn-based d6 combat. Reads `accuracy` and `damage` from attacker's first active `WeaponComponent` (falls back to `hitThreshold` constructor param). `rollBonus` only applies to player attacks. Win conditions: enemy bridge destroyed. Lose conditions: player bridge destroyed, all player components destroyed, max turns. Enemy flees if weapons destroyed but engines intact.
 
