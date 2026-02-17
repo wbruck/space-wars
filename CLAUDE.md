@@ -68,14 +68,14 @@ Path computation uses **rays** (not adjacency). Remaining steps after hitting an
 
 Ship component system using composition-based architecture with a `ComponentContainer` mixin.
 
-**Components:** `ShipComponent` base class with typed subclasses: `WeaponComponent` (damage, accuracy), `EngineComponent` (speedBonus), `BridgeComponent` (evasionBonus). Each has a `type` getter (`'weapon'`, `'engine'`, `'bridge'`). Constructor: `ShipComponent(name, maxHp, size=1)` — size defaults to 1 for backward compat. Size 1 vs size 2 variants have different stats (e.g., weapon accuracy 4 vs 3).
+**Components:** `ShipComponent` base class with typed subclasses: `WeaponComponent` (damage, accuracy), `EngineComponent` (speedBonus), `BridgeComponent` (evasionBonus). Each has a `type` getter (`'weapon'`, `'engine'`, `'bridge'`). Constructor: `ShipComponent(name, maxHp, powerCost=1)` — powerCost defaults to 1 for backward compat. Power 1 vs power 2 variants have different stats (e.g., weapon accuracy 4 vs 3).
 
-**ComponentContainer mixin:** `ComponentContainer(Base)` returns a class with component management: `addComponent()` (enforces sizeLimit budget and bridge uniqueness), `removeComponent()` (explicit only, never triggered by damage), `totalSize`, `remainingCapacity`, `getComponentsByType(type)`, `hasComponentType(type)`, `getComponent(name)` (backward compat), `getActiveComponents()`, `isDestroyed`. Destroyed components (0 HP) remain in the array permanently — never auto-removed.
+**ComponentContainer mixin:** `ComponentContainer(Base)` returns a class with component management: `addComponent()` (enforces powerLimit budget and bridge uniqueness), `removeComponent()` (explicit only, never triggered by damage), `totalPower`, `remainingPower`, `getComponentsByType(type)`, `hasComponentType(type)`, `getComponent(name)` (backward compat), `getActiveComponents()`, `isDestroyed`. Destroyed components (0 HP) remain in the array permanently — never auto-removed.
 
-**Ships:** `Ship` extends `ComponentContainer(Object)`. Constructors support legacy array form `Ship('name', [comps])` (sizeLimit=Infinity) and new options form `Ship('name', { sizeLimit, components })`.
+**Ships:** `Ship` extends `ComponentContainer(Object)`. Constructors support legacy array form `Ship('name', [comps])` (powerLimit=Infinity) and new options form `Ship('name', { powerLimit, components })`.
 
-- `PlayerShip`: sizeLimit=7, defaults: WeaponComponent('Weapons', 4, 2), EngineComponent('Engines', 4, 2), BridgeComponent('Bridge', 3, 2). Getters use type-based queries (`canAttack` = any weapon active, `isEngineDestroyed` = ALL engines destroyed).
-- `EnemyShip`: sizeLimit=4, defaults: WeaponComponent('Weapons', 1, 1), EngineComponent('Engines', 1, 1), BridgeComponent('Bridge', 1, 1). Has `getSalvageableComponents()` returning non-destroyed components.
+- `PlayerShip`: powerLimit=7, defaults: WeaponComponent('Weapons', 4, 2), EngineComponent('Engines', 4, 2), BridgeComponent('Bridge', 3, 2). Getters use type-based queries (`canAttack` = any weapon active, `isEngineDestroyed` = ALL engines destroyed).
+- `EnemyShip`: powerLimit=4, defaults: WeaponComponent('Weapons', 1, 1), EngineComponent('Engines', 1, 1), BridgeComponent('Bridge', 1, 1). Has `getSalvageableComponents()` returning non-destroyed components.
 
 **CombatEngine:** Turn-based d6 combat. Reads `accuracy` and `damage` from attacker's first active `WeaponComponent` (falls back to `hitThreshold` constructor param). `rollBonus` only applies to player attacks. Win conditions: enemy bridge destroyed. Lose conditions: player bridge destroyed, all player components destroyed, max turns. Enemy flees if weapons destroyed but engines intact.
 

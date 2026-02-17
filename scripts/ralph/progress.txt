@@ -1,0 +1,21 @@
+# Ralph Progress Log
+Started: Mon Feb 16 17:55:24 CST 2026
+---
+
+## Codebase Patterns
+- Ship component sizing uses `powerCost` (on ShipComponent), `powerLimit` (on ComponentContainer/Ship), `totalPower`, and `remainingPower` — renamed from size/sizeLimit/totalSize/remainingCapacity
+- Constructor third param for WeaponComponent/EngineComponent/BridgeComponent is `powerCost` (1 or 2)
+- Ship options object uses `{ powerLimit, components }` — legacy array form also supported
+- Only combat.js and combat.test.js contain component power/sizing references — gameState.js and CombatScreen.svelte do not reference these properties directly
+
+---
+
+## 2026-02-16 18:03 - US-001
+- Renamed size/sizeLimit terminology to power/powerLimit across the codebase
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js, CLAUDE.md
+- **Learnings for future iterations:**
+  - The rename was isolated to combat.js and combat.test.js — gameState.js uses `size` only for board size (not component sizing)
+  - CombatScreen.svelte doesn't reference size/sizeLimit properties directly
+  - boardObjects.js has no component sizing references
+  - All 601 tests pass after the rename
+---
