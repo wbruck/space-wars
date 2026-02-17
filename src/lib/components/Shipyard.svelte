@@ -1,5 +1,5 @@
 <script>
-  import { playerShipStore, componentMarket, confirmShipBuild, removeComponent } from '../game/gameState.js';
+  import { playerShipStore, componentMarket, confirmShipBuild, removeComponent, installComponent } from '../game/gameState.js';
 
   let ship = $derived($playerShipStore);
   let market = $derived($componentMarket);
@@ -44,6 +44,14 @@
     removeComponent(name);
   }
 
+  function handleInstall(index) {
+    installComponent(index);
+  }
+
+  function isInstallDisabled(comp) {
+    return comp.powerCost > remainingPower || (comp.type === 'bridge' && hasBridge);
+  }
+
   function handleConfirm() {
     confirmShipBuild();
   }
@@ -84,6 +92,35 @@
               onclick={() => handleRemove(comp.name)}
             >
               Remove
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </div>
+
+  <!-- Available Components -->
+  <div class="section">
+    <h3 class="section-title">Available Components</h3>
+    {#if market.length === 0}
+      <div class="empty-message">No components available</div>
+    {:else}
+      <div class="component-list">
+        {#each market as comp, index}
+          <div class="component-row">
+            <div class="comp-info">
+              <span class="comp-name">{comp.name}</span>
+              <span class="comp-type">{typeLabel(comp)}</span>
+              <span class="comp-power">P{comp.powerCost}</span>
+              <span class="comp-hp">{comp.currentHp}/{comp.maxHp} HP</span>
+              <span class="comp-bonus">{getBonusText(comp)}</span>
+            </div>
+            <button
+              class="install-btn"
+              disabled={isInstallDisabled(comp)}
+              onclick={() => handleInstall(index)}
+            >
+              Install
             </button>
           </div>
         {/each}
@@ -258,6 +295,40 @@
     transform: scale(0.97);
   }
 
+  .install-btn {
+    padding: 0.35rem 0.7rem;
+    min-width: 44px;
+    min-height: 44px;
+    border: 2px solid #1976d2;
+    border-radius: 6px;
+    background: #e3f2fd;
+    color: #0d47a1;
+    font-weight: 600;
+    font-size: 0.75rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, transform 0.1s;
+    flex-shrink: 0;
+  }
+
+  .install-btn:hover:not(:disabled) {
+    background: #bbdefb;
+    transform: scale(1.03);
+  }
+
+  .install-btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .install-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+    border-color: #999;
+    background: #eee;
+    color: #999;
+  }
+
   .confirm-btn {
     padding: 0.75rem 2rem;
     min-width: 44px;
@@ -311,6 +382,9 @@
     .comp-bonus { color: #999; }
     .remove-btn { background: #3a1b1b; border-color: #e53935; color: #ef9a9a; }
     .remove-btn:hover { background: #4a2020; }
+    .install-btn { background: #1a2a3a; border-color: #1976d2; color: #90caf9; }
+    .install-btn:hover:not(:disabled) { background: #1a3a5a; }
+    .install-btn:disabled { background: #333; border-color: #555; color: #666; }
     .confirm-btn { background: #1b3a1b; border-color: #4caf50; color: #a5d6a7; }
     .confirm-btn:hover:not(:disabled) { background: #2e5a2e; }
     .confirm-btn:disabled { background: #333; border-color: #555; color: #666; }
