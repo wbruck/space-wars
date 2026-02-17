@@ -160,7 +160,7 @@
         "Commit with message starting with 'feat: US-008'"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": ""
     }
   ]

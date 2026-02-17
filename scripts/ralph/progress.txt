@@ -12,7 +12,8 @@ Started: Mon Feb 16 17:55:24 CST 2026
 - `generateComponentMarket(rng)` creates 5-6 components with guaranteed 1 of each type (weapon, engine, bridge)
 - `installComponent(index)` and `removeComponent(name)` manage market↔ship transfers; both update stores reactively
 - `removeComponent` repairs HP (currentHp = maxHp) before returning component to market
-- PlayerShip defaults have total power 6/7 — tests that install from market need to use empty ship (`new PlayerShip({ powerLimit: 7, components: [] })`) to avoid exceeding power budget
+- `new PlayerShip()` creates an empty ship (no default components, powerLimit=7). Tests needing equipped ships should use `standardPlayerShip()` helper or explicit `new PlayerShip({ components: [...] })`
+- `initGame()` preserves the existing player ship (from shipyard); only creates empty PlayerShip as fallback if none exists
 - Shipyard.svelte subscribes to `playerShipStore` and `componentMarket` stores via `$derived()`. Uses `removeComponent(name)` and `confirmShipBuild()` from gameState.js
 - Bonus text by type/powerCost: Weapon p2 → '+1 Accuracy (hits 3+)', Engine p2 → '+1 Speed', Bridge p2 → '+1 Evasion', any p1 → 'No bonus'
 - App.svelte routing order: galaxyComplete → galaxy → shipyard → won/lost → combat → boardData (gameplay). New phases go between galaxy and won/lost
@@ -113,4 +114,22 @@ Started: Mon Feb 16 17:55:24 CST 2026
   - Back button sets `gamePhase.set('galaxy')` directly rather than creating a dedicated function — keeps it simple
   - Browser verification not possible without Chrome extension connected; needs manual verification
   - 628 tests pass, build compiles cleanly (no new tests — routing is UI integration)
+---
+
+## 2026-02-16 18:42 - US-008
+- Updated PlayerShip constructor to start with no default components (empty ship, powerLimit=7)
+- Updated `initGame()` to preserve existing player ship from shipyard instead of creating a new one
+- Added `standardPlayerShip()` test helper in combat.test.js for tests that need a fully equipped ship
+- Updated `makeEngine()` test helper to use `standardPlayerShip()` instead of `new PlayerShip()`
+- Updated 54 failing tests across combat.test.js and gameState.test.js
+- PlayerShip "default" tests now verify empty ship behavior; component-specific tests use `standardPlayerShip()`
+- Ship persistence test updated: `initGame` now preserves damaged ship (since shipyard flow means ship persists)
+- Files changed: src/lib/game/combat.js, src/lib/game/combat.test.js, src/lib/game/gameState.js, src/lib/game/gameState.test.js, CLAUDE.md
+- **Learnings for future iterations:**
+  - `new PlayerShip()` now creates an empty ship — any test needing components must explicitly provide them
+  - The `standardPlayerShip()` helper in combat.test.js creates the old default loadout (W:4HP/p2, E:4HP/p2, B:3HP/p2)
+  - `initGame()` now preserves the existing playerShipStore if non-null — important for the shipyard→board flow
+  - CombatEngine tests are the most impacted since `makeEngine()` creates ships — fixing the helper fixed most tests
+  - gameState persistence tests needed `equipStandardLoadout()` helper to add components before testing combat damage
+  - 630 tests pass, build compiles cleanly
 ---
