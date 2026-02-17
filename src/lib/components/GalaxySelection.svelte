@@ -1,9 +1,13 @@
 <script>
+  import { shipConfirmed, enterShipyard } from '../game/gameState.js';
+
   let { galaxy, onSelectBoard } = $props();
+
+  let confirmed = $derived($shipConfirmed);
 
   function handleSelect(row, col) {
     const board = galaxy[row][col];
-    if (board.status !== 'unlocked') return;
+    if (board.status !== 'unlocked' || !confirmed) return;
     onSelectBoard(row, col);
   }
 
@@ -22,10 +26,21 @@
 <div class="galaxy-screen">
   <h2 class="title">Galaxy Selection</h2>
 
-  <div class="grid">
+  <button
+    class="shipyard-btn"
+    onclick={() => enterShipyard()}
+  >
+    Shipyard
+  </button>
+
+  {#if !confirmed}
+    <div class="gate-message">Confirm your ship build first</div>
+  {/if}
+
+  <div class="grid" class:gated={!confirmed}>
     {#each galaxy as row, rowIdx}
       {#each row as board, colIdx}
-        {#if board.status === 'unlocked'}
+        {#if board.status === 'unlocked' && confirmed}
           <div
             class="cell status-unlocked selectable"
             role="button"
@@ -46,6 +61,8 @@
                 Won
               {:else if board.status === 'lost'}
                 Lost
+              {:else if board.status === 'unlocked'}
+                Ready
               {:else}
                 Locked
               {/if}
@@ -69,6 +86,48 @@
     font-size: 1.5rem;
     color: #333;
     margin: 0;
+  }
+
+  .shipyard-btn {
+    padding: 0.65rem 1.5rem;
+    min-width: 44px;
+    min-height: 44px;
+    border: 2px solid #ff9800;
+    border-radius: 8px;
+    background: #fff3e0;
+    color: #e65100;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  .shipyard-btn:hover {
+    background: #ffe0b2;
+    transform: scale(1.03);
+  }
+
+  .shipyard-btn:active {
+    transform: scale(0.97);
+  }
+
+  .shipyard-btn:focus-visible {
+    outline: 2px solid #ff9800;
+    outline-offset: 2px;
+  }
+
+  .gate-message {
+    font-size: 0.85rem;
+    color: #ff9800;
+    font-weight: 600;
+    text-align: center;
+  }
+
+  .grid.gated {
+    opacity: 0.4;
+    pointer-events: none;
   }
 
   .grid {
@@ -189,6 +248,9 @@
 
   @media (prefers-color-scheme: dark) {
     .title { color: #eee; }
+    .shipyard-btn { background: #3a2a1a; border-color: #ff9800; color: #ffb74d; }
+    .shipyard-btn:hover { background: #4a3a2a; }
+    .gate-message { color: #ffb74d; }
   }
 
   @media (min-width: 600px) {
