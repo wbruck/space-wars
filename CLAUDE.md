@@ -39,7 +39,7 @@ Centralized Svelte writable stores: `board`, `playerPos`, `movementPool`, `diceV
 
 Key exports: `initGame(cols, rows, seed?, difficulty?)`, `rollDice()`, `selectDirection(dir)`, `executeMove(callback?)`, `resetGame()`, `hasValidPath()`, `generateComponentMarket(rng)`, `initGalaxySession(seed?)`, `enterShipyard()`, `confirmShipBuild()`, `installComponent(index)`, `removeComponent(name)`.
 
-- `initGame` accepts cols/rows for board dimensions, an optional seed for deterministic tests (xorshift32 RNG), and optional difficulty (1-10, default 5)
+- `initGame` accepts cols/rows for board dimensions, an optional seed for deterministic tests (xorshift32 RNG), and optional difficulty (1-10, default 5). Preserves the existing player ship from shipyard; only creates an empty PlayerShip as fallback if none exists
 - `boardData` includes `boardObjects` (all BoardObject instances), `powerUps` (PowerUp[]), and `obstacles` (Set<string> for backward compatibility)
 - Movement pool formula: `(cols + rows) * 5`
 - `executeMove` animates step-by-step with setTimeout (150ms/step), then checks win/lose/trapped
@@ -75,7 +75,7 @@ Ship component system using composition-based architecture with a `ComponentCont
 
 **Ships:** `Ship` extends `ComponentContainer(Object)`. Constructors support legacy array form `Ship('name', [comps])` (powerLimit=Infinity) and new options form `Ship('name', { powerLimit, components })`.
 
-- `PlayerShip`: powerLimit=7, defaults: WeaponComponent('Weapons', 4, 2), EngineComponent('Engines', 4, 2), BridgeComponent('Bridge', 3, 2). Getters use type-based queries (`canAttack` = any weapon active, `isEngineDestroyed` = ALL engines destroyed).
+- `PlayerShip`: powerLimit=7, starts with no default components (empty ship — player builds in shipyard). Getters use type-based queries (`canAttack` = any weapon active, `isEngineDestroyed` = ALL engines destroyed).
 - `EnemyShip`: powerLimit=4, defaults: WeaponComponent('Weapons', 1, 1), EngineComponent('Engines', 1, 1), BridgeComponent('Bridge', 1, 1). Has `getSalvageableComponents()` returning non-destroyed components.
 
 **CombatEngine:** Turn-based d6 combat. Reads `accuracy` and `damage` from attacker's first active `WeaponComponent` (falls back to `hitThreshold` constructor param). `rollBonus` only applies to player attacks. Win conditions: enemy bridge destroyed. Lose conditions: player bridge destroyed, all player components destroyed, max turns. Enemy flees if weapons destroyed but engines intact.

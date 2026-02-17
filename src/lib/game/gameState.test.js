@@ -1808,16 +1808,25 @@ describe('combat board integration (US-036)', () => {
   });
 
   describe('player ship health persistence (US-039)', () => {
-    it('initGame creates a fresh PlayerShip with full HP', () => {
+    /** Equip the player ship with standard components for combat tests */
+    function equipStandardLoadout() {
+      const ship = get(playerShipStore);
+      ship.addComponent(new WeaponComponent('Weapons', 4, 2));
+      ship.addComponent(new EngineComponent('Engines', 4, 2));
+      ship.addComponent(new BridgeComponent('Bridge', 3, 2));
+      playerShipStore.set(ship);
+    }
+
+    it('initGame creates an empty PlayerShip when none exists', () => {
       const ship = get(playerShipStore);
       expect(ship).not.toBeNull();
       expect(ship.name).toBe('Player Ship');
-      expect(ship.getComponent('Weapons').currentHp).toBe(4);
-      expect(ship.getComponent('Engines').currentHp).toBe(4);
-      expect(ship.getComponent('Bridge').currentHp).toBe(3);
+      expect(ship.components).toHaveLength(0);
+      expect(ship.powerLimit).toBe(7);
     });
 
     it('startCombat reuses the persistent PlayerShip instance', () => {
+      equipStandardLoadout();
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
       const shipBefore = get(playerShipStore);
@@ -1832,6 +1841,7 @@ describe('combat board integration (US-036)', () => {
     });
 
     it('player ship damage persists across multiple combat encounters', () => {
+      equipStandardLoadout();
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
@@ -1854,6 +1864,7 @@ describe('combat board integration (US-036)', () => {
     });
 
     it('player ship damage accumulates across encounters', () => {
+      equipStandardLoadout();
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
@@ -1875,7 +1886,8 @@ describe('combat board integration (US-036)', () => {
       expect(ship.getComponent('Engines').destroyed).toBe(true);
     });
 
-    it('initGame resets player ship to full HP after damage', () => {
+    it('initGame preserves existing player ship', () => {
+      equipStandardLoadout();
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 
@@ -1891,15 +1903,12 @@ describe('combat board integration (US-036)', () => {
       const damagedShip = get(playerShipStore);
       expect(damagedShip.getComponent('Weapons').currentHp).toBe(0);
 
-      // Start a new game
+      // Start a new game — ship is preserved since it already exists
       initGame(5, 4, 99);
 
-      // Player ship should be fresh
-      const freshShip = get(playerShipStore);
-      expect(freshShip).not.toBe(damagedShip);
-      expect(freshShip.getComponent('Weapons').currentHp).toBe(4);
-      expect(freshShip.getComponent('Engines').currentHp).toBe(4);
-      expect(freshShip.getComponent('Bridge').currentHp).toBe(3);
+      const sameShip = get(playerShipStore);
+      expect(sameShip).toBe(damagedShip);
+      expect(sameShip.getComponent('Weapons').currentHp).toBe(0);
     });
 
     it('resetGame clears the player ship store', () => {
@@ -1912,6 +1921,7 @@ describe('combat board integration (US-036)', () => {
     });
 
     it('undamaged components retain full HP between encounters', () => {
+      equipStandardLoadout();
       const enemy = addEnemyToBoard();
       const preCombatPos = get(playerPos);
 

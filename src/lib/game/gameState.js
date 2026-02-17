@@ -293,7 +293,10 @@ export function initGame(cols, rows, seed, difficulty = 5) {
   gamePhase.set('rolling');
   visited.set(new Set([startVertex]));
   movesMade.set(0);
-  playerShipStore.set(new PlayerShip());
+  // Preserve existing ship from shipyard; create empty one as fallback
+  if (!get(playerShipStore)) {
+    playerShipStore.set(new PlayerShip());
+  }
 
   return boardData;
 }

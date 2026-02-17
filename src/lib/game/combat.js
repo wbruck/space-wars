@@ -233,19 +233,13 @@ export class Ship extends ComponentContainer(Object) {
 
 /**
  * Player's ship with typed components and power budget.
- * Default powerLimit: 7, default components: power-2 weapon (4HP), power-2 engine (4HP), power-2 bridge (3HP).
+ * Default powerLimit: 7, starts with no components (player builds ship in shipyard).
  */
 export class PlayerShip extends Ship {
   /**
    * @param {ShipComponent[]|{powerLimit?: number, components?: ShipComponent[]}} [opts] - Legacy component array or options object
    */
   constructor(opts) {
-    const defaultComponents = [
-      new WeaponComponent('Weapons', 4, 2),
-      new EngineComponent('Engines', 4, 2),
-      new BridgeComponent('Bridge', 3, 2),
-    ];
-
     if (Array.isArray(opts)) {
       // Legacy: PlayerShip([comp1, comp2]) — enforce powerLimit 7
       super('Player Ship', { powerLimit: 7, components: opts });
@@ -253,13 +247,13 @@ export class PlayerShip extends Ship {
       // New: PlayerShip({ powerLimit, components })
       super('Player Ship', {
         powerLimit: opts.powerLimit ?? 7,
-        components: opts.components || defaultComponents,
+        components: opts.components || [],
       });
     } else {
-      // Default: PlayerShip() — use defaults with powerLimit 7
+      // Default: PlayerShip() — empty ship with powerLimit 7
       super('Player Ship', {
         powerLimit: 7,
-        components: defaultComponents,
+        components: [],
       });
     }
   }
