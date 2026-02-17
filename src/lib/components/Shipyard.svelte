@@ -1,0 +1,330 @@
+<script>
+  import { playerShipStore, componentMarket, confirmShipBuild, removeComponent } from '../game/gameState.js';
+
+  let ship = $derived($playerShipStore);
+  let market = $derived($componentMarket);
+
+  let totalPower = $derived(ship?.totalPower ?? 0);
+  let powerLimit = $derived(ship?.powerLimit ?? 7);
+  let remainingPower = $derived(ship?.remainingPower ?? 7);
+
+  let installedComponents = $derived(ship?.components ?? []);
+
+  let hasWeapon = $derived(ship?.hasComponentType('weapon') ?? false);
+  let hasEngine = $derived(ship?.hasComponentType('engine') ?? false);
+  let hasBridge = $derived(ship?.hasComponentType('bridge') ?? false);
+  let canConfirm = $derived(hasWeapon && hasEngine && hasBridge);
+
+  let powerRatio = $derived(powerLimit > 0 ? totalPower / powerLimit : 0);
+
+  // Color coding: Red = low (underpowered), Yellow = moderate, Green = nearly full (ready)
+  let powerBarColor = $derived.by(() => {
+    if (powerRatio >= 0.7) return 'power-high';
+    if (powerRatio >= 0.4) return 'power-mid';
+    return 'power-low';
+  });
+
+  function getBonusText(comp) {
+    if (comp.powerCost >= 2) {
+      if (comp.type === 'weapon') return '+1 Accuracy (hits 3+)';
+      if (comp.type === 'engine') return '+1 Speed';
+      if (comp.type === 'bridge') return '+1 Evasion';
+    }
+    return 'No bonus';
+  }
+
+  function typeLabel(comp) {
+    if (comp.type === 'weapon') return 'Weapon';
+    if (comp.type === 'engine') return 'Engine';
+    if (comp.type === 'bridge') return 'Bridge';
+    return comp.type;
+  }
+
+  function handleRemove(name) {
+    removeComponent(name);
+  }
+
+  function handleConfirm() {
+    confirmShipBuild();
+  }
+</script>
+
+<div class="shipyard-screen">
+  <h2 class="title">Shipyard</h2>
+
+  <!-- Power bar -->
+  <div class="power-section">
+    <div class="power-label">Power: {totalPower} / {powerLimit}</div>
+    <div class="power-bar-container">
+      <div
+        class="power-bar {powerBarColor}"
+        style="width: {powerRatio * 100}%"
+      ></div>
+    </div>
+  </div>
+
+  <!-- Installed Components -->
+  <div class="section">
+    <h3 class="section-title">Installed Components</h3>
+    {#if installedComponents.length === 0}
+      <div class="empty-message">No components installed</div>
+    {:else}
+      <div class="component-list">
+        {#each installedComponents as comp}
+          <div class="component-row">
+            <div class="comp-info">
+              <span class="comp-name">{comp.name}</span>
+              <span class="comp-type">{typeLabel(comp)}</span>
+              <span class="comp-power">P{comp.powerCost}</span>
+              <span class="comp-hp">{comp.currentHp}/{comp.maxHp} HP</span>
+              <span class="comp-bonus">{getBonusText(comp)}</span>
+            </div>
+            <button
+              class="remove-btn"
+              onclick={() => handleRemove(comp.name)}
+            >
+              Remove
+            </button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  </div>
+
+  <!-- Confirm Build -->
+  <button
+    class="confirm-btn"
+    disabled={!canConfirm}
+    onclick={handleConfirm}
+  >
+    Confirm Build
+  </button>
+  {#if !canConfirm}
+    <div class="confirm-hint">Requires at least 1 weapon, 1 engine, and 1 bridge</div>
+  {/if}
+</div>
+
+<style>
+  .shipyard-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 0.75rem;
+    font-family: system-ui, -apple-system, sans-serif;
+  }
+
+  .title {
+    font-size: 1.5rem;
+    color: #333;
+    margin: 0;
+  }
+
+  .power-section {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .power-label {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #555;
+    text-align: center;
+  }
+
+  .power-bar-container {
+    width: 100%;
+    height: 12px;
+    background: #e0e0e0;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .power-bar {
+    height: 100%;
+    border-radius: 6px;
+    transition: width 0.3s, background 0.3s;
+  }
+
+  .power-bar.power-low { background: #f44336; }
+  .power-bar.power-mid { background: #ff9800; }
+  .power-bar.power-high { background: #4caf50; }
+
+  .section {
+    width: 100%;
+  }
+
+  .section-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #666;
+    margin: 0 0 0.5rem 0;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .empty-message {
+    font-size: 0.85rem;
+    color: #888;
+    text-align: center;
+    padding: 0.5rem;
+  }
+
+  .component-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .component-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.6rem;
+    background: #f5f9ff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+  }
+
+  .comp-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .comp-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #333;
+  }
+
+  .comp-type {
+    font-size: 0.7rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    background: #e3f2fd;
+    color: #1565c0;
+    font-weight: 500;
+    text-transform: uppercase;
+  }
+
+  .comp-power {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #ff9800;
+  }
+
+  .comp-hp {
+    font-size: 0.75rem;
+    color: #555;
+  }
+
+  .comp-bonus {
+    font-size: 0.7rem;
+    color: #888;
+    font-style: italic;
+  }
+
+  .remove-btn {
+    padding: 0.35rem 0.7rem;
+    min-width: 44px;
+    min-height: 44px;
+    border: 2px solid #e53935;
+    border-radius: 6px;
+    background: #ffebee;
+    color: #c62828;
+    font-weight: 600;
+    font-size: 0.75rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, transform 0.1s;
+    flex-shrink: 0;
+  }
+
+  .remove-btn:hover {
+    background: #ffcdd2;
+    transform: scale(1.03);
+  }
+
+  .remove-btn:active {
+    transform: scale(0.97);
+  }
+
+  .confirm-btn {
+    padding: 0.75rem 2rem;
+    min-width: 44px;
+    min-height: 44px;
+    border: 2px solid #4caf50;
+    border-radius: 8px;
+    background: #e8f5e9;
+    color: #2e7d32;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  .confirm-btn:hover:not(:disabled) {
+    background: #c8e6c9;
+    transform: scale(1.03);
+  }
+
+  .confirm-btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  .confirm-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+    border-color: #999;
+    background: #eee;
+    color: #999;
+  }
+
+  .confirm-hint {
+    font-size: 0.75rem;
+    color: #888;
+    text-align: center;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .title { color: #eee; }
+    .power-label { color: #bbb; }
+    .power-bar-container { background: #444; }
+    .section-title { color: #aaa; }
+    .empty-message { color: #777; }
+    .component-row { background: #1a1a2e; border-color: #444; }
+    .comp-name { color: #e0e0e0; }
+    .comp-type { background: #0d47a1; color: #90caf9; }
+    .comp-power { color: #ffb74d; }
+    .comp-hp { color: #bbb; }
+    .comp-bonus { color: #999; }
+    .remove-btn { background: #3a1b1b; border-color: #e53935; color: #ef9a9a; }
+    .remove-btn:hover { background: #4a2020; }
+    .confirm-btn { background: #1b3a1b; border-color: #4caf50; color: #a5d6a7; }
+    .confirm-btn:hover:not(:disabled) { background: #2e5a2e; }
+    .confirm-btn:disabled { background: #333; border-color: #555; color: #666; }
+    .confirm-hint { color: #777; }
+  }
+
+  @media (min-width: 600px) {
+    .shipyard-screen {
+      max-width: 520px;
+      padding: 1rem;
+    }
+
+    .title {
+      font-size: 1.75rem;
+    }
+  }
+</style>
